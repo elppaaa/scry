@@ -132,15 +132,19 @@ func (b *browseTabs) CloseTab(id string) error {
 	return nil
 }
 
-// CloseActive is the Close Tab menu item (⌘W). A no-op when the SPA is
-// frontmost — the stock CloseWindow role would quit the app instead.
-func (b *browseTabs) CloseActive() {
+// CloseActive closes the visible tab and reports whether there was one. ⌘W
+// dismisses the frontmost thing, and the caller needs to know which thing that
+// was: with no tab the SPA itself is frontmost and the app hides instead
+// (docs/decisions/0011). Returning the answer keeps that one decision in the
+// menu handler rather than making it read b.active a second time.
+func (b *browseTabs) CloseActive() bool {
 	b.mu.Lock()
 	id := b.active
 	b.mu.Unlock()
-	if id != "" {
-		_ = b.CloseTab(id)
+	if id == "" {
+		return false
 	}
+	return b.CloseTab(id) == nil
 }
 
 // CloseAll tears every tab down at once. A workspace switch is a full
