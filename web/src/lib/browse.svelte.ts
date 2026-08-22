@@ -308,7 +308,7 @@ class BrowseStore {
 
   /**
    * Reconcile with the native side. Two things only it knows: the live title and
-   * URL of each page, and that ⌘W closed a tab — the app's Close Tab menu item
+   * URL of each page, and that ⌘W closed a tab — the app's Close menu item
    * never reaches this document.
    */
   async #poll(): Promise<void> {
