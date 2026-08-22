@@ -2,6 +2,21 @@
 
 <sub>English · <a href="CHANGELOG.ko.md">한국어</a></sub>
 
+## Unreleased
+
+### The desktop app
+
+- **⌘W gets its second half on macOS.** The accelerator closed the visible
+  in-app browse tab and had nothing to do without one — which was every
+  moment before someone opened an Atlassian link in the app. It is now
+  `Window > Close`: the tab if there is one, otherwise `[NSApp hide:]`.
+  Nothing is torn down, so the window returns with the same scroll position,
+  the same open dialog and the same half-typed comment, and both ⌘Tab and the
+  Dock bring it back. Not a real close — that would quit the app, since the
+  window is the last one. Continues [GDK-351], which removed the item where it
+  could not act; this gives it something to do where it can.
+  `docs/decisions/0011`.
+
 ## v0.17.0 — 2026-08-23
 
 The cycle where an agent's writes grew up. An issue now shows the PRs and
