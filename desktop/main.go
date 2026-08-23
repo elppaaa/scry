@@ -325,20 +325,31 @@ func run() error {
 	}
 	appMenu.AddRole(application.EditMenu)
 	appMenu.AddRole(application.WindowMenu)
-	// ⌘W closes the visible in-app browser tab and nothing else. It has to be
-	// a menu accelerator: with focus inside the embedded page the SPA never
-	// sees the keystroke. Deliberately not the stock CloseWindow role — that
-	// closes the focused window, and here that is the app. On a build without
-	// the pane the item is not created at all: browse.CloseActive() would be
-	// a no-op there, and a Ctrl+W that visibly does nothing was os-audit F-2
-	// (GDK-351). Falling back to closing the window was considered and
-	// rejected — it would discard an open comment draft on a reflex keystroke.
-	if item := appMenu.FindByRole(application.WindowMenu); paneSupported && item != nil && item.IsSubmenu() {
+	// ⌘W dismisses the frontmost thing: the visible in-app browser tab, or —
+	// with no tab, which is the SPA showing itself — the app. It has to be a
+	// menu accelerator: with focus inside the embedded page the SPA never sees
+	// the keystroke. Deliberately not the stock CloseWindow role, and not
+	// window.Hide(): the first quits the app
+	// (ApplicationShouldTerminateAfterLastWindowClosed), the second is
+	// orderOut:, which leaves an active app with no window that ⌘Tab cannot
+	// recover. app.Hide() is [NSApp hide:] — reversible from both the Dock and
+	// ⌘Tab, and it tears nothing down, so the half-typed comment and the
+	// pane's webviews survive. Reasoning and the rejected alternatives are
+	// docs/decisions/0011. darwin-only: off darwin there is no Dock and no
+	// reopen event, so a hidden window would be worse than the visible no-op
+	// GDK-351 removed — and since GDK-700 the Windows window carries this menu
+	// too (UseApplicationMenu), so the gate is what keeps the item off it.
+	if item := appMenu.FindByRole(application.WindowMenu); runtime.GOOS == "darwin" && item != nil && item.IsSubmenu() {
 		win := item.GetSubmenu()
 		win.AddSeparator()
-		win.Add("Close Tab").
+		win.Add("Close").
 			SetAccelerator("CmdOrCtrl+w").
-			OnClick(func(*application.Context) { browse.CloseActive() })
+			OnClick(func(*application.Context) {
+				if browse.CloseActive() {
+					return
+				}
+				app.Hide()
+			})
 	}
 	// Help is darwin-only this round: Windows/Linux still use the stock
 	// AppMenu/Edit/Window roles. openURL is app.Browser.OpenURL, which on

@@ -136,6 +136,13 @@ func TestDesktopCommentsDoNotRestateStalePlatformFacts(t *testing.T) {
 	}{
 		{"deeplink.go", []string{"on other platforms the events", "simply never fire"}},
 		{"embed_other.go", []string{"The desktop app ships for macOS only today"}},
+		// paneSupported is gone: ⌘W is Window > Close on darwin whether or not
+		// a tab is open (docs/decisions/0011), so no chrome derives from the
+		// pane any more. A comment naming the constant would be describing
+		// something that no longer exists. The item's label is not sealed here
+		// — a contextual "Close Tab" is a live option (docs/decisions/0011
+		// rejected it on cost, not on correctness).
+		{"main.go", []string{"paneSupported"}},
 		{"fatal_windows.go", []string{"wails has no dialog helper"}},
 		{"README.md", []string{"does not set an `ErrorHandler`", "No workspace switcher"}},
 		{"build-windows.ps1", []string{"sets no ErrorHandler"}},

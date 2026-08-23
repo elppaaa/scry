@@ -111,6 +111,12 @@ func (b *browseTabs) activateLocked(id string) {
 func (b *browseTabs) CloseTab(id string) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	return b.closeTabLocked(id)
+}
+
+// closeTabLocked is CloseTab's body. It exists so CloseActive can decide which
+// tab is visible and close it without unlocking in between.
+func (b *browseTabs) closeTabLocked(id string) error {
 	if b.emb == nil {
 		return errBrowseUnavailable
 	}
@@ -132,15 +138,24 @@ func (b *browseTabs) CloseTab(id string) error {
 	return nil
 }
 
-// CloseActive is the Close Tab menu item (⌘W). A no-op when the SPA is
-// frontmost — the stock CloseWindow role would quit the app instead.
-func (b *browseTabs) CloseActive() {
+// CloseActive closes the visible tab and reports whether there was one. ⌘W
+// dismisses the frontmost thing, and the caller needs to know which thing that
+// was: with no tab the SPA itself is frontmost and the app hides instead
+// (docs/decisions/0011). Returning the answer keeps that one decision in the
+// menu handler rather than making it read b.active a second time.
+//
+// One lock for the read and the close. The menu runs on the main thread while
+// the /desktop/browse handlers run on the server's, so an Activate in between
+// would have this closing a tab the person is no longer looking at and still
+// reporting the tab case — the app would stay put and a background tab would
+// vanish.
+func (b *browseTabs) CloseActive() bool {
 	b.mu.Lock()
-	id := b.active
-	b.mu.Unlock()
-	if id != "" {
-		_ = b.CloseTab(id)
+	defer b.mu.Unlock()
+	if b.active == "" {
+		return false
 	}
+	return b.closeTabLocked(b.active) == nil
 }
 
 // CloseAll tears every tab down at once. A workspace switch is a full
