@@ -11,6 +11,7 @@ const KEY = 'NMB-110'
 const TRANSITION = {
   id: '21',
   name: 'Start work',
+  to_id: '31',
   to_status: 'In Progress',
   to_category: 'indeterminate',
 } as const
@@ -269,7 +270,7 @@ test.describe('duedate write + jira_errors', () => {
     })
 
     await chip.click()
-    await page.getByRole('option', { name: TRANSITION.name }).click()
+    await page.getByRole('option', { name: TRANSITION.to_status }).click()
 
     const toast = page.getByTestId('toast').and(page.getByRole('alert'))
     await expect(toast).toBeVisible()

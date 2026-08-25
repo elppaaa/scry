@@ -704,6 +704,8 @@ export interface Transition {
   name: string
   to_status: string
   to_category: string // Jira statusCategory key (new/indeterminate/done)
+  /** Stable target status id. Lets the UI spot self-loop edges without names. */
+  to_id: string
   /** Required screen fields only; omitted when none. */
   fields?: TransitionField[]
 }

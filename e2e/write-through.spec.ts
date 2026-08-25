@@ -18,6 +18,7 @@ const KEY = 'NMB-110'
 const TRANSITION = {
   id: '21',
   name: 'Start work',
+  to_id: '31',
   to_status: 'In Progress',
   to_category: 'indeterminate',
 } as const
@@ -150,7 +151,7 @@ test.describe('write-through', () => {
     })
 
     await chip.click()
-    const option = page.getByRole('option', { name: TRANSITION.name })
+    const option = page.getByRole('option', { name: TRANSITION.to_status })
     await expect(option).toBeVisible()
     await option.click()
 
@@ -174,6 +175,7 @@ test.describe('write-through', () => {
     const resolve = {
       id: '41',
       name: 'Resolve',
+      to_id: '10001',
       to_status: 'Done',
       to_category: 'done',
       fields: [
@@ -252,7 +254,7 @@ test.describe('write-through', () => {
     })
 
     await chip.click()
-    await page.getByRole('option', { name: TRANSITION.name }).click()
+    await page.getByRole('option', { name: TRANSITION.to_status }).click()
 
     const toast = page.getByTestId('toast').and(page.getByRole('alert'))
     await expect(toast).toBeVisible()
@@ -323,7 +325,7 @@ test.describe('write-through', () => {
     })
 
     await chip.click()
-    await page.getByRole('option', { name: TRANSITION.name }).click()
+    await page.getByRole('option', { name: TRANSITION.to_status }).click()
 
     await expect.poll(() => posted).toBe(true)
     const toast = page.getByTestId('toast').and(page.getByRole('alert'))
