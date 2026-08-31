@@ -1,0 +1,31 @@
+{
+  "stamp": "2026-08-31",
+  "captured_at": "2026-08-31T12:20:11Z",
+  "repo": "elppaaa/scry",
+  "releases": [],
+  "downloads_total": 0,
+  "traffic": {
+    "clones": {
+      "count": 0,
+      "uniques": 0,
+      "days": []
+    },
+    "views": {
+      "count": 0,
+      "uniques": 0,
+      "days": []
+    }
+  },
+  "errors": [
+    {
+      "endpoint": "traffic/clones",
+      "status": "403",
+      "message": "Resource not accessible by integration (HTTP 403)"
+    },
+    {
+      "endpoint": "traffic/views",
+      "status": "403",
+      "message": "Resource not accessible by integration (HTTP 403)"
+    }
+  ]
+}
