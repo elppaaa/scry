@@ -58,8 +58,8 @@ storage and type, attribution, MCP clients, read exceptions, deletions).
 
 ## 3. Status
 
-- **Status: 0.21, still 0.x.** (`tools/doc-checks.sh` check 6 asserts the
-  minor version appears as `Status: 0.21` / `상태: 0.21` / `状態: 0.21` in all
+- **Status: 0.22, still 0.x.** (`tools/doc-checks.sh` check 6 asserts the
+  minor version appears as `Status: 0.22` / `상태: 0.22` / `状態: 0.22` in all
   three READMEs, and re-asserts on every tag.)
 - Sync, read API, write-through, desktop, web, CLI and MCP are verified
   against a live site.

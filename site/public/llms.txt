@@ -6,7 +6,7 @@
 > open no connection. Writes go to Jira first and the cache refreshes after
 > Jira accepts. A desktop app, a browser tab (`gadak serve`), a CLI and a
 > coding agent all read the same file. No telemetry, and no gadak account.
-> Status: 0.21, still 0.x. Apache-2.0, one maintainer.
+> Status: 0.22, still 0.x. Apache-2.0, one maintainer.
 
 ## For an agent working on someone's tracker
 

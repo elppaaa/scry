@@ -4,8 +4,16 @@
 "what the docs describe" and "what actually exists right now", written so a fresh
 session can start work without re-deriving anything.
 
-Last updated: 2026-09-08 — main at v0.21.0, **the release where the mirror
-tells you what happened while you were away**: `gadak retro` prints a
+Last updated: 2026-09-13 — main at v0.22.0, **the release where a self-hosted
+Jira became an origin and a sprint became an object**: `gadak init --site
+<base-url> --server` binds Jira Server / Data Center with a personal access
+token and reads every shape Server sends as Server sends it; the mirror
+carries `sprints` and `boards` tables, `gadak sprint` writes through the
+origin and re-reads, the board scopes by active sprint / backlog / all, and
+*Weekly retro* is a screen that can be cut by sprint; `gadak doctor` says
+which binary and which signature answered, and the daily GitHub update check
+is gone. Before it, v0.21 was the release where the mirror tells you what
+happened while you were away: `gadak retro` prints a
 weekly retrospective with its definitions beside the numbers — and, since
 the retrospective materials landed, the in-progress tail, the bucket's
 surprises and the closures by type under it, with `--explain` saying how to
@@ -134,7 +142,7 @@ notify-only (banner + brew/dmg), and releases deliberately ship no
 rebuilt around `query` with error echoes, the three pipe contracts written
 down (`issues_full` + RECIPES, `gadak sql` stdout, `views open --keys -`),
 personal-row export/import, brew renamed so `gadak` is the app cask, and the
-first live benchmark (`docs/BENCHMARKS.md`). Last tagged: v0.21.0.
+first live benchmark (`docs/BENCHMARKS.md`). Last tagged: v0.22.0.
 
 ## In one paragraph
 

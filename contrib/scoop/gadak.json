@@ -1,18 +1,18 @@
 {
     "$schema": "https://raw.githubusercontent.com/ScoopInstaller/Scoop/master/schema.json",
-    "version": "0.21.0",
+    "version": "0.22.0",
     "description": "Local SQLite mirror of your Jira issues — web UI and agent SQL",
     "homepage": "https://github.com/midagedev/gadak",
     "license": "Apache-2.0",
     "##": "Windows CLI (gadak.exe). Same zip as gadak_<ver>_windows_amd64.zip / windows_arm64. Not the desktop zip Gadak-<ver>-windows-x64.zip. Hashes are the sha256 lines in that tag's checksums.txt. Scoop app name is gadak (the command on PATH). Homebrew: gadak is the macOS app cask; gadak-cli is this CLI.",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/midagedev/gadak/releases/download/v0.21.0/gadak_0.21.0_windows_amd64.zip",
-            "hash": "973ee00d2f4d3c76d864a0170bcb44affc3b42bf55a5ebb6a4b02fa47cbba5a8"
+            "url": "https://github.com/midagedev/gadak/releases/download/v0.22.0/gadak_0.22.0_windows_amd64.zip",
+            "hash": "c9186214d41fdbd7c8427d712247ef95ec54dfca7c2ca75473b6d2e83f21577a"
         },
         "arm64": {
-            "url": "https://github.com/midagedev/gadak/releases/download/v0.21.0/gadak_0.21.0_windows_arm64.zip",
-            "hash": "392e2431f600e617767c2fa7302a09421d42377ac9d2f3c03059d907b6a737dc"
+            "url": "https://github.com/midagedev/gadak/releases/download/v0.22.0/gadak_0.22.0_windows_arm64.zip",
+            "hash": "728bde6272d06bd72358f02c313813b2c3a275de12499d2beaa3c6651864abfd"
         }
     },
     "bin": "gadak.exe",
