@@ -131,10 +131,12 @@ if fails:
     print('changelog-preserve: %s differs from %s in more than wording:' % (name, ref))
     for f in fails:
         print('  FAIL: %s' % f)
-    print('\n  Headings, keys and numbers moving is a real failure — fix the file.')
-    print('  Code spans and links moving is expected when a restructuring round')
-    print('  cut an entry: read the list, confirm each one left with its entry,')
-    print('  and say so in the commit message.')
+    print('\n  A release heading that moved is a real failure — fix the file.')
+    print('  Keys, numbers, code spans and links moving is expected when a round')
+    print('  cut entries: the changelog drops items a reader would not feel')
+    print('  (user decision 2026-09-13, CLAUDE.md), and a dropped item takes its')
+    print('  key, its reference definition and its numbers with it. Read the list,')
+    print('  confirm each one left with its entry, and say so in the commit message.')
     sys.exit(1)
 
 print('changelog-preserve: %s vs %s — nothing moved '
