@@ -48,7 +48,7 @@ var appVersion = "dev"
 
 func main() {
 	// Importing internal/config no longer selects a workspace (GDK-644);
-	// each main reads GADAK_WORKSPACE/GADAK_PROFILE/SCRY_PROFILE itself —
+	// each main reads GADAK_WORKSPACE/GADAK_PROFILE itself —
 	// this is what makes `GADAK_PROFILE=work open -a Gadak` work.
 	// A local build lives in ~/.gadak-dev unless GADAK_HOME says otherwise
 	// (GDK-1697); decided before the log dir below resolves a path.

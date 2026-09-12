@@ -1,6 +1,6 @@
 /*
  * localStorage key helpers + one-shot migration.
- * Old prefixes `issue-nav:` and `scry:` → `gadak:`. Call once at app boot.
+ * Old prefix `issue-nav:` → `gadak:`. Call once at app boot.
  */
 
 import { composeCacheScope, config, workspaceName } from './config'
@@ -108,23 +108,16 @@ const LEGACY = {
 } as const
 
 function exactMigrations(): [string, string][] {
-  const ws = workspaceName() ? `ws:${workspaceName()}:` : ''
   return [
     [LEGACY.favorites, STORAGE_KEYS.favorites],
     [LEGACY.recent, STORAGE_KEYS.recent],
     [LEGACY.personalViews, STORAGE_KEYS.personalViews],
     [LEGACY.lastView, STORAGE_KEYS.lastView],
-    [`scry:${ws}favorites`, STORAGE_KEYS.favorites],
-    [`scry:${ws}favorites-order`, STORAGE_KEYS.favoritesOrder],
-    [`scry:${ws}recent`, STORAGE_KEYS.recent],
-    [`scry:${ws}personal-views`, STORAGE_KEYS.personalViews],
-    [`scry:${ws}last-view`, STORAGE_KEYS.lastView],
-    [`scry:${ws}docs-tab`, STORAGE_KEYS.docsTab],
   ]
 }
 
 /**
- * One-shot migrate of old `issue-nav:*` and `scry:*` keys to `gadak:*`.
+ * One-shot migrate of old `issue-nav:*` keys to `gadak:*`.
  * If the new key already exists, leave its value and only drop the old key. Not reversible.
  * Quietly ignore localStorage exceptions (private mode, etc.) — same as other call sites.
  */
@@ -143,8 +136,6 @@ export function migrateStorageKeys(): void {
     }
 
     migratePrefix(LEGACY.recentKindPrefix, recentKindPrefix())
-    migratePrefix('scry:recent:', recentKindPrefix())
-    migratePrefix('scry:comment-draft:', 'gadak:comment-draft:')
     migrateUnscopedIntoScope()
   } catch {
     /* private mode / unavailable — ignore */

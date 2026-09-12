@@ -21,27 +21,7 @@ const (
 	DBFile = "gadak.db"
 	// EnvPrefix is prepended to HOME, PROFILE, WORKSPACE, TOKEN, SITE, EMAIL, PROJECTS.
 	EnvPrefix = "GADAK_"
-
-	// Legacy names from the 2026-08 rename (scry → gadak). Still accepted so
-	// an existing install keeps working until the user next launches gadak.
-	LegacyName      = "scry"
-	LegacyDirName   = ".scry"
-	LegacyDBFile    = "scry.db"
-	LegacyEnvPrefix = "SCRY_"
 )
-
-// LegacySunsetRelease is the release that drops the legacy scry names
-// (the rename-sunset audit; decision 0007's addendum is the record). The
-// rename landed 2026-08-13; the 0.19-release audit asked
-// for a sunset so this compatibility cannot take up permanent residence —
-// its proposal ("drop in 0.19 or 0.20") shipped past, so the sunset is the
-// next minor after v0.21. The moment CHANGELOG.md gains a v0.22.0 heading,
-// sunset_test.go fails until the compat is gone. The drop is mechanical
-// (about 120 lines): the constants here and legacyEnv (identity.go), the
-// SCRY_* reads and the ~/.scry tree migration (config.go), the binary-name
-// hint (cmd/gadak/main.go), and the scry: localStorage migrations
-// (web/src/lib/storage.ts) — decision 0007's addendum is the record.
-const LegacySunsetRelease = "v0.22.0"
 
 // envSuffixes is every suffix production currently passes to Env. Env itself
 // does not consult this map — a new call site works immediately. The map is
@@ -104,15 +84,11 @@ var envPublished = map[string]struct{}{
 	"GADAK_TERMINAL": {},
 }
 
-// Env returns GADAK_<suffix>, then SCRY_<suffix> if the new name is unset
-// or empty. An empty GADAK_* value is treated as unset so a blank export
-// cannot hide a real SCRY_* fallback (decision 0007: read SCRY_* when
-// GADAK_* is unset).
+// Env returns GADAK_<suffix>. An empty value is treated as unset, the same
+// rule warnUnknownGADAK follows, so a blank export cannot masquerade as a
+// setting.
 func Env(suffix string) string {
-	if v := os.Getenv(EnvPrefix + suffix); v != "" {
-		return v
-	}
-	return os.Getenv(LegacyEnvPrefix + suffix)
+	return os.Getenv(EnvPrefix + suffix)
 }
 
 var unknownEnvWarnOnce sync.Once

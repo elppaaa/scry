@@ -608,10 +608,33 @@ func probeDoctorHome(rep *doctorReport) (mirrorWal, mirrorShm *int64) {
 	} else {
 		rep.MirrorPath = "unknown"
 	}
-	if prev := config.DualHomeLeftover(); prev != "" {
+	if prev := legacyHomeLeftover(); prev != "" {
 		rep.HomeLeftover = tildeHome(prev)
 	}
 	return mirrorWal, mirrorShm
+}
+
+// legacyHomeLeftover reports the abandoned pre-rename home (~/.scry) when it
+// still exists beside ~/.gadak. It survives the v0.22.0 sunset of the rename
+// compatibility deliberately (decision 0007's addendum): the rename migration
+// that once consumed the directory is gone, so it is simply ignored, and
+// "you still have a ~/.scry" remains true and worth reporting. It names a
+// directory on disk and reads nothing from it. It lives here rather than in
+// internal/config so the config package carries no legacy-name literal.
+func legacyHomeLeftover() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	prev := filepath.Join(home, ".scry")
+	next := filepath.Join(home, config.DirName)
+	if _, err := os.Stat(prev); err != nil {
+		return ""
+	}
+	if _, err := os.Stat(next); err != nil {
+		return ""
+	}
+	return prev
 }
 
 // probeDoctorConfig is the config.json half: credential presence (with the

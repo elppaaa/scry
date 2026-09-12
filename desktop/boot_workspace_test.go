@@ -23,7 +23,7 @@ import (
 func TestDesktopBootFollowsStoredDefaultWorkspace(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("GADAK_HOME", home)
-	for _, v := range []string{"GADAK_WORKSPACE", "GADAK_PROFILE", "SCRY_PROFILE"} {
+	for _, v := range []string{"GADAK_WORKSPACE", "GADAK_PROFILE"} {
 		t.Setenv(v, "")
 	}
 	t.Cleanup(func() {

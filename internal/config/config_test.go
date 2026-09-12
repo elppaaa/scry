@@ -113,188 +113,19 @@ func TestDirForRejectsPathEscape(t *testing.T) {
 	}
 }
 
-func TestEnvPrefersNewPrefixThenLegacy(t *testing.T) {
+func TestEnvReadsNewPrefix(t *testing.T) {
 	os.Unsetenv("GADAK_TOKEN")
-	t.Setenv("SCRY_TOKEN", "legacy")
-	if got := Env("TOKEN"); got != "legacy" {
-		t.Fatalf("Env(TOKEN) without GADAK_ = %q, want legacy", got)
+	if got := Env("TOKEN"); got != "" {
+		t.Fatalf("Env(TOKEN) unset = %q, want empty", got)
 	}
 	t.Setenv("GADAK_TOKEN", "new")
 	if got := Env("TOKEN"); got != "new" {
-		t.Fatalf("Env(TOKEN) with both = %q, want new", got)
+		t.Fatalf("Env(TOKEN) = %q, want new", got)
 	}
-	// D2: an empty GADAK_* export is unset, not a value that hides SCRY_*.
+	// An empty GADAK_* export is unset, not a value.
 	t.Setenv("GADAK_TOKEN", "")
-	t.Setenv("SCRY_TOKEN", "legacy")
-	if got := Env("TOKEN"); got != "legacy" {
-		t.Fatalf("Env(TOKEN) with empty GADAK_ = %q, want legacy", got)
-	}
-}
-
-func TestEnvEmptyNewPrefixFallsBackAcrossSuffixes(t *testing.T) {
-	suffixes := []string{"TOKEN", "HOME", "PROFILE", "SITE", "EMAIL", "PROJECTS"}
-	for _, suffix := range suffixes {
-		t.Setenv(EnvPrefix+suffix, "")
-		t.Setenv(LegacyEnvPrefix+suffix, "legacy-"+suffix)
-		if got := Env(suffix); got != "legacy-"+suffix {
-			t.Errorf("Env(%s) with empty %s = %q, want %q", suffix, EnvPrefix+suffix, got, "legacy-"+suffix)
-		}
-	}
-}
-
-func TestHomeRootWarnsWhenBothDirsExist(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv("HOME", root)
-	t.Setenv("GADAK_HOME", "")
-	t.Setenv("SCRY_HOME", "")
-	dualHomeWarnOnce = sync.Once{}
-
-	legacy := filepath.Join(root, LegacyDirName)
-	next := filepath.Join(root, DirName)
-	if err := os.Mkdir(legacy, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(legacy, "config.json"), []byte(`{"site":"https://legacy.example.invalid"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(next, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(next, "config.json"), []byte(`{}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	stderr := captureStderr(t, func() {
-		got, err := homeRoot()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got != next {
-			t.Fatalf("homeRoot() = %q, want %q", got, next)
-		}
-	})
-	if _, err := os.Stat(legacy); err != nil {
-		t.Fatalf("legacy dir must be left in place: %v", err)
-	}
-	if !strings.Contains(stderr, legacy) {
-		t.Fatalf("warning must name leftover path %q, got %q", legacy, stderr)
-	}
-	if !strings.Contains(stderr, next) {
-		t.Fatalf("warning must name the path in use %q, got %q", next, stderr)
-	}
-	if !strings.Contains(stderr, "ignor") {
-		t.Fatalf("warning must say the leftover is ignored, got %q", stderr)
-	}
-}
-
-func TestHomeRootSkipsDualWarnWhenGADAKHOMESet(t *testing.T) {
-	root := t.TempDir()
-	override := t.TempDir()
-	t.Setenv("HOME", root)
-	t.Setenv("GADAK_HOME", override)
-	t.Setenv("SCRY_HOME", "")
-	if err := os.Mkdir(filepath.Join(root, LegacyDirName), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Mkdir(filepath.Join(root, DirName), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	dualHomeWarnOnce = sync.Once{}
-	stderr := captureStderr(t, func() {
-		got, err := homeRoot()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got != override {
-			t.Fatalf("homeRoot() = %q, want GADAK_HOME %q", got, override)
-		}
-	})
-	if stderr != "" {
-		t.Fatalf("GADAK_HOME override must not warn about ~/.scry: %q", stderr)
-	}
-}
-
-func TestHomeRootSilentWhenOnlyOneExists(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv("HOME", root)
-	t.Setenv("GADAK_HOME", "")
-	t.Setenv("SCRY_HOME", "")
-
-	next := filepath.Join(root, DirName)
-	if err := os.Mkdir(next, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	stderr := captureStderr(t, func() {
-		got, err := homeRoot()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if got != next {
-			t.Fatalf("homeRoot() = %q, want %q", got, next)
-		}
-	})
-	if stderr != "" {
-		t.Fatalf("only %s exists; want no warning, got %q", next, stderr)
-	}
-}
-
-func TestHomeRootMigratesLegacyDir(t *testing.T) {
-	root := t.TempDir()
-	t.Setenv("HOME", root)
-	os.Unsetenv("GADAK_HOME")
-	os.Unsetenv("SCRY_HOME")
-
-	legacy := filepath.Join(root, LegacyDirName)
-	if err := os.Mkdir(legacy, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(legacy, "config.json"), []byte(`{}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	got, err := homeRoot()
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := filepath.Join(root, DirName)
-	if got != want {
-		t.Fatalf("homeRoot() = %q, want %q", got, want)
-	}
-	if _, err := os.Stat(filepath.Join(want, "config.json")); err != nil {
-		t.Fatalf("migrated config missing: %v", err)
-	}
-	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
-		t.Fatalf("legacy dir still present: %v", err)
-	}
-}
-
-func TestDBPathMigratesLegacyFile(t *testing.T) {
-	home := t.TempDir()
-	t.Setenv("GADAK_HOME", home)
-	legacy := filepath.Join(home, LegacyDBFile)
-	if err := os.WriteFile(legacy, []byte("sqlite"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(legacy+"-wal", []byte("wal"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	got, err := DBPathFor("")
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := filepath.Join(home, DBFile)
-	if got != want {
-		t.Fatalf("DBPathFor = %q, want %q", got, want)
-	}
-	if _, err := os.Stat(want); err != nil {
-		t.Fatalf("migrated db missing: %v", err)
-	}
-	if _, err := os.Stat(want + "-wal"); err != nil {
-		t.Fatalf("migrated wal missing: %v", err)
-	}
-	if _, err := os.Stat(legacy); !os.IsNotExist(err) {
-		t.Fatalf("legacy db still present")
+	if got := Env("TOKEN"); got != "" {
+		t.Fatalf("Env(TOKEN) with empty GADAK_ = %q, want empty", got)
 	}
 }
 
@@ -897,7 +728,6 @@ func TestWorkspaceSourceFlagEnvDefault(t *testing.T) {
 
 	t.Setenv("GADAK_WORKSPACE", "")
 	t.Setenv("GADAK_PROFILE", "")
-	t.Setenv("SCRY_PROFILE", "")
 	ReloadWorkspaceFromEnv()
 	if Profile() != "" {
 		t.Fatalf("default Profile() = %q", Profile())
@@ -995,7 +825,6 @@ func TestProfileResolutionFourLevels(t *testing.T) {
 	t.Cleanup(func() { SetProfile("") })
 	t.Setenv("GADAK_WORKSPACE", "")
 	t.Setenv("GADAK_PROFILE", "")
-	t.Setenv("SCRY_PROFILE", "")
 
 	ReloadWorkspaceFromEnv()
 	if Profile() != "" {
@@ -1051,7 +880,6 @@ func TestStoredDefaultMissingDoesNotFallBack(t *testing.T) {
 	t.Cleanup(func() { SetProfile("") })
 	t.Setenv("GADAK_WORKSPACE", "")
 	t.Setenv("GADAK_PROFILE", "")
-	t.Setenv("SCRY_PROFILE", "")
 	if err := os.MkdirAll(filepath.Join(home, "profiles", "demo"), 0o700); err != nil {
 		t.Fatal(err)
 	}

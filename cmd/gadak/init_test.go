@@ -19,14 +19,13 @@ import (
 	"github.com/midagedev/gadak/internal/skillinstall"
 )
 
-// clearCredentialEnv treats every GADAK_* / SCRY_* init source as unset.
-// After D2, empty GADAK_* falls through to SCRY_*, so both prefixes must
-// be cleared when a test wants flags-only / missing-env behavior.
+// clearCredentialEnv treats every GADAK_* init source as unset — a test that
+// wants flags-only / missing-env behavior must not see the developer shell's
+// exports.
 func clearCredentialEnv(t *testing.T) {
 	t.Helper()
 	for _, k := range []string{
 		"GADAK_SITE", "GADAK_EMAIL", "GADAK_TOKEN", "GADAK_PROJECTS",
-		"SCRY_SITE", "SCRY_EMAIL", "SCRY_TOKEN", "SCRY_PROJECTS",
 	} {
 		t.Setenv(k, "")
 	}

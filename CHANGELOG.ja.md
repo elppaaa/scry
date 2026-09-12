@@ -2,6 +2,15 @@
 
 <sub><a href="CHANGELOG.md">English</a> · <a href="CHANGELOG.ko.md">한국어</a> · 日本語. 英語版を訳したもので、英語版と一緒に更新します（最終同期 2026-09-09）。</sub>
 
+## Unreleased
+
+**改名互換が予定どおり終了しました。** gadak は旧名に反応しなくなりました。
+`SCRY_*` 環境変数は読まず、初回起動時に `~/.scry` ホームや `scry.db` を移す
+こともなく、旧コマンド名の案内と `scry:` の localStorage 移行も削除しました。
+v0.22.0 の見出しが入ってから赤くなっていたテストは、互換コードとともに姿を
+消しました。`gadak doctor` は残っている `~/.scry` ディレクトリを引き続き
+報告します。それは今も事実だからです ([GDK-1143])。
+
 ## v0.22.0 — 2026-09-13
 
 **セルフホストの Jira が origin の一種になりました。** `gadak init --site
@@ -1849,6 +1858,7 @@ Jira サイトでも同じ意味になる軸をキーにします。解決の判
 [GDK-1135]: https://gadak.dev/backlog/#/?ks=GDK-1135
 [GDK-1136]: https://gadak.dev/backlog/#/?ks=GDK-1136
 [GDK-1141]: https://gadak.dev/backlog/#/?ks=GDK-1141
+[GDK-1143]: https://gadak.dev/backlog/#/?ks=GDK-1143
 [GDK-1147]: https://gadak.dev/backlog/#/?ks=GDK-1147
 [GDK-1149]: https://gadak.dev/backlog/#/?ks=GDK-1149
 [GDK-1150]: https://gadak.dev/backlog/#/?ks=GDK-1150

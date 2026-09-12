@@ -13,7 +13,6 @@ func TestDevBuildHomeIsGadakDev(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("HOME", root)
 	t.Setenv("GADAK_HOME", "")
-	t.Setenv("SCRY_HOME", "")
 	t.Cleanup(func() { SetDevBuild(false) })
 
 	SetDevBuild(true)

@@ -257,7 +257,6 @@ func TestStatusNamesTheMirrorAndWhatChoseIt(t *testing.T) {
 	t.Setenv("GADAK_HOME", home)
 	t.Setenv("GADAK_WORKSPACE", "")
 	t.Setenv("GADAK_PROFILE", "")
-	t.Setenv("SCRY_PROFILE", "")
 	config.ReloadWorkspaceFromEnv()
 
 	dbPath := demoDB(t)

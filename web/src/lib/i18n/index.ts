@@ -17,7 +17,7 @@ let current: Locale = 'en'
 
 function detectLocale(): Locale {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem('scry_locale')
+    const stored = localStorage.getItem(STORAGE_KEY)
     // GDK-825: the allowlist is LOCALES — the registry that owns the Locale
     // type. This used to restate 'en'||'ko'||'ja' by hand, so a fourth entry
     // in LOCALES was silently ignored here.

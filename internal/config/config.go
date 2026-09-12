@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"maps"
 	"os"
@@ -18,7 +17,6 @@ import (
 	"slices"
 	"sort"
 	"strings"
-	"sync"
 	"sync/atomic"
 
 	"github.com/midagedev/gadak/internal/atomicfile"
@@ -438,8 +436,8 @@ const (
 const storedWorkspaceFile = "default-workspace"
 
 // profile comes from SetProfile (the --workspace/--profile flag) or, if no
-// flag was given, GADAK_WORKSPACE, else GADAK_PROFILE (SCRY_PROFILE still
-// works). Empty or "default" means the root profile (~/.gadak); anything else
+// flag was given, GADAK_WORKSPACE, else GADAK_PROFILE. Empty or "default"
+// means the root profile (~/.gadak); anything else
 // lives under ~/.gadak/profiles/<name>. Each profile gets its own config.json
 // and gadak.db, so two sites can be used side by side without their
 // credentials or mirrors colliding.
@@ -512,11 +510,10 @@ func WorkspaceSource() (kind, envName string) {
 }
 
 // ReloadWorkspaceFromEnv forgets a SetProfile override and reads
-// GADAK_WORKSPACE, then GADAK_PROFILE, then SCRY_PROFILE. Empty values are
-// unset. When none of those are set, Profile() still applies the stored
-// default (then the root). Each process main must call this before flags
-// (cmd/gadak does); importing this package does not. Tests call it after
-// t.Setenv.
+// GADAK_WORKSPACE, then GADAK_PROFILE. Empty values are unset. When neither
+// is set, Profile() still applies the stored default (then the root). Each
+// process main must call this before flags (cmd/gadak does); importing this
+// package does not. Tests call it after t.Setenv.
 func ReloadWorkspaceFromEnv() {
 	if v := os.Getenv("GADAK_WORKSPACE"); v != "" {
 		profile = v
@@ -528,12 +525,6 @@ func ReloadWorkspaceFromEnv() {
 		profile = v
 		workspaceSource = SourceEnv
 		workspaceEnvName = "GADAK_PROFILE"
-		return
-	}
-	if v := os.Getenv("SCRY_PROFILE"); v != "" {
-		profile = v
-		workspaceSource = SourceEnv
-		workspaceEnvName = "SCRY_PROFILE"
 		return
 	}
 	profile = ""
@@ -562,10 +553,8 @@ func DevHome() bool { return devBuild.Load() && Env("HOME") == "" }
 // ~/.gadak-dev for a dev build, else ~/.gadak.
 func HomeRoot() (string, error) { return homeRoot() }
 
-// homeRoot is GADAK_HOME, else SCRY_HOME, else ~/.gadak-dev on a dev build,
-// else ~/.gadak. An existing ~/.scry directory is renamed to ~/.gadak on
-// first use so a pre-rename install keeps its mirror — the dev home has no
-// legacy to migrate and skips that. Shared by DirFor and Profiles.
+// homeRoot is GADAK_HOME, else ~/.gadak-dev on a dev build, else ~/.gadak.
+// Shared by DirFor and Profiles.
 func homeRoot() (string, error) {
 	if base := Env("HOME"); base != "" {
 		return base, nil
@@ -577,103 +566,7 @@ func homeRoot() (string, error) {
 	if devBuild.Load() {
 		return filepath.Join(home, DevDirName), nil
 	}
-	next := filepath.Join(home, DirName)
-	prev := filepath.Join(home, LegacyDirName)
-	if err := migratePath(prev, next); err != nil {
-		if _, statErr := os.Stat(next); statErr != nil {
-			if _, oldErr := os.Stat(prev); oldErr == nil {
-				return prev, nil
-			}
-		}
-	}
-	warnIfDualHome(prev, next)
-	return next, nil
-}
-
-// dualHomeWarnOnce keeps the leftover-home warning to one line per process
-// (homeRoot is called several times per command).
-var dualHomeWarnOnce sync.Once
-
-// dualHomeNoticeName marks that the leftover-home line has been printed once
-// on this machine. Every CLI call is a fresh process, so a process-level Once
-// meant one line per *invocation* — noise that dirtied script output on every
-// call (GDK-1072). The durable surface for the leftover is DualHomeLeftover
-// (doctor); stderr says it exactly once.
-const dualHomeNoticeName = "dual-home-noticed"
-
-// warnIfDualHome is the stderr half of the D1 surface: when both the
-// legacy ~/.scry tree and ~/.gadak exist, migratePath is a no-op and the
-// old mirror is silently abandoned. We do not merge (data-loss risk);
-// we name both paths once, then leave the standing report to doctor.
-func warnIfDualHome(prev, next string) {
-	if prev == "" || next == "" || prev == next {
-		return
-	}
-	if _, err := os.Stat(prev); err != nil {
-		return
-	}
-	if _, err := os.Stat(next); err != nil {
-		return
-	}
-	dualHomeWarnOnce.Do(func() {
-		dualHomeWarnDurable(prev, next, os.Stderr)
-	})
-}
-
-// dualHomeWarnDurable prints the leftover-home line unless the marker under
-// next says a previous invocation already did, and reports whether it printed.
-// Split from warnIfDualHome so the durable half is testable past the
-// per-process Once.
-func dualHomeWarnDurable(prev, next string, w io.Writer) bool {
-	marker := filepath.Join(next, dualHomeNoticeName)
-	if _, err := os.Stat(marker); err == nil {
-		return false
-	}
-	fmt.Fprintf(w, "gadak: leftover data at %s is being ignored; using %s (this prints once — `gadak doctor` keeps reporting it)\n", prev, next)
-	// Best-effort: an unwritable home just means the line prints again.
-	_ = os.WriteFile(marker, []byte(prev+"\n"), 0o644)
-	return true
-}
-
-// DualHomeLeftover reports the abandoned legacy home when both trees exist —
-// the standing surface doctor prints (the stderr warning fires once per
-// machine). Empty when there is nothing to report.
-func DualHomeLeftover() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	prev := filepath.Join(home, LegacyDirName)
-	next := filepath.Join(home, DirName)
-	if _, err := os.Stat(prev); err != nil {
-		return ""
-	}
-	if _, err := os.Stat(next); err != nil {
-		return ""
-	}
-	return prev
-}
-
-// migratePath renames oldPath → newPath when newPath is absent and oldPath
-// exists. No-op if they are the same, if the destination already exists, or if
-// the source is missing.
-func migratePath(oldPath, newPath string) error {
-	if oldPath == "" || newPath == "" || oldPath == newPath {
-		return nil
-	}
-	if _, err := os.Stat(newPath); err == nil {
-		return nil
-	}
-	if _, err := os.Stat(oldPath); err != nil {
-		return nil
-	}
-	return os.Rename(oldPath, newPath)
-}
-
-func migrateDB(oldPath, newPath string) {
-	_ = migratePath(oldPath, newPath)
-	_ = migratePath(oldPath+"-wal", newPath+"-wal")
-	_ = migratePath(oldPath+"-shm", newPath+"-shm")
+	return filepath.Join(home, DirName), nil
 }
 
 // maxProfileNameLen is the longest allowed named-profile directory name.
@@ -732,9 +625,7 @@ func DBPathFor(profile string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	next := filepath.Join(d, DBFile)
-	migrateDB(filepath.Join(d, LegacyDBFile), next)
-	return next, nil
+	return filepath.Join(d, DBFile), nil
 }
 
 // DBPath is the default SQLite path for the active profile.

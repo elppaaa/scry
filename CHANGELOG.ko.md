@@ -2,6 +2,15 @@
 
 <sub><a href="CHANGELOG.md">English</a> · 한국어. 영문판을 옮긴 것이고, 영문과 함께 갱신합니다(마지막 동기화 2026-09-09).</sub>
 
+## Unreleased
+
+**개명 호환이 예정된 종료 시점에 닿았습니다.** gadak이 옛 이름에 더는
+반응하지 않습니다. `SCRY_*` 환경 변수를 읽지 않고, 처음 실행할 때 `~/.scry`
+홈과 `scry.db`를 옮겨 주지 않으며, 옛 실행 파일 이름 안내와 `scry:`
+localStorage 이전도 지웠습니다. v0.22.0 헤딩이 생긴 뒤부터 빨갔던 테스트는
+호환 코드와 함께 사라졌습니다. `gadak doctor`는 남아 있는 `~/.scry`
+디렉터리를 여전히 알려 줍니다. 그건 지금도 사실이니까요 ([GDK-1143]).
+
 ## v0.22.0 — 2026-09-13
 
 **셀프호스트 Jira가 origin 종류가 됐습니다.** `gadak init --site <베이스 URL>
@@ -1763,6 +1772,7 @@ FlagSet에서 생성되어 어긋날 수 없습니다. 즐겨찾기가 미러에
 [GDK-1135]: https://gadak.dev/backlog/#/?ks=GDK-1135
 [GDK-1136]: https://gadak.dev/backlog/#/?ks=GDK-1136
 [GDK-1141]: https://gadak.dev/backlog/#/?ks=GDK-1141
+[GDK-1143]: https://gadak.dev/backlog/#/?ks=GDK-1143
 [GDK-1147]: https://gadak.dev/backlog/#/?ks=GDK-1147
 [GDK-1149]: https://gadak.dev/backlog/#/?ks=GDK-1149
 [GDK-1150]: https://gadak.dev/backlog/#/?ks=GDK-1150

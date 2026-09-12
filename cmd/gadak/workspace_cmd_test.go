@@ -223,7 +223,6 @@ func TestWorkspaceEnvPrecedence(t *testing.T) {
 	t.Cleanup(func() { config.SetProfile("") })
 	t.Setenv("GADAK_WORKSPACE", "ws")
 	t.Setenv("GADAK_PROFILE", "pf")
-	t.Setenv("SCRY_PROFILE", "scry")
 	config.ReloadWorkspaceFromEnv()
 	if config.Profile() != "ws" {
 		t.Fatalf("Profile() = %q, want ws (GADAK_WORKSPACE wins)", config.Profile())
@@ -245,16 +244,6 @@ func TestWorkspaceEnvPrecedence(t *testing.T) {
 
 	t.Setenv("GADAK_PROFILE", "")
 	config.ReloadWorkspaceFromEnv()
-	if config.Profile() != "scry" {
-		t.Fatalf("Profile() = %q, want scry (SCRY_PROFILE fallback)", config.Profile())
-	}
-	kind, envName = config.WorkspaceSource()
-	if kind != config.SourceEnv || envName != "SCRY_PROFILE" {
-		t.Fatalf("source = %q %q, want env SCRY_PROFILE", kind, envName)
-	}
-
-	t.Setenv("SCRY_PROFILE", "")
-	config.ReloadWorkspaceFromEnv()
 	if config.Profile() != "" {
 		t.Fatalf("Profile() = %q, want empty default", config.Profile())
 	}
@@ -273,7 +262,6 @@ func TestWarnWorkspaceIfEnvOnly(t *testing.T) {
 	// env + named → one stderr line, stdout clean
 	t.Setenv("GADAK_PROFILE", "oss")
 	t.Setenv("GADAK_WORKSPACE", "")
-	t.Setenv("SCRY_PROFILE", "")
 	config.ReloadWorkspaceFromEnv()
 	stdout, stderr, err := captureBoth(t, func() error {
 		return cmdCreate([]string{"hello"})
@@ -608,6 +596,4 @@ func clearWorkspaceEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("GADAK_WORKSPACE", "")
 	t.Setenv("GADAK_PROFILE", "")
-	t.Setenv("SCRY_PROFILE", "")
-	t.Setenv("SCRY_WORKSPACE", "")
 }

@@ -14,7 +14,6 @@ import (
 	"maps"
 	"net"
 	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -309,9 +308,6 @@ func main() {
 		}
 	}()
 	server.Version = version
-	if base := filepath.Base(os.Args[0]); base == config.LegacyName || base == config.LegacyName+".exe" {
-		fmt.Fprintf(os.Stderr, "gadak: the `%s` command was renamed to `gadak`.\n", config.LegacyName)
-	}
 	args := os.Args[1:]
 	// Global --workspace/--profile are only accepted before the subcommand.
 	rest, err := parseGlobalWorkspace(args)

@@ -2,6 +2,16 @@
 
 <sub>English · <a href="CHANGELOG.ko.md">한국어</a></sub>
 
+## Unreleased
+
+**The rename compatibility reached its sunset.** gadak stopped answering
+to its old name: the `SCRY_*` environment variables are no longer read, a
+`~/.scry` home and a `scry.db` are no longer renamed on first use, the old
+binary-name hint and the `scry:` localStorage migrations are gone, and the
+test that had been failing since the v0.22.0 heading appeared went with
+them. `gadak doctor` still reports a leftover `~/.scry` directory, because
+that stays true ([GDK-1143]).
+
 ## v0.22.0 — 2026-09-13
 
 **A self-hosted Jira is an origin type.** `gadak init --site <base-url>
@@ -1874,6 +1884,7 @@ priority sorting keyed on `priority_rank`.
 [GDK-1135]: https://gadak.dev/backlog/#/?ks=GDK-1135
 [GDK-1136]: https://gadak.dev/backlog/#/?ks=GDK-1136
 [GDK-1141]: https://gadak.dev/backlog/#/?ks=GDK-1141
+[GDK-1143]: https://gadak.dev/backlog/#/?ks=GDK-1143
 [GDK-1147]: https://gadak.dev/backlog/#/?ks=GDK-1147
 [GDK-1149]: https://gadak.dev/backlog/#/?ks=GDK-1149
 [GDK-1150]: https://gadak.dev/backlog/#/?ks=GDK-1150
