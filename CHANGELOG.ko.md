@@ -2,7 +2,7 @@
 
 <sub><a href="CHANGELOG.md">English</a> · 한국어. 영문판을 옮긴 것이고, 영문과 함께 갱신합니다(마지막 동기화 2026-09-09).</sub>
 
-## Unreleased
+## v0.22.0 — 2026-09-13
 
 **셀프호스트 Jira가 origin 종류가 됐습니다.** `gadak init --site <베이스 URL>
 --server`로 셀프호스트 Jira 워크스페이스를 만듭니다. 이메일 없이 Personal

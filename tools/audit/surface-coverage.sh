@@ -41,12 +41,22 @@ src() { SOURCES+=("$1"); }
 BASE="$(git rev-parse --short HEAD)"
 src "git rev-parse --short HEAD   # base: $BASE"
 
-# Unreleased = `## Unreleased` up to the next `## ` heading. The runbook's
-# warning holds: version headings are `## vN.N.N`, so `^## 0\.` matches
-# nothing — the generic next-heading stop is what works.
-awk '/^## Unreleased$/{f=1;next} /^## /{f=0} f' CHANGELOG.md \
-  | grep -oE 'GDK-[0-9]+' | sort -u > "$WORK/keys"
-src "awk '/^## Unreleased\$/{f=1;next} /^## /{f=0} f' CHANGELOG.md | grep -oE 'GDK-[0-9]+' | sort -u"
+# The section being released = the FIRST `## ` section, whatever it is called,
+# up to the next `## ` heading. It is `## Unreleased` on an ordinary day and
+# `## vN.N.N — YYYY-MM-DD` from the moment the release heading is written.
+# Keying on the literal `## Unreleased` meant this census died at exactly the
+# step it exists to serve: renaming the heading for the tag left awk with no
+# section, `grep` found nothing and exited 1, and `pipefail` turned an empty
+# census into a hard failure — against this file's own contract two paragraphs
+# up ("Exit 0 always"). Measured 2026-09-13 at the v0.22.0 tag, where
+# doc-checks went red on `surface-coverage: exit 1`.
+# The runbook's warning still holds: version headings are `## vN.N.N`, so
+# `^## 0\.` matches nothing — the generic next-heading stop is what works.
+SECTION_AWK='/^## /{if(f)exit; f=1; next} f'
+awk "$SECTION_AWK" CHANGELOG.md \
+  | { grep -oE 'GDK-[0-9]+' || true; } | sort -u > "$WORK/keys"
+src "awk '$SECTION_AWK' CHANGELOG.md | grep -oE 'GDK-[0-9]+' | sort -u"
+RELEASING="$(awk '/^## /{print; exit}' CHANGELOG.md | sed 's/^## //')"
 KEY_TOTAL="$(wc -l < "$WORK/keys" | tr -d ' ')"
 
 # One pass: commits with their cited keys and touched files. `C|` prefixes
@@ -189,9 +199,9 @@ awk -F'|' -v keys_file="$WORK/keys" '
 ' "$WORK/log" > "$WORK/body"
 
 {
-  echo "# Surface coverage — Unreleased keys × {CLI, web, MCP, SKILL, phone}"
+  echo "# Surface coverage — $RELEASING keys × {CLI, web, MCP, SKILL, phone}"
   echo
-  echo "Base $BASE. $KEY_TOTAL keys cited under \`## Unreleased\` in"
+  echo "Base $BASE. $KEY_TOTAL keys cited under \`## $RELEASING\` in"
   echo "CHANGELOG.md. Cell = YES(n) distinct files touched by the key's"
   echo "citing commits, else MISSING. Method and its limit: commit-file"
   echo "classification — a surface delivered under a different key still"

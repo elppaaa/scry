@@ -2,7 +2,7 @@
 
 <sub>English · <a href="CHANGELOG.ko.md">한국어</a></sub>
 
-## Unreleased
+## v0.22.0 — 2026-09-13
 
 **A self-hosted Jira is an origin type.** `gadak init --site <base-url>
 --server` creates a workspace against a self-hosted Jira with a Personal

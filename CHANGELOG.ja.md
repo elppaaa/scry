@@ -2,7 +2,7 @@
 
 <sub><a href="CHANGELOG.md">English</a> · <a href="CHANGELOG.ko.md">한국어</a> · 日本語. 英語版を訳したもので、英語版と一緒に更新します（最終同期 2026-09-09）。</sub>
 
-## Unreleased
+## v0.22.0 — 2026-09-13
 
 **セルフホストの Jira が origin の一種になりました。** `gadak init --site
 <base-url> --server` で、Personal Access Token を使ってセルフホストの Jira に
