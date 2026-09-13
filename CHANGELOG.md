@@ -4,29 +4,33 @@
 
 ## Unreleased
 
+**gadak installs into Claude Desktop as one file.** Every release now carries
+`gadak-<version>.mcpb`, a Claude Desktop extension holding that release's own
+binary — a universal one on macOS, the x64 exe on Windows — so the tools arrive
+without editing `claude_desktop_config.json`, and the extension asks which
+workspace to read and nothing else. gadak is in the official MCP Registry under
+`io.github.midagedev/gadak`, and a tag now builds both from its own published
+archives ([GDK-1822]).
+
 **The rename compatibility reached its sunset.** gadak stopped answering
-to its old name: the `SCRY_*` environment variables are no longer read, a
-`~/.scry` home and a `scry.db` are no longer renamed on first use, the old
-binary-name hint and the `scry:` localStorage migrations are gone, and the
-test that had been failing since the v0.22.0 heading appeared went with
-them. `gadak doctor` still reports a leftover `~/.scry` directory, because
-that stays true ([GDK-1143]).
+to its old name: the `SCRY_*` environment variables are no longer read, and a
+`~/.scry` home, a `scry.db`, the old binary-name hint and the `scry:`
+localStorage migrations are all gone. `gadak doctor` still reports a leftover
+`~/.scry` directory, because that stays true ([GDK-1143]).
 
-**The retro screen speaks Korean and Japanese.** The Korean copy carried a
-sentence whose subject could not do its verb, a lagging-and-leading framing the
-English line never made, and two names for one number; the Japanese hint ended
-two sentences on the same predicate. Every one of them was rewritten against
-what the English says ([GDK-1848]).
-
-**The Japanese pages are set the way Japanese is set.** A reader said the
-site's Japanese read as though it had been spaced and lettered by someone who
-does not use the language, and both halves of that measured. 162 ASCII spaces
-sat beside a Japanese character on `/ja/` alone — between a numeral and its
-counter as much as wherever Latin met kana — and `font-probe` read Latin on a
-`lang=ja` page as Hiragino Sans, so gadak, Jira, SQL and every number on the
-page were drawn in a Japanese face's Latin ([GDK-1853], [GDK-1854]). The
-spaces are gone and gated (`tools/ja-spacing.py`, doc-checks #60), a source
-line break between Japanese characters stopped rendering as a space on
+**The Korean and the Japanese read like they were written that way.** The retro
+screen's Korean carried a sentence whose subject could not do its verb, a
+lagging-and-leading framing the English line never made, and two names for one
+number; the Japanese hint ended two sentences on the same predicate
+([GDK-1848]). A reader then said the site's Japanese read as though it had been
+spaced and lettered by someone who does not use the language, and both halves of
+that measured. 162 ASCII spaces sat beside a Japanese character on `/ja/` alone
+— between a numeral and its counter as much as wherever Latin met kana — and
+`font-probe` read Latin on a `lang=ja` page as Hiragino Sans, so gadak, Jira,
+SQL and every number on the page were drawn in a Japanese face's Latin
+([GDK-1853], [GDK-1854]). Every line was rewritten against what the English
+says, the spaces are gone and gated (`tools/ja-spacing.py`, doc-checks #60), a
+source line break between Japanese characters stopped rendering as a space on
 `/ja/changelog/`, and the system Latin faces now sit in front of the Japanese
 ones — the order the product's own stylesheet already used.
 
@@ -1565,6 +1569,7 @@ priority sorting keyed on `priority_rank`.
 [GDK-1712]: https://gadak.dev/backlog/#/?ks=GDK-1712
 [GDK-1753]: https://gadak.dev/backlog/#/?ks=GDK-1753
 [GDK-1798]: https://gadak.dev/backlog/#/?ks=GDK-1798
+[GDK-1822]: https://gadak.dev/backlog/#/?ks=GDK-1822
 [GDK-1833]: https://gadak.dev/backlog/#/?ks=GDK-1833
 [GDK-1837]: https://gadak.dev/backlog/#/?ks=GDK-1837
 [GDK-1839]: https://gadak.dev/backlog/#/?ks=GDK-1839
