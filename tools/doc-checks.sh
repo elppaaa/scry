@@ -3214,4 +3214,28 @@ sys.exit(1 if bad else 0)
 PY51
 ok "fenced dashboard examples never compare status/priority/type display names"
 
+# ── 59. the release footer makes no update-check claim (GDK-1626) ────────
+# .goreleaser.yaml's footer is pasted under every GitHub Release, and from
+# v0.19 through v0.22.0 it told readers "running installs notice new releases
+# on their own (daily anonymous check, updateCheck: false to opt out)". The
+# check was removed (GDK-1626) and the sentence stayed, so four public release
+# pages contradicted SECURITY.md's outbound list. No gate read this file — the
+# fact ledger's "no update check" clause guarded README, site and docs, and the
+# one surface generated at tag time was outside all of them.
+#
+# The absence is not copy either (FACT_LEDGER: "do not restore the absence as
+# copy"), so "does not check for updates" fails this the same as the claim.
+# FAIL-first 2026-09-13 against HEAD's footer: .goreleaser.yaml:168.
+python3 - <<'PY59' || fail "the release footer makes an update-check claim (GDK-1626, FACT_LEDGER)"
+import re, sys
+from pathlib import Path
+pat = re.compile(r"(?i)update.?check|anonymous check|notice new releases|check(s|ing)? for (new )?(updates|releases)")
+bad = [f".goreleaser.yaml:{n}: {l.strip()[:110]}"
+       for n, l in enumerate(Path(".goreleaser.yaml").read_text().splitlines(), 1) if pat.search(l)]
+for b in bad:
+    print("  " + b)
+sys.exit(1 if bad else 0)
+PY59
+ok "the release footer makes no update-check claim"
+
 echo "doc-checks: all passed"

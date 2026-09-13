@@ -165,4 +165,4 @@ release:
     ./gadak init && ./gadak serve --sync
     ```
 
-    The web UI is embedded — the binary is the whole install. See the README for Docker and source builds. Running installs notice new releases on their own (daily anonymous check, `updateCheck: false` to opt out — see SECURITY.md).
+    The web UI is embedded — the binary is the whole install. See the README for Docker and source builds.

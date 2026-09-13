@@ -253,6 +253,13 @@ hard-won 목록)와 `AGENTS.md`(기여 계약)·`docs/MIRROR.md`(스키마·SQL 
   `~/repo` 아래라 midagedev 로 자동이지만, 공개 푸시 전에 한 번 확인한다
   (`git log -1 --format='%ae'`). 그 뒤 gadak 의 `go.mod` 핀을 올리는 것은
   **별개 커밋**이다 — 핀 범프는 `desktop/go.mod` 까지 게이트다.
+- **릴리스가 게시되면 `tools/release-notes.sh <tag> --apply`까지가 게시다.**
+  goreleaser는 커밋 로그와 설치 푸터만 올린다 — 사람이 읽을 요약(그 태그의
+  CHANGELOG 절 + 참조 정의)은 이 스크립트가 생성 로그 위에 얹는다. 손으로 하던
+  단계라 v0.20.0·v0.21.0엔 있고 v0.22.0엔 없었다(2026-09-13). **태그 뒤에
+  CHANGELOG 절을 고쳤으면 다시 돌린다** — 멱등이고, 사이트 `/changelog/`는
+  main에서 자동으로 따라가지만 릴리스 페이지는 태그 시점 본문에 멈춰 있다.
+  릴리스 페이지 편집은 공개 콘텐츠라 사용자 승인 뒤에 `--apply`.
 - brew: `gadak` = **macOS 앱 cask**(CLI 포함, v0.14부터 tap에 게시),
   `gadak-cli` = CLI formula(리눅스 포함). 문서의 설치 명령은 태그와 동시
   교체.
