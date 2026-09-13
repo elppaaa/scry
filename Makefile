@@ -205,7 +205,11 @@ media-fixture:
 	cp -f examples/demo.db "$$copy"; \
 	rm -f "$$copy-wal" "$$copy-shm"; \
 	echo "media-fixture: $$strings → $$copy"; \
-	python3 tools/demo-i18n/apply.py "$$copy" "$$locale" --strings "$$strings"
+	python3 tools/demo-i18n/apply.py "$$copy" "$$locale" --strings "$$strings"; \
+	python3 tools/demo-i18n/check-applied.py "$$copy" "$$locale" || { \
+		echo "media-fixture: refusing to record over a fixture that still holds English (GDK-1847)." >&2; \
+		exit 1; \
+	}
 
 media-web: media-deps
 	@mkdir -p $(MEDIA_DIR)

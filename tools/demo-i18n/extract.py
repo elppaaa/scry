@@ -16,6 +16,10 @@ way applies without any English-string matching:
   catalog:priority:<name>              issues_raw.priority display name (the fixture has no priority ids)
   catalog:type:<issue_type_id>         issues_raw.issue_type display name
   catalog:component:<name>             a components[] entry
+  catalog:resolution:<name>            issues_raw.resolution display name
+  catalog:version:<name>               a fix_versions[] entry (and the versions row)
+  catalog:board:<board_id>             boards.name
+  issue:<KEY>:environment              issues_raw.environment_text
   catalog:sprint:<sprint_id>           sprints.name (and the issues_raw.sprint_name copy)
 
 Text nodes are the unit because ADF marks (links, code) split a sentence into
@@ -90,6 +94,32 @@ def extract(db: Path) -> dict:
     for sid, goal in con.execute(
         "SELECT id, goal FROM sprints WHERE goal IS NOT NULL AND goal != '' ORDER BY 1"):
         s[f"catalog:sprintgoal:{sid}"] = goal
+    # The four families the applied-fixture census found on 2026-09-13, after
+    # reopen_reason had already shipped English into a Korean retro. Each is a
+    # display name with no id family: complete translation files, and a ko take
+    # still showing "Done", "Team board", "Sprint 42" as a fix version, and an
+    # English environment line on every bug detail (GDK-1847).
+    for (name,) in con.execute(
+        "SELECT DISTINCT resolution FROM issues_raw WHERE resolution IS NOT NULL AND resolution != '' ORDER BY 1"):
+        s[f"catalog:resolution:{name}"] = name
+    vers = set()
+    for (fv,) in con.execute("SELECT fix_versions FROM issues_raw WHERE fix_versions IS NOT NULL"):
+        for name in json.loads(fv or "[]"):
+            vers.add(name)
+    for (name,) in con.execute("SELECT name FROM versions WHERE name IS NOT NULL AND name != ''"):
+        vers.add(name)
+    for name in sorted(vers):
+        s[f"catalog:version:{name}"] = name
+    for bid, name in con.execute(
+        "SELECT id, name FROM boards WHERE name IS NOT NULL AND name != '' ORDER BY 1"):
+        s[f"catalog:board:{bid}"] = name
+    # The environment line is per-issue prose, not a catalog: it names a
+    # browser, a region, a deploy. It sits in the issue: family beside the
+    # description, keyed by a word rather than a node index (the desc ids all
+    # end in one, and apply.py splits on that).
+    for key, env in con.execute(
+        "SELECT key, environment_text FROM issues_raw WHERE environment_text IS NOT NULL AND environment_text != '' ORDER BY key"):
+        s[f"issue:{key}:environment"] = env
     comps = set()
     for (c,) in con.execute("SELECT components FROM issues_raw WHERE components IS NOT NULL"):
         for name in json.loads(c or "[]"): comps.add(name)

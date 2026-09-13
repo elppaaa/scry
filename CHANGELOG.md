@@ -18,6 +18,16 @@ English line never made, and two names for one number; the Japanese hint ended
 two sentences on the same predicate. Every one of them was rewritten against
 what the English says ([GDK-1848]).
 
+**The recording fixture is checked against the screen, not against itself.**
+The demo mirror a Korean or Japanese take records over is now gated on what
+it holds rather than on whether its translation file is complete — the two
+came apart when `reopen_reason` turned out to have no id at all, so a green
+translation still put English sentences in the middle of a Korean retro. The
+new census reads every viewer-visible column of the applied fixture and has
+to be argued out of one, not remembered into it; running it found four more
+display names nobody had extracted — the resolution, fix-version names, the
+board name, and every environment line ([GDK-1847]).
+
 ## v0.22.0 — 2026-09-13
 
 **A self-hosted Jira is an origin type.**
@@ -1696,4 +1706,5 @@ priority sorting keyed on `priority_rank`.
 [GDK-1835]: https://gadak.dev/backlog/#/?ks=GDK-1835
 [GDK-1837]: https://gadak.dev/backlog/#/?ks=GDK-1837
 [GDK-1839]: https://gadak.dev/backlog/#/?ks=GDK-1839
+[GDK-1847]: https://gadak.dev/backlog/#/?ks=GDK-1847
 [GDK-1848]: https://gadak.dev/backlog/#/?ks=GDK-1848

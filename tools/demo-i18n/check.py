@@ -33,7 +33,14 @@ SCRIPT = {
     "ja": re.compile(r"[぀-ヿ一-鿿]"),
 }
 # Proper nouns / product words that legitimately stay Latin in both locales.
-LATIN_OK = {"SDK", "REST", "API", "Auth", "Webhooks", "Nimbus", "NMB", "NMA", "NMS", "OK", "API", "UI", "ID", "URL", "JSON", "CSV", "SSO", "IdP", "OAuth", "SAML", "S3", "CDN", "SLA", "SLO", "P0", "P1", "P2", "QA", "CI", "PR", "Slack", "Stripe", "GitHub", "Datadog", "PagerDuty", "Sentry", "Redis", "Postgres", "Kafka", "gRPC", "GraphQL", "HTTP", "TLS", "DNS", "IP", "SQL", "iOS", "Android", "macOS", "Windows", "Linux", "Chrome", "Safari", "Firefox", "Terraform", "Kubernetes", "Docker", "AWS", "GCP", "Azure"}
+LATIN_OK = {"SDK", "REST", "API", "Auth", "Webhooks", "Webhook", "Nimbus", "NMB", "NMA", "NMS", "OK", "API", "UI", "ID", "URL", "JSON", "CSV", "SSO", "IdP", "OAuth", "SAML", "S3", "CDN", "SLA", "SLO", "P0", "P1", "P2", "QA", "CI", "PR", "Slack", "Stripe", "GitHub", "Datadog", "PagerDuty", "Sentry", "Redis", "Postgres", "Kafka", "gRPC", "GraphQL", "HTTP", "TLS", "DNS", "IP", "SQL", "iOS", "Android", "macOS", "Windows", "Linux", "Chrome", "Safari", "Firefox", "Terraform", "Kubernetes", "Docker", "AWS", "GCP", "Azure",
+             # Added 2026-09-13 with the environment/version families: an
+             # environment line is mostly product names, OS builds and tz
+             # identifiers, and a string made only of those has nothing to
+             # translate — demanding Hangul in it would force a worse string.
+             "Ubuntu", "Node", "TypeScript", "Edge", "codegen", "Workers", "TZ",
+             "Pacific", "Auckland", "Berlin", "Europe", "EU", "US", "West", "rc",
+             "Pacific/Auckland", "Europe/Berlin"}
 
 def facts(s: str):
     # A sentence-final "." after a URL is punctuation, not part of the URL.

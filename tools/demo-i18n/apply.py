@@ -23,6 +23,10 @@ What changes, by id family (see extract.py for the ids):
   catalog:priority:<name>  issues_raw.priority for that display name
   catalog:type:<id>        issues_raw.issue_type for that issue_type_id
   catalog:component:<n>    the entry in issues_raw.components JSON arrays
+  catalog:resolution:<n>   issues_raw.resolution for that display name
+  catalog:version:<n>      the entry in issues_raw.fix_versions arrays, and versions.name
+  catalog:board:<id>       boards.name for that board id
+  issue:<KEY>:environment  issues_raw.environment_text
 Finally items_fts is rebuilt (same shape as scripts/scrub-demo-db.py), because
 it is contentless and holds the English tokens otherwise.
 
@@ -95,9 +99,10 @@ def main() -> int:
     for k, v in tr.items():
         p = k.split(":")
         if p[0] == "issue":
-            d = issues.setdefault(p[1], {"title": None, "nodes": {}, "reopen_reason": None})
+            d = issues.setdefault(p[1], {"title": None, "nodes": {}, "reopen_reason": None, "environment": None})
             if p[2] == "title": d["title"] = v
             elif p[2] == "reopen_reason": d["reopen_reason"] = v
+            elif p[2] == "environment": d["environment"] = v
             else: d["nodes"][int(p[3])] = v
         elif p[0] == "comment":
             # The comment id itself carries a colon ("jira:10358"), so the
@@ -129,6 +134,8 @@ def main() -> int:
             con.execute("UPDATE items SET body_text = ? WHERE id = ?", (plain, item_id))
         if d["reopen_reason"] is not None:
             con.execute("UPDATE issues_raw SET reopen_reason = ? WHERE item_id = ?", (d["reopen_reason"], item_id))
+        if d["environment"] is not None:
+            con.execute("UPDATE issues_raw SET environment_text = ? WHERE item_id = ?", (d["environment"], item_id))
         n_issue += 1
     for (key, cid), nodes in comments.items():
         row = con.execute("SELECT c.item_id, c.body_adf FROM comments c JOIN items it ON it.id = c.item_id WHERE it.key = ? AND c.id = ?", (key, cid)).fetchone()
@@ -164,9 +171,26 @@ def main() -> int:
             # disagrees with itself.
             con.execute("UPDATE sprints SET name = ? WHERE id = ?", (v, p[2]))
             con.execute("UPDATE issues_raw SET sprint_name = ? WHERE sprint_id = ?", (v, p[2]))
+        elif p[1] == "resolution":
+            con.execute("UPDATE issues_raw SET resolution = ? WHERE resolution = ?", (v, p[2]))
+        elif p[1] == "board":
+            con.execute("UPDATE boards SET name = ? WHERE id = ?", (v, p[2]))
         elif p[1] == "sprintgoal":
             # One copy: the goal lives only on the sprints row (GDK-1717).
             con.execute("UPDATE sprints SET goal = ? WHERE id = ?", (v, p[2]))
+    # Fix versions live in two places, like sprint names: the project catalog
+    # row and the same-order array on every issue. Both, or the detail panel
+    # and the version list disagree.
+    vers = {k.split(":", 2)[2]: v for k, v in tr.items() if k.startswith("catalog:version:")}
+    if vers:
+        for name, tl in vers.items():
+            con.execute("UPDATE versions SET name = ? WHERE name = ?", (tl, name))
+        for item_id, fj in con.execute(
+            "SELECT item_id, fix_versions FROM issues_raw WHERE fix_versions IS NOT NULL AND fix_versions != '[]'").fetchall():
+            arr = json.loads(fj)
+            new = [vers.get(x, x) for x in arr]
+            if new != arr:
+                con.execute("UPDATE issues_raw SET fix_versions = ? WHERE item_id = ?", (json.dumps(new, ensure_ascii=False), item_id))
     comp = {k.split(":", 2)[2]: v for k, v in tr.items() if k.startswith("catalog:component:")}
     if comp:
         for item_id, cj in con.execute("SELECT item_id, components FROM issues_raw WHERE components IS NOT NULL AND components != '[]'").fetchall():

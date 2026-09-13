@@ -2467,6 +2467,42 @@ if [[ -n "$i18n_missing" ]]; then
 fi
 ok "every MEDIA_LOCALES locale has its examples/demo-i18n/<locale>.json"
 
+# -- the fixture a ko/ja take records over carries no English prose --------
+# The check above asks whether a translation file exists; check.py asks
+# whether it is complete against en.json. Neither can see a column that was
+# never extracted, and that is the hole the 0.22 release clip fell through:
+# issues_raw.reopen_reason had no id family, so a complete, green translation
+# still put "Added a regression test so this cannot come back silently." in
+# the middle of a Korean retro (GDK-1847). The census found four more of the
+# same shape the moment it ran — resolution, fix version names, the board
+# name, and every environment line.
+#
+# A vision pass is not a substitute and cannot be made into one. The
+# pre-release ko take was recorded 2026-09-09 and judged; the surprises list
+# held one badge-only row that day, so there was nothing to see. The fixture
+# was regenerated on 09-11, the list filled with English, and the clip was
+# never re-shot. A review is pinned to the frames it saw. This is not.
+#
+# It applies each translation to a scratch copy and reads the result, so it
+# costs a second and needs no browser. FAIL-first 2026-09-13 against the
+# fixture v0.22.0 actually shipped: 392 values, reopen_reason among them.
+i18n_applied=""
+for loc in ko ja; do
+  [ -f "examples/demo-i18n/$loc.json" ] || continue
+  applied_tmp="$(mktemp -d "${TMPDIR:-/tmp}/gadak-i18n-applied-XXXXXX")"
+  cp -f examples/demo.db "$applied_tmp/demo.db"
+  if ! python3 tools/demo-i18n/apply.py "$applied_tmp/demo.db" "$loc" >/dev/null 2>&1; then
+    i18n_applied="$i18n_applied"$'\n'"  $loc: tools/demo-i18n/apply.py failed"
+  elif ! out=$(python3 tools/demo-i18n/check-applied.py "$applied_tmp/demo.db" "$loc" --limit 8 2>&1); then
+    i18n_applied="$i18n_applied"$'\n'"$out"
+  fi
+  rm -rf "$applied_tmp"
+done
+if [ -n "$i18n_applied" ]; then
+  fail "the ko/ja recording fixture still holds English prose:$i18n_applied"
+fi
+ok "the applied ko and ja recording fixtures carry no English prose"
+
 # ── 42. A script that calls itself a gate is wired into something that runs ─
 # (v0.21 release audit: unwired-script finding). check-lockfile-platforms.sh and ci-status-test.sh both existed
 # with "gate" in their own headers and nothing anywhere executing them — an
