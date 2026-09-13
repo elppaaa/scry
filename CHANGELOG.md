@@ -20,133 +20,49 @@ what the English says ([GDK-1848]).
 
 ## v0.22.0 — 2026-09-13
 
-**A self-hosted Jira is an origin type.**
-`gadak init --site <base-url> --server` opens a workspace against Jira Server or
-Data Center with a Personal Access Token — no email, and the base URL may carry
-a context path. The REST dialect belongs to the client from there: Cloud and the
-built-in tracker keep v3, a Server origin gets v2, and where the difference is
-more than a version number the endpoint answers in its own shape or refuses by
-name ([GDK-1635], [GDK-1640], [GDK-1636]). Every shape Server sends differently
-is read as Server sends it — wiki markup where Cloud sends ADF ([GDK-1637]),
-users keyed by name ([GDK-1638]), attachments hash-for-hash on Jira Server
-11.3.11 answering `Range` with 206 ([GDK-1639]), the sprint field as the Java
-`toString` of a bean, the epic in Epic Link, `/filter/favourite` where
-`/filter/my` had answered 404 on every sync ([GDK-1650], [GDK-1652]) — and
-writes stopped trusting a polite origin: `edit --parent` sends the Epic Link
-where Server answers `parent` with 204 and changes nothing, and every `edit`
-compares the re-read row with what it asked ([GDK-1645]). A login page is no
-longer mistaken for an answer, where `gadak attach get` had written 257,592
-bytes of one as a `.png` and exited 0 ([GDK-1648], [GDK-1644]), and Data
-Center's rate-limit budget is read before the wall rather than after a 429
-([GDK-1646]). `docs/SUPPORT_MATRIX.md` reads Jira Cloud, Jira Server, Linear,
-Built-in now, every cell of the new column run against a Jira Software 11.3.11
-lab, with two honest refusals and "untested, therefore unclaimed" gone
-([GDK-1634], [GDK-1641]).
+**Self-hosted Jira is an origin type.** `gadak init --site <base-url> --server`
+opens a workspace against Jira Server or Data Center with a Personal Access
+Token and no email. What Server sends differently is read the way Server sends
+it, wiki markup carried verbatim where Cloud sends ADF ([GDK-1637]).
+`docs/SUPPORT_MATRIX.md` has a Jira Server column beside Cloud, Linear and
+Built-in, every cell of it run against a Jira Software 11.3.11 lab — including
+the two things that do not work ([GDK-1635], [GDK-1634]).
 
-**A sprint is an object, and a retrospective is a screen.** A sprint used to
-exist only as three columns on each issue, so an empty sprint did not exist and
-its goal, dates and board existed nowhere. `gadak sprint` — list, add, remove,
-create, start, close — writes through the origin and re-reads instead of
-trusting what it sent ([GDK-1653], [GDK-1654], [GDK-1657]); the built-in tracker
-serves the Agile surface too, so sprints work with no Atlassian account
-([GDK-1666]); and Linear's cycles are sprints as well ([GDK-1667]). A closed
-sprint's issues no longer read "active" forever and inflate every active-sprint
-query ([GDK-1661]). The board gained a scope beside the layout switch — the
-active sprint, the backlog, or all — carried in the URL and kept by a saved view
-([GDK-1656]); the active sprint has a line of its own with goal, dates, days
-left and a progress bar where all of it used to live in a tooltip ([GDK-1709]);
-a card that has been through more than one sprint says so ([GDK-1711]); and
-every sprint move, already in the mirror under whatever custom-field number the
-site assigned, is reachable now ([GDK-1694]).
+**A sprint is an object, and a retrospective is a screen.** A sprint used to be
+three columns on an issue, so an empty one did not exist and its goal and dates
+lived nowhere. `gadak sprint` — list, add, remove, create, start, close — writes
+through the origin and re-reads ([GDK-1653]); the built-in tracker serves
+sprints with no Atlassian account ([GDK-1666]); the board takes a scope of
+active sprint, backlog or all ([GDK-1656]); and the active sprint has a line of
+its own with goal, dates, days left and a progress bar ([GDK-1709]). The
+palette's *Weekly retro* opens a table that reads like a report — a column per
+week, a row per metric with its definition under it, a sparkline and a delta on
+each row, a cell that holds issues a door onto them ([GDK-1660], [GDK-1712]) —
+and it cuts by sprint as well as by ISO week ([GDK-1693]). `reopen_count` counts
+the reopen teams actually fire: where resolved statuses sit in the in-progress
+category, the old done→new rule had been reading 59% of real reopens as zero
+([GDK-1753]).
 
-The palette's *Weekly retro* opens a calm table — one column per week, one row
-per metric with its definition underneath, a cell that holds issues a door onto
-that list ([GDK-1660]) — and it reads as a report: a step from the bucket
-before, a sparkline on every row, a delta in every cell, coloured only where the
-team agreed which way is better ([GDK-1712]). Under it is what a retrospective
-is actually held on: the decisions labelled `retro-action` with the metric each
-named then and now ([GDK-1453]), the age of everything in progress against a p85
-line ([GDK-1721]), a per-day strip naming the week's surprises ([GDK-1722]),
-what closed by type and by epic ([GDK-1723]), the issues you opened that nothing
-moved beside the ones that moved unseen ([GDK-1725]), and three lines under
-every section on why a retro reads it, which `--explain` prints too
-([GDK-1726]). It cuts by sprint as well as by ISO week ([GDK-1693]).
-`reopen_count` counts the reopen most teams actually fire: where resolved
-statuses sit in the in-progress category, a done→new-only rule had read 59% of
-real reopens as 0 ([GDK-1753]). And the mirror learned how long an issue was
-flagged — schema v51 adds `blocked_hours` and `blocked_since` ([GDK-1449]).
+**gadak stopped phoning home, and says more about itself.** No daily question to
+GitHub about a newer release: no background request, no `updateCheck` setting,
+no banner, five outbound destinations where there were six ([GDK-1626]).
+`gadak doctor` prints a `binary` line — the executable's real path with the
+symlink resolved, and the signature on it, `developer-id` for the release and
+`adhoc` for a local build — the pair that separates "the release is broken" from
+"you are not running the release" ([GDK-1798]). `gadak comment edit` and
+`gadak comment rm` work on all three origins ([GDK-1647]).
+`gadak mcp install claude-desktop` registers with Claude Desktop, where every
+front door used to teach Desktop users `claude mcp add`, which belongs to Claude
+*Code* ([GDK-1633]). The built-in tracker's attachment cap is
+`gadak config set attachmentMaxMB <n>`, 1 GiB by default where 32 MiB had been
+hard-coded ([GDK-1617]). The terminal dock becomes a sheet under 1420 pixels
+when a detail panel is open, rather than covering the list it is there to drive
+([GDK-1833]). And watching the Korean and Japanese clips frame by frame caught
+what copy review had not: `Backlog` and `Selected for Development` standing in
+English one line above 진행 중, `内蔵` on one screen and `組み込み` on the next,
+`未担当` where the rest of the product says `未割り当て` ([GDK-1837],
+[GDK-1839]).
 
-**The tool says what it knows — to a person, to an agent, and to itself.**
-`gadak doctor` prints a `binary` line beside the version: the executable's real
-path with the symlink resolved, and the kind of signature on it, `developer-id`
-for the released app and `adhoc` for whatever the local toolchain signed — the
-pair that separates "the release is broken" from "you are not running the
-release" ([GDK-1798]). A mirror that is behind says so where an agent reads, not
-only in a stderr no MCP host can see ([GDK-599]); a Confluence space says what
-it will cost before you mirror it ([GDK-965]); `gadak status --json` says
-whether this workspace mirrors the development panel at all ([GDK-1496]); and a
-database somebody else had written under the built-in origin's persist path is
-named rather than met with a version message telling you to upgrade a binary
-that is already current ([GDK-243]). gadak no longer asks GitHub once a day
-whether a newer release exists: no background check, no `updateCheck` setting,
-no banner, outbound destinations from six to five ([GDK-1626]), and
-`docs/PROMISES.md` became four questions with a twelfth claim about *when* — a
-read verb answers from the disk and opens no socket ([GDK-1792]). The front door
-says what gadak is before it says how fast it is, and "why not the official Rovo
-MCP?" sits under the hero now, in all three languages, with the two axes it was
-missing: rate limits and who maintains it ([GDK-1601], [GDK-1824]). The
-documented first run is `gadak init && gadak serve`, where the window opens
-while the mirror fills newest-first ([GDK-1677]), the Confluence pass runs
-through a bounded pool, `gadak sync --concurrency`, default 4, at most 8
-([GDK-1673]), and the service installer validates serve flags at install time
-rather than crash-looping ([GDK-1267]).
-
-To an agent, the surface caught up with the product. `gadak comment edit`
-replaces a comment's body and `gadak comment rm` removes it, on Jira, Linear and
-the built-in tracker ([GDK-1647]); every write verb takes `--dry-run`;
-`gadak link KEY <url> --title` writes a remote link through the origin
-([GDK-530]); repeating `--field` for one alias adds a value instead of replacing
-the last ([GDK-18]); the create dialog fills what the origin requires and keeps
-Create disabled rather than sending a create Jira will reject ([GDK-533]); and a
-comment can be restricted where the origin has restrictions ([GDK-528]).
-Attachment bytes on the built-in tracker live beside the database, one
-content-addressed file each, streaming both ways, with the cap now
-`gadak config set attachmentMaxMB <n>`, default 1 GiB where it had been a
-hard-coded 32 MiB ([GDK-1617]), and `gadak backup` refuses to write a `.tar`
-with attachments missing ([GDK-1277]). `gadak mcp install claude-desktop`
-registers with Claude Desktop, where every front door had taught the Desktop
-user a command that runs Claude *Code*'s `claude mcp add` ([GDK-1633]). An agent
-with no shell can read the week with `gadak_retro` ([GDK-1404]), leaves a visit
-trail doing it ([GDK-631]), reads which mirror answered from `gadak_status`
-([GDK-1813]), has an unknown argument refused by name rather than quietly
-answered ([GDK-1812]), and can ask for the burn-up as `gadak_sprint`
-([GDK-1826]).
-
-The app grew up at the edges. Under 900 pixels there is one narrow regime, at
-899, where the sidebar's narrow width had been redeclared in five places under a
-760-pixel query and an 800-pixel window kept a 272-pixel sidebar ([GDK-1369]);
-the shell's height falls through `100vh`, `100dvh`, `100svh` so an in-app tab
-bar no longer eats the bottom row ([GDK-54]); and the terminal dock becomes a
-sheet whenever a detail panel is open under 1420 pixels, where opening an issue
-on a laptop used to cover the list the terminal was there to drive ([GDK-1833],
-[GDK-1835]). The list reads at every width it is given — the furniture on the
-right used to take its fixed widths first, so a window 30% narrower cost the
-title 60% of its width; the strip is priced at 222px to 302px at 1000 now, and
-1440 is unchanged to the pixel ([GDK-1791]) — and a label chip too narrow for
-six characters folds into the `+N` badge ([GDK-1744]). Every seam between
-columns is a grip the keyboard can reach, writing the same `ui.tokens.layout`
-values the CLI writes ([GDK-1815], [GDK-769]). Reading the Korean and Japanese
-clips frame by frame found what copy review had not: `Backlog` and
-`Selected for Development` standing in English one line above 진행 중, `内蔵` on
-one screen and `組み込み` on the next, `未担当` where the rest of the product
-says `未割り当て`, and a filter menu too narrow to show the value it was opened
-to choose ([GDK-1837], [GDK-1839]). A count is grouped for the locale wherever
-it appears ([GDK-1560]); the local copy is called a cache throughout, in all
-three languages ([GDK-1323]); personal history became something you can see and
-clear ([GDK-106]); search finds labels and word forms ([GDK-1021]); there is a
-way out of the built-in tracker that deletes nothing ([GDK-378]); and on the
-phone the controls live in the catalog rather than the markup ([GDK-1150]), with
-a share button in the detail header ([GDK-877]).
 
 ## v0.21.0 — 2026-09-08
 
@@ -1167,7 +1083,6 @@ mirror, so `gadak sql` and agents can see them; the hosted demo falls back to
 local storage. TUI parity: feed focus tabs, saved-view sort/dir/group_by, and
 priority sorting keyed on `priority_rank`.
 
-[GDK-18]: https://gadak.dev/backlog/#/?ks=GDK-18
 [GDK-19]: https://gadak.dev/backlog/#/?ks=GDK-19
 [GDK-23]: https://gadak.dev/backlog/#/?ks=GDK-23
 [GDK-24]: https://gadak.dev/backlog/#/?ks=GDK-24
@@ -1178,7 +1093,6 @@ priority sorting keyed on `priority_rank`.
 [GDK-51]: https://gadak.dev/backlog/#/?ks=GDK-51
 [GDK-52]: https://gadak.dev/backlog/#/?ks=GDK-52
 [GDK-53]: https://gadak.dev/backlog/#/?ks=GDK-53
-[GDK-54]: https://gadak.dev/backlog/#/?ks=GDK-54
 [GDK-58]: https://gadak.dev/backlog/#/?ks=GDK-58
 [GDK-61]: https://gadak.dev/backlog/#/?ks=GDK-61
 [GDK-67]: https://gadak.dev/backlog/#/?ks=GDK-67
@@ -1196,7 +1110,6 @@ priority sorting keyed on `priority_rank`.
 [GDK-98]: https://gadak.dev/backlog/#/?ks=GDK-98
 [GDK-99]: https://gadak.dev/backlog/#/?ks=GDK-99
 [GDK-105]: https://gadak.dev/backlog/#/?ks=GDK-105
-[GDK-106]: https://gadak.dev/backlog/#/?ks=GDK-106
 [GDK-111]: https://gadak.dev/backlog/#/?ks=GDK-111
 [GDK-112]: https://gadak.dev/backlog/#/?ks=GDK-112
 [GDK-113]: https://gadak.dev/backlog/#/?ks=GDK-113
@@ -1258,7 +1171,6 @@ priority sorting keyed on `priority_rank`.
 [GDK-238]: https://gadak.dev/backlog/#/?ks=GDK-238
 [GDK-239]: https://gadak.dev/backlog/#/?ks=GDK-239
 [GDK-241]: https://gadak.dev/backlog/#/?ks=GDK-241
-[GDK-243]: https://gadak.dev/backlog/#/?ks=GDK-243
 [GDK-246]: https://gadak.dev/backlog/#/?ks=GDK-246
 [GDK-247]: https://gadak.dev/backlog/#/?ks=GDK-247
 [GDK-248]: https://gadak.dev/backlog/#/?ks=GDK-248
@@ -1322,7 +1234,6 @@ priority sorting keyed on `priority_rank`.
 [GDK-374]: https://gadak.dev/backlog/#/?ks=GDK-374
 [GDK-375]: https://gadak.dev/backlog/#/?ks=GDK-375
 [GDK-376]: https://gadak.dev/backlog/#/?ks=GDK-376
-[GDK-378]: https://gadak.dev/backlog/#/?ks=GDK-378
 [GDK-380]: https://gadak.dev/backlog/#/?ks=GDK-380
 [GDK-381]: https://gadak.dev/backlog/#/?ks=GDK-381
 [GDK-382]: https://gadak.dev/backlog/#/?ks=GDK-382
@@ -1353,11 +1264,8 @@ priority sorting keyed on `priority_rank`.
 [GDK-519]: https://gadak.dev/backlog/#/?ks=GDK-519
 [GDK-521]: https://gadak.dev/backlog/#/?ks=GDK-521
 [GDK-527]: https://gadak.dev/backlog/#/?ks=GDK-527
-[GDK-528]: https://gadak.dev/backlog/#/?ks=GDK-528
-[GDK-530]: https://gadak.dev/backlog/#/?ks=GDK-530
 [GDK-531]: https://gadak.dev/backlog/#/?ks=GDK-531
 [GDK-532]: https://gadak.dev/backlog/#/?ks=GDK-532
-[GDK-533]: https://gadak.dev/backlog/#/?ks=GDK-533
 [GDK-536]: https://gadak.dev/backlog/#/?ks=GDK-536
 [GDK-537]: https://gadak.dev/backlog/#/?ks=GDK-537
 [GDK-538]: https://gadak.dev/backlog/#/?ks=GDK-538
@@ -1384,7 +1292,6 @@ priority sorting keyed on `priority_rank`.
 [GDK-613]: https://gadak.dev/backlog/#/?ks=GDK-613
 [GDK-617]: https://gadak.dev/backlog/#/?ks=GDK-617
 [GDK-626]: https://gadak.dev/backlog/#/?ks=GDK-626
-[GDK-631]: https://gadak.dev/backlog/#/?ks=GDK-631
 [GDK-635]: https://gadak.dev/backlog/#/?ks=GDK-635
 [GDK-643]: https://gadak.dev/backlog/#/?ks=GDK-643
 [GDK-654]: https://gadak.dev/backlog/#/?ks=GDK-654
@@ -1411,7 +1318,6 @@ priority sorting keyed on `priority_rank`.
 [GDK-757]: https://gadak.dev/backlog/#/?ks=GDK-757
 [GDK-758]: https://gadak.dev/backlog/#/?ks=GDK-758
 [GDK-766]: https://gadak.dev/backlog/#/?ks=GDK-766
-[GDK-769]: https://gadak.dev/backlog/#/?ks=GDK-769
 [GDK-770]: https://gadak.dev/backlog/#/?ks=GDK-770
 [GDK-771]: https://gadak.dev/backlog/#/?ks=GDK-771
 [GDK-781]: https://gadak.dev/backlog/#/?ks=GDK-781
@@ -1463,7 +1369,6 @@ priority sorting keyed on `priority_rank`.
 [GDK-867]: https://gadak.dev/backlog/#/?ks=GDK-867
 [GDK-870]: https://gadak.dev/backlog/#/?ks=GDK-870
 [GDK-871]: https://gadak.dev/backlog/#/?ks=GDK-871
-[GDK-877]: https://gadak.dev/backlog/#/?ks=GDK-877
 [GDK-879]: https://gadak.dev/backlog/#/?ks=GDK-879
 [GDK-880]: https://gadak.dev/backlog/#/?ks=GDK-880
 [GDK-883]: https://gadak.dev/backlog/#/?ks=GDK-883
@@ -1488,7 +1393,6 @@ priority sorting keyed on `priority_rank`.
 [GDK-960]: https://gadak.dev/backlog/#/?ks=GDK-960
 [GDK-963]: https://gadak.dev/backlog/#/?ks=GDK-963
 [GDK-964]: https://gadak.dev/backlog/#/?ks=GDK-964
-[GDK-965]: https://gadak.dev/backlog/#/?ks=GDK-965
 [GDK-967]: https://gadak.dev/backlog/#/?ks=GDK-967
 [GDK-968]: https://gadak.dev/backlog/#/?ks=GDK-968
 [GDK-971]: https://gadak.dev/backlog/#/?ks=GDK-971
@@ -1499,7 +1403,6 @@ priority sorting keyed on `priority_rank`.
 [GDK-992]: https://gadak.dev/backlog/#/?ks=GDK-992
 [GDK-996]: https://gadak.dev/backlog/#/?ks=GDK-996
 [GDK-1001]: https://gadak.dev/backlog/#/?ks=GDK-1001
-[GDK-1021]: https://gadak.dev/backlog/#/?ks=GDK-1021
 [GDK-1024]: https://gadak.dev/backlog/#/?ks=GDK-1024
 [GDK-1030]: https://gadak.dev/backlog/#/?ks=GDK-1030
 [GDK-1032]: https://gadak.dev/backlog/#/?ks=GDK-1032
@@ -1514,7 +1417,6 @@ priority sorting keyed on `priority_rank`.
 [GDK-1128]: https://gadak.dev/backlog/#/?ks=GDK-1128
 [GDK-1143]: https://gadak.dev/backlog/#/?ks=GDK-1143
 [GDK-1149]: https://gadak.dev/backlog/#/?ks=GDK-1149
-[GDK-1150]: https://gadak.dev/backlog/#/?ks=GDK-1150
 [GDK-1158]: https://gadak.dev/backlog/#/?ks=GDK-1158
 [GDK-1172]: https://gadak.dev/backlog/#/?ks=GDK-1172
 [GDK-1174]: https://gadak.dev/backlog/#/?ks=GDK-1174
@@ -1548,7 +1450,6 @@ priority sorting keyed on `priority_rank`.
 [GDK-1264]: https://gadak.dev/backlog/#/?ks=GDK-1264
 [GDK-1265]: https://gadak.dev/backlog/#/?ks=GDK-1265
 [GDK-1266]: https://gadak.dev/backlog/#/?ks=GDK-1266
-[GDK-1267]: https://gadak.dev/backlog/#/?ks=GDK-1267
 [GDK-1269]: https://gadak.dev/backlog/#/?ks=GDK-1269
 [GDK-1270]: https://gadak.dev/backlog/#/?ks=GDK-1270
 [GDK-1275]: https://gadak.dev/backlog/#/?ks=GDK-1275
@@ -1585,7 +1486,6 @@ priority sorting keyed on `priority_rank`.
 [GDK-1313]: https://gadak.dev/backlog/#/?ks=GDK-1313
 [GDK-1314]: https://gadak.dev/backlog/#/?ks=GDK-1314
 [GDK-1321]: https://gadak.dev/backlog/#/?ks=GDK-1321
-[GDK-1323]: https://gadak.dev/backlog/#/?ks=GDK-1323
 [GDK-1325]: https://gadak.dev/backlog/#/?ks=GDK-1325
 [GDK-1335]: https://gadak.dev/backlog/#/?ks=GDK-1335
 [GDK-1336]: https://gadak.dev/backlog/#/?ks=GDK-1336
@@ -1612,7 +1512,6 @@ priority sorting keyed on `priority_rank`.
 [GDK-1360]: https://gadak.dev/backlog/#/?ks=GDK-1360
 [GDK-1361]: https://gadak.dev/backlog/#/?ks=GDK-1361
 [GDK-1362]: https://gadak.dev/backlog/#/?ks=GDK-1362
-[GDK-1369]: https://gadak.dev/backlog/#/?ks=GDK-1369
 [GDK-1380]: https://gadak.dev/backlog/#/?ks=GDK-1380
 [GDK-1382]: https://gadak.dev/backlog/#/?ks=GDK-1382
 [GDK-1383]: https://gadak.dev/backlog/#/?ks=GDK-1383
@@ -1630,70 +1529,31 @@ priority sorting keyed on `priority_rank`.
 [GDK-1399]: https://gadak.dev/backlog/#/?ks=GDK-1399
 [GDK-1400]: https://gadak.dev/backlog/#/?ks=GDK-1400
 [GDK-1401]: https://gadak.dev/backlog/#/?ks=GDK-1401
-[GDK-1404]: https://gadak.dev/backlog/#/?ks=GDK-1404
-[GDK-1449]: https://gadak.dev/backlog/#/?ks=GDK-1449
-[GDK-1453]: https://gadak.dev/backlog/#/?ks=GDK-1453
 [GDK-1491]: https://gadak.dev/backlog/#/?ks=GDK-1491
 [GDK-1493]: https://gadak.dev/backlog/#/?ks=GDK-1493
-[GDK-1496]: https://gadak.dev/backlog/#/?ks=GDK-1496
 [GDK-1497]: https://gadak.dev/backlog/#/?ks=GDK-1497
 [GDK-1498]: https://gadak.dev/backlog/#/?ks=GDK-1498
 [GDK-1500]: https://gadak.dev/backlog/#/?ks=GDK-1500
 [GDK-1501]: https://gadak.dev/backlog/#/?ks=GDK-1501
 [GDK-1508]: https://gadak.dev/backlog/#/?ks=GDK-1508
 [GDK-1537]: https://gadak.dev/backlog/#/?ks=GDK-1537
-[GDK-1560]: https://gadak.dev/backlog/#/?ks=GDK-1560
-[GDK-1601]: https://gadak.dev/backlog/#/?ks=GDK-1601
 [GDK-1617]: https://gadak.dev/backlog/#/?ks=GDK-1617
 [GDK-1626]: https://gadak.dev/backlog/#/?ks=GDK-1626
 [GDK-1633]: https://gadak.dev/backlog/#/?ks=GDK-1633
 [GDK-1634]: https://gadak.dev/backlog/#/?ks=GDK-1634
 [GDK-1635]: https://gadak.dev/backlog/#/?ks=GDK-1635
-[GDK-1636]: https://gadak.dev/backlog/#/?ks=GDK-1636
 [GDK-1637]: https://gadak.dev/backlog/#/?ks=GDK-1637
-[GDK-1638]: https://gadak.dev/backlog/#/?ks=GDK-1638
-[GDK-1639]: https://gadak.dev/backlog/#/?ks=GDK-1639
-[GDK-1640]: https://gadak.dev/backlog/#/?ks=GDK-1640
-[GDK-1641]: https://gadak.dev/backlog/#/?ks=GDK-1641
-[GDK-1644]: https://gadak.dev/backlog/#/?ks=GDK-1644
-[GDK-1645]: https://gadak.dev/backlog/#/?ks=GDK-1645
-[GDK-1646]: https://gadak.dev/backlog/#/?ks=GDK-1646
 [GDK-1647]: https://gadak.dev/backlog/#/?ks=GDK-1647
-[GDK-1648]: https://gadak.dev/backlog/#/?ks=GDK-1648
-[GDK-1650]: https://gadak.dev/backlog/#/?ks=GDK-1650
-[GDK-1652]: https://gadak.dev/backlog/#/?ks=GDK-1652
 [GDK-1653]: https://gadak.dev/backlog/#/?ks=GDK-1653
-[GDK-1654]: https://gadak.dev/backlog/#/?ks=GDK-1654
 [GDK-1656]: https://gadak.dev/backlog/#/?ks=GDK-1656
-[GDK-1657]: https://gadak.dev/backlog/#/?ks=GDK-1657
 [GDK-1660]: https://gadak.dev/backlog/#/?ks=GDK-1660
-[GDK-1661]: https://gadak.dev/backlog/#/?ks=GDK-1661
 [GDK-1666]: https://gadak.dev/backlog/#/?ks=GDK-1666
-[GDK-1667]: https://gadak.dev/backlog/#/?ks=GDK-1667
-[GDK-1673]: https://gadak.dev/backlog/#/?ks=GDK-1673
-[GDK-1677]: https://gadak.dev/backlog/#/?ks=GDK-1677
 [GDK-1693]: https://gadak.dev/backlog/#/?ks=GDK-1693
-[GDK-1694]: https://gadak.dev/backlog/#/?ks=GDK-1694
 [GDK-1709]: https://gadak.dev/backlog/#/?ks=GDK-1709
-[GDK-1711]: https://gadak.dev/backlog/#/?ks=GDK-1711
 [GDK-1712]: https://gadak.dev/backlog/#/?ks=GDK-1712
-[GDK-1721]: https://gadak.dev/backlog/#/?ks=GDK-1721
-[GDK-1722]: https://gadak.dev/backlog/#/?ks=GDK-1722
-[GDK-1723]: https://gadak.dev/backlog/#/?ks=GDK-1723
-[GDK-1725]: https://gadak.dev/backlog/#/?ks=GDK-1725
-[GDK-1726]: https://gadak.dev/backlog/#/?ks=GDK-1726
-[GDK-1744]: https://gadak.dev/backlog/#/?ks=GDK-1744
 [GDK-1753]: https://gadak.dev/backlog/#/?ks=GDK-1753
-[GDK-1791]: https://gadak.dev/backlog/#/?ks=GDK-1791
-[GDK-1792]: https://gadak.dev/backlog/#/?ks=GDK-1792
 [GDK-1798]: https://gadak.dev/backlog/#/?ks=GDK-1798
-[GDK-1812]: https://gadak.dev/backlog/#/?ks=GDK-1812
-[GDK-1813]: https://gadak.dev/backlog/#/?ks=GDK-1813
-[GDK-1815]: https://gadak.dev/backlog/#/?ks=GDK-1815
-[GDK-1824]: https://gadak.dev/backlog/#/?ks=GDK-1824
-[GDK-1826]: https://gadak.dev/backlog/#/?ks=GDK-1826
 [GDK-1833]: https://gadak.dev/backlog/#/?ks=GDK-1833
-[GDK-1835]: https://gadak.dev/backlog/#/?ks=GDK-1835
 [GDK-1837]: https://gadak.dev/backlog/#/?ks=GDK-1837
 [GDK-1839]: https://gadak.dev/backlog/#/?ks=GDK-1839
 [GDK-1848]: https://gadak.dev/backlog/#/?ks=GDK-1848

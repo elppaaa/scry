@@ -19,147 +19,54 @@ v0.22.0 の見出しが入ってから赤くなっていたテストは、互換
 
 ## v0.22.0 — 2026-09-13
 
-**セルフホストの Jira を接続元として使えるようになりました。**
-`gadak init --site <base-url> --server` で、セルフホストの Jira
-に対するワークスペースを作れます。メールアドレスは要らず Personal Access Token
-だけで認証し、ベース URL にコンテキストパスが付いていても構いません。REST
-の方言はクライアント側で選びます。Cloud と組み込みトラッカーは v3 のまま、Server
-の接続元には v2
-で話し、バージョン番号を差し替えるだけでは済まないエンドポイントは Server
-向けの形で答えるか、何ができないのかを明示して拒否します ([GDK-1635],
-[GDK-1640], [GDK-1636])。Server が Cloud
-と違う形で送ってくるものは、すべて送られてきた形のまま読みます。ADF
-が来る場所に来る wiki markup は双方向にそのまま運び ([GDK-1637])、ユーザーを
-name で識別する Server でも担当者が埋まります ([GDK-1638])。添付ファイルは Jira
-Server 11.3.11 で元のバイト列をハッシュまで一致させて返し、`Range` 要求には 206
-で答えます ([GDK-1639])。スプリントフィールドが Java Bean の `toString`
-で届くこと、エピックが Epic Link に入っていること、同期のたびに 404 を返していた
-`/filter/my` の役を `/filter/favourite` が担うことも、Server
-側の事情どおりに合わせました ([GDK-1650],
-[GDK-1652])。書き込みは接続元が「できた」と言っても信用しません。Server
-は標準課題の `parent` に 204 を返して実際には何も変えないので、`edit --parent`
-は Epic Link に送り、すべての `edit` は読み直した行を要求と突き合わせます
-([GDK-1645])。ログインページを答えと取り違えることもなくなりました。`gadak attach get`
-がログイン HTML の 257,592 バイトを `.png` として書き、終了コード 0
-で終えたことがあります ([GDK-1648], [GDK-1644])。Data Center のリクエスト予算は
-429 を受けてからではなく、壁に当たる前に読みます
-([GDK-1646])。`docs/SUPPORT_MATRIX.md` は Jira Cloud・Jira
-Server・Linear・組み込みの四列になり、新しい列のすべてのセルは Jira Software
-11.3.11
-のラボで実際に動かした結果です。できないもの二つはできないと書き、「未検証なので主張しない」は消えました
-([GDK-1634], [GDK-1641])。
+**セルフホストの Jira を接続元にできます。**
+`gadak init --site <base-url> --server`
+でワークスペースを作ります。メールアドレスは要らず、Personal Access Token
+だけで認証します。Server が Cloud
+と違う形で送ってくるものは、その形のまま読みます。ADF の代わりに来る wiki markup
+は原文のままやり取りします ([GDK-1637])。`docs/SUPPORT_MATRIX.md` には
+Cloud・Linear・組み込みの隣に Jira Server の列が並びました。どのセルも Jira
+Software 11.3.11
+のラボで実際に動かした結果で、できない二つもできないと書いてあります
+([GDK-1635], [GDK-1634])。
 
 **スプリントがオブジェクトになり、振り返りが画面になりました。**
-以前のスプリントは課題ごとの列三つとしてしか存在せず、空のスプリントはそもそも存在せず、ゴールも期間もボードもどこにもありませんでした。`gadak sprint`
+以前のスプリントは課題に付いた列三つでした。だから空のスプリントは存在せず、ゴールも期間もどこにもありませんでした。`gadak sprint`
 に list・add・remove・create・start・close
-が加わり、いずれも接続元を通して書いたあと読み直すので、送った値を信用しません
-([GDK-1653], [GDK-1654], [GDK-1657])。組み込みトラッカーも Agile
-の表面を提供するため、Atlassian アカウントなしでスプリントが使えます
-([GDK-1666])。Linear のサイクルもスプリントです
-([GDK-1667])。閉じたスプリントの課題がいつまでも「アクティブ」と読まれ、アクティブスプリントの問い合わせを膨らませていた状態も終わりました
-([GDK-1661])。ボードにはレイアウト切り替えの隣にスコープが付きました。アクティブスプリント、バックログ、全体から選び、URL
-に載って保存済みビューにも残ります
-([GDK-1656])。アクティブスプリントはゴールと期間、残り日数、進捗バーを持つ自分の行を得ました。以前はそのすべてがツールチップの中にありました
-([GDK-1709])。スプリントを二回以上越えたカードはそう言い
-([GDK-1711])、サイトが割り当てたカスタムフィールド番号の下にすでにミラーへ入っていながら取り出せなかったスプリント移動の履歴も、読めるようになりました
-([GDK-1694])。
+が加わり、接続元に書いたあと読み直します
+([GDK-1653])。組み込みトラッカーもスプリントを提供するので、Atlassian
+アカウントは要りません
+([GDK-1666])。ボードはアクティブスプリント・バックログ・全体からスコープを選びます
+([GDK-1656])。アクティブスプリントは、ゴールと期間、残り日数、進捗バーを載せた自分の行を持ちます
+([GDK-1709])。パレットの *週次レトロ*
+は、レポートとして読める表を開きます。一週が一列、一指標が一行で、定義はその下に付きます。行ごとにスパークラインとデルタがあり、課題の入ったセルはその一覧への扉です
+([GDK-1660], [GDK-1712])。ISO 週の代わりにスプリントで区切ることもできます
+([GDK-1693])。`reopen_count`
+はチームが実際に出す再オープンを数えます。解決済みステータスが進行中カテゴリにあるアカウントでは、done→new
+だけを数える古い規則が実際の再オープンの 59% を 0 と読んでいました
+([GDK-1753])。
 
-パレットの *週次レトロ*
-は静かな表を開きます。一週が一列、一指標が一行で、定義がその下に付き、課題の入ったセルはその一覧への扉です
-([GDK-1660])。そしてレポートとして読めます。直前の区間との差、行ごとのスパークライン、セルごとのデルタ、色はチームがどちらが良いか合意した指標にだけ入ります
-([GDK-1712])。その下にあるのは、振り返りを実際に支えるものです。`retro-action`
-ラベルの付いた決定と、そのとき名指した指標の今の値
-([GDK-1453])、進行中のものの年齢を p85 の線に当てた棒
-([GDK-1721])、その週の出来事を日ごとに指す帯
-([GDK-1722])、種類別・エピック別に閉じたもの
-([GDK-1723])、自分が開いて誰も動かさなかった課題と、気づかないうちに動いていた課題
-([GDK-1725])、そして節ごとにこれが何で、なぜ振り返りが読むのかを書いた三行。`--explain`
-も同じ文を出力します ([GDK-1726])。ISO
-週の代わりにスプリントで区切ることもできます ([GDK-1693])。`reopen_count`
-はチームが実際に出す再オープンを数えます。解決済みステータスが進行中カテゴリに座っているアカウントでは、done→new
-だけを数える規則が実際の再オープンの 59% を 0 と読んでいました
-([GDK-1753])。ミラーは課題がどれだけ長くフラグ付きだったかも知るようになり、スキーマ
-v51 に `blocked_hours` と `blocked_since` が入りました ([GDK-1449])。
-
-**ツールは自分が知っていることを言います。人に、エージェントに、そして自分自身に。**
-`gadak doctor` がバージョンの隣に `binary`
-行を出します。シンボリックリンクを解いた実際の実行ファイルのパスと、その上の署名の種類です。リリース版のアプリは
-`developer-id`、ローカルのツールチェーンが署名したものは
+**gadak は外に問い合わせるのをやめ、自分のことをもっと話します。**
+新しいリリースがあるかを一日一回 GitHub
+に尋ねる動作をなくしました。バックグラウンドのリクエストも、`updateCheck`
+の設定も、バナーもありません。外に出る宛先は六つから五つになりました
+([GDK-1626])。`gadak doctor` は `binary`
+の行を出します。シンボリックリンクを解いた実行ファイルのパスと、その署名です。リリース版は
+`developer-id`、ローカルのビルドは
 `adhoc`。「リリースが壊れている」と「リリースを動かしていない」を分ける組み合わせです
-([GDK-1798])。遅れているミラーは、エージェントが読む場所でも遅れていると言います。以前はどの
-MCP ホストも見られない stderr にだけありました ([GDK-599])。Confluence
-スペースはミラーする前に費用を言い ([GDK-965])、`gadak status --json`
-はこのワークスペースが開発パネルをミラーするかどうかを明かして、空の `dev_links`
-が二つの意味を持たないようにします ([GDK-1496])。組み込み接続元の persist
-パスに他者が書いたデータベースがあれば、そのファイルを名指します。以前はバージョンメッセージを出し、すでに最新のバイナリを上げて誰も取っていないコピーを復元しろと読み手に言っていました
-([GDK-243])。gadak はもう、新しいリリースがあるかどうかを一日一回 GitHub
-に尋ねません。バックグラウンドのチェックも、`updateCheck`
-設定も、サイドバーのバナーもなく、外に出る宛先は六つから五つに減りました
-([GDK-1626])。`docs/PROMISES.md` は番号付きの目録から四つの問いになり、*いつ*
-外に出るかについての条項が一つ増えました。読み取り系の動詞はディスクから答え、ソケットを開きません
-([GDK-1792])。玄関はどれだけ速いかより先に gadak が何であるかを言い、「公式の
-Rovo MCP
-があるのになぜ」という問いは三言語すべてでヒーローの直下に上がりました。欠けていた二つの軸、レート制限と誰が保守しているかも入りました
-([GDK-1601], [GDK-1824])。ドキュメントに書かれた最初の実行は
-`gadak init && gadak serve`
-です。ウィンドウが先に開き、ミラーは新しいものから埋まっていきます
-([GDK-1677])。Confluence のパスは `gadak sync --concurrency`
-で区切られたプールで走り、既定 4、最大 8 です
-([GDK-1673])。サービスのインストーラは KeepAlive
-の下でクラッシュループに入る代わりに、インストール時点で serve
-のフラグを検査します ([GDK-1267])。
+([GDK-1798])。`gadak comment edit` と `gadak comment rm`
+が三つの接続元すべてで動きます ([GDK-1647])。`gadak mcp install claude-desktop`
+は Claude Desktop に直接登録します。以前はどの玄関も、Desktop の利用者に Claude
+*Code* の `claude mcp add` を教えていました
+([GDK-1633])。組み込みトラッカーの添付の上限は
+`gadak config set attachmentMaxMB <n>` で、既定は 1 GiB です。32 MiB
+がコードに埋め込まれていた場所です ([GDK-1617])。ターミナルのドックは、1420
+ピクセルより下で詳細パネルが開くとシートになります。動かすべき一覧を覆いません
+([GDK-1833])。韓国語と日本語のクリップをフレーム単位で見直すと、コピーのレビューが見落とした箇所が出てきました。進行中の一行上に
+`Backlog` と `Selected for Development` が英語で立ち、同じ語がある画面では
+`内蔵`、次の画面では `組み込み` で、製品の他の場所が `未割り当て` と言う場所に
+`未担当` がありました ([GDK-1837], [GDK-1839])。
 
-エージェント側は、表面が製品に追いつきました。`gadak comment edit`
-がコメントの本文を置き換え、`gadak comment rm`
-が削除します。Jira・Linear・組み込みトラッカーのすべてで動きます
-([GDK-1647])。すべての書き込み動詞に `--dry-run`
-があります。`gadak link KEY <url> --title` は接続元を通してリモートリンクを書き
-([GDK-530])、同じエイリアスに `--field`
-を繰り返すと最後の値で上書きせず値を足します
-([GDK-18])。作成ダイアログは接続元が要求するものを埋め、Jira
-が拒否する作成を送る代わりに Create を無効のままにします
-([GDK-533])。接続元に制限があればコメントに制限をかけられます
-([GDK-528])。組み込みトラッカーの添付バイト列はデータベースの隣に内容アドレスのファイル一つずつとして置かれ、双方向にストリーミングし、上限は
-`gadak config set attachmentMaxMB <n>` で既定 1 GiB です。以前は 32 MiB
-がコードに埋め込まれていました ([GDK-1617])。`gadak backup` は添付が欠けた
-`.tar` を書くことを拒否します ([GDK-1277])。`gadak mcp install claude-desktop`
-が Claude Desktop に登録します。以前はどの玄関も Desktop の利用者に、Claude
-*Code* の `claude mcp add` を実行するコマンドを教えていました
-([GDK-1633])。シェルのないエージェントが `gadak_retro` で一週を読み
-([GDK-1404])、読む間に訪問の記録を残し ([GDK-631])、`gadak_status`
-でどのミラーが答えたかを確かめ
-([GDK-1813])、知らない引数を黙って別の問いとして答えられる代わりに名指しで拒否され
-([GDK-1812])、バーンアップを `gadak_sprint` で尋ねられます ([GDK-1826])。
-
-アプリは、行き届いていなかった端に手が入りました。900
-ピクセルより下は狭い一規格で、境目は 899 です。以前はサイドバーの狭い幅が 760
-ピクセルのメディアクエリの下に五か所へ別々に書かれていて、800
-ピクセルのウィンドウが 272
-ピクセルのサイドバーをそのまま抱え、一覧を残りの場所へ押し込んでいました
-([GDK-1369])。シェルの高さは `100vh`、`100dvh`、`100svh`
-を順に辿るので、アプリ内のタブバーが最後の行を食べません
-([GDK-54])。ターミナルのドックは、詳細パネルが開いた 1420
-ピクセルより下ではシートになります。以前はノート PC
-で課題を開くと、ターミナルが動かすべき一覧をそのターミナルが覆っていました
-([GDK-1833],
-[GDK-1835])。一覧は与えられたどの幅でも読めます。右側の付属が固定幅を先に取るため、ウィンドウが
-30% 狭くなるとタイトルが幅の 60% を失っていましたが、いまは 1000 で 222px から
-302px に値付けされ、1440 はピクセルまでそのままです
-([GDK-1791])。六文字も見せられないラベルチップは `+N` バッジに畳まれます
-([GDK-1744])。列のあいだの継ぎ目はすべてキーボードで掴めるグリップで、CLI が書く
-`ui.tokens.layout` の値を同じように書きます ([GDK-1815],
-[GDK-769])。韓国語と日本語のクリップを切る前にフレーム単位で見たことが、コピーのレビューが捉えなかったものを捉えました。進行
-中の一行上に `Backlog` と `Selected for Development`
-が英語で立っていて、同じ英単語がある画面では `内蔵`、次の画面では `組み込み`
-で、製品の他の場所が `未割り当て` と言う場所に `未担当`
-があり、フィルタのメニューが選ばせるために開いた値を見せるには狭すぎました
-([GDK-1837], [GDK-1839])。件数はどこに出てもロケールの区切りでまとまり
-([GDK-1560])、ローカルのコピーは三言語すべてでキャッシュと呼び
-([GDK-1323])、個人の履歴は見て消せるものになり
-([GDK-106])、検索はラベルと語形を見つけ
-([GDK-1021])、組み込みトラッカーから何も消さずに出ていく道ができました
-([GDK-378])。スマートフォンではコントロールがマークアップではなくカタログに置かれ
-([GDK-1150])、詳細ヘッダーに共有ボタンが付きました ([GDK-877])。
 
 ## v0.21.0 — 2026-09-08
 
@@ -1192,7 +1099,6 @@ Jira サイトでも同じ意味になる軸をキーにします。解決の判
 できます。フィードのフォーカスタブ、保存したビューの sort / dir / group_by、
 そして `priority_rank` をキーにした優先度の並べ替えです。
 
-[GDK-18]: https://gadak.dev/backlog/#/?ks=GDK-18
 [GDK-19]: https://gadak.dev/backlog/#/?ks=GDK-19
 [GDK-23]: https://gadak.dev/backlog/#/?ks=GDK-23
 [GDK-24]: https://gadak.dev/backlog/#/?ks=GDK-24
@@ -1203,7 +1109,6 @@ Jira サイトでも同じ意味になる軸をキーにします。解決の判
 [GDK-51]: https://gadak.dev/backlog/#/?ks=GDK-51
 [GDK-52]: https://gadak.dev/backlog/#/?ks=GDK-52
 [GDK-53]: https://gadak.dev/backlog/#/?ks=GDK-53
-[GDK-54]: https://gadak.dev/backlog/#/?ks=GDK-54
 [GDK-58]: https://gadak.dev/backlog/#/?ks=GDK-58
 [GDK-61]: https://gadak.dev/backlog/#/?ks=GDK-61
 [GDK-67]: https://gadak.dev/backlog/#/?ks=GDK-67
@@ -1221,7 +1126,6 @@ Jira サイトでも同じ意味になる軸をキーにします。解決の判
 [GDK-98]: https://gadak.dev/backlog/#/?ks=GDK-98
 [GDK-99]: https://gadak.dev/backlog/#/?ks=GDK-99
 [GDK-105]: https://gadak.dev/backlog/#/?ks=GDK-105
-[GDK-106]: https://gadak.dev/backlog/#/?ks=GDK-106
 [GDK-111]: https://gadak.dev/backlog/#/?ks=GDK-111
 [GDK-112]: https://gadak.dev/backlog/#/?ks=GDK-112
 [GDK-113]: https://gadak.dev/backlog/#/?ks=GDK-113
@@ -1283,7 +1187,6 @@ Jira サイトでも同じ意味になる軸をキーにします。解決の判
 [GDK-238]: https://gadak.dev/backlog/#/?ks=GDK-238
 [GDK-239]: https://gadak.dev/backlog/#/?ks=GDK-239
 [GDK-241]: https://gadak.dev/backlog/#/?ks=GDK-241
-[GDK-243]: https://gadak.dev/backlog/#/?ks=GDK-243
 [GDK-246]: https://gadak.dev/backlog/#/?ks=GDK-246
 [GDK-247]: https://gadak.dev/backlog/#/?ks=GDK-247
 [GDK-248]: https://gadak.dev/backlog/#/?ks=GDK-248
@@ -1347,7 +1250,6 @@ Jira サイトでも同じ意味になる軸をキーにします。解決の判
 [GDK-374]: https://gadak.dev/backlog/#/?ks=GDK-374
 [GDK-375]: https://gadak.dev/backlog/#/?ks=GDK-375
 [GDK-376]: https://gadak.dev/backlog/#/?ks=GDK-376
-[GDK-378]: https://gadak.dev/backlog/#/?ks=GDK-378
 [GDK-380]: https://gadak.dev/backlog/#/?ks=GDK-380
 [GDK-381]: https://gadak.dev/backlog/#/?ks=GDK-381
 [GDK-382]: https://gadak.dev/backlog/#/?ks=GDK-382
@@ -1378,11 +1280,8 @@ Jira サイトでも同じ意味になる軸をキーにします。解決の判
 [GDK-519]: https://gadak.dev/backlog/#/?ks=GDK-519
 [GDK-521]: https://gadak.dev/backlog/#/?ks=GDK-521
 [GDK-527]: https://gadak.dev/backlog/#/?ks=GDK-527
-[GDK-528]: https://gadak.dev/backlog/#/?ks=GDK-528
-[GDK-530]: https://gadak.dev/backlog/#/?ks=GDK-530
 [GDK-531]: https://gadak.dev/backlog/#/?ks=GDK-531
 [GDK-532]: https://gadak.dev/backlog/#/?ks=GDK-532
-[GDK-533]: https://gadak.dev/backlog/#/?ks=GDK-533
 [GDK-536]: https://gadak.dev/backlog/#/?ks=GDK-536
 [GDK-537]: https://gadak.dev/backlog/#/?ks=GDK-537
 [GDK-538]: https://gadak.dev/backlog/#/?ks=GDK-538
@@ -1409,7 +1308,6 @@ Jira サイトでも同じ意味になる軸をキーにします。解決の判
 [GDK-613]: https://gadak.dev/backlog/#/?ks=GDK-613
 [GDK-617]: https://gadak.dev/backlog/#/?ks=GDK-617
 [GDK-626]: https://gadak.dev/backlog/#/?ks=GDK-626
-[GDK-631]: https://gadak.dev/backlog/#/?ks=GDK-631
 [GDK-635]: https://gadak.dev/backlog/#/?ks=GDK-635
 [GDK-643]: https://gadak.dev/backlog/#/?ks=GDK-643
 [GDK-654]: https://gadak.dev/backlog/#/?ks=GDK-654
@@ -1436,7 +1334,6 @@ Jira サイトでも同じ意味になる軸をキーにします。解決の判
 [GDK-757]: https://gadak.dev/backlog/#/?ks=GDK-757
 [GDK-758]: https://gadak.dev/backlog/#/?ks=GDK-758
 [GDK-766]: https://gadak.dev/backlog/#/?ks=GDK-766
-[GDK-769]: https://gadak.dev/backlog/#/?ks=GDK-769
 [GDK-770]: https://gadak.dev/backlog/#/?ks=GDK-770
 [GDK-771]: https://gadak.dev/backlog/#/?ks=GDK-771
 [GDK-781]: https://gadak.dev/backlog/#/?ks=GDK-781
@@ -1488,7 +1385,6 @@ Jira サイトでも同じ意味になる軸をキーにします。解決の判
 [GDK-867]: https://gadak.dev/backlog/#/?ks=GDK-867
 [GDK-870]: https://gadak.dev/backlog/#/?ks=GDK-870
 [GDK-871]: https://gadak.dev/backlog/#/?ks=GDK-871
-[GDK-877]: https://gadak.dev/backlog/#/?ks=GDK-877
 [GDK-879]: https://gadak.dev/backlog/#/?ks=GDK-879
 [GDK-880]: https://gadak.dev/backlog/#/?ks=GDK-880
 [GDK-883]: https://gadak.dev/backlog/#/?ks=GDK-883
@@ -1513,7 +1409,6 @@ Jira サイトでも同じ意味になる軸をキーにします。解決の判
 [GDK-960]: https://gadak.dev/backlog/#/?ks=GDK-960
 [GDK-963]: https://gadak.dev/backlog/#/?ks=GDK-963
 [GDK-964]: https://gadak.dev/backlog/#/?ks=GDK-964
-[GDK-965]: https://gadak.dev/backlog/#/?ks=GDK-965
 [GDK-967]: https://gadak.dev/backlog/#/?ks=GDK-967
 [GDK-968]: https://gadak.dev/backlog/#/?ks=GDK-968
 [GDK-971]: https://gadak.dev/backlog/#/?ks=GDK-971
@@ -1524,7 +1419,6 @@ Jira サイトでも同じ意味になる軸をキーにします。解決の判
 [GDK-992]: https://gadak.dev/backlog/#/?ks=GDK-992
 [GDK-996]: https://gadak.dev/backlog/#/?ks=GDK-996
 [GDK-1001]: https://gadak.dev/backlog/#/?ks=GDK-1001
-[GDK-1021]: https://gadak.dev/backlog/#/?ks=GDK-1021
 [GDK-1024]: https://gadak.dev/backlog/#/?ks=GDK-1024
 [GDK-1030]: https://gadak.dev/backlog/#/?ks=GDK-1030
 [GDK-1032]: https://gadak.dev/backlog/#/?ks=GDK-1032
@@ -1539,7 +1433,6 @@ Jira サイトでも同じ意味になる軸をキーにします。解決の判
 [GDK-1128]: https://gadak.dev/backlog/#/?ks=GDK-1128
 [GDK-1143]: https://gadak.dev/backlog/#/?ks=GDK-1143
 [GDK-1149]: https://gadak.dev/backlog/#/?ks=GDK-1149
-[GDK-1150]: https://gadak.dev/backlog/#/?ks=GDK-1150
 [GDK-1158]: https://gadak.dev/backlog/#/?ks=GDK-1158
 [GDK-1172]: https://gadak.dev/backlog/#/?ks=GDK-1172
 [GDK-1174]: https://gadak.dev/backlog/#/?ks=GDK-1174
@@ -1573,7 +1466,6 @@ Jira サイトでも同じ意味になる軸をキーにします。解決の判
 [GDK-1264]: https://gadak.dev/backlog/#/?ks=GDK-1264
 [GDK-1265]: https://gadak.dev/backlog/#/?ks=GDK-1265
 [GDK-1266]: https://gadak.dev/backlog/#/?ks=GDK-1266
-[GDK-1267]: https://gadak.dev/backlog/#/?ks=GDK-1267
 [GDK-1269]: https://gadak.dev/backlog/#/?ks=GDK-1269
 [GDK-1270]: https://gadak.dev/backlog/#/?ks=GDK-1270
 [GDK-1275]: https://gadak.dev/backlog/#/?ks=GDK-1275
@@ -1610,7 +1502,6 @@ Jira サイトでも同じ意味になる軸をキーにします。解決の判
 [GDK-1313]: https://gadak.dev/backlog/#/?ks=GDK-1313
 [GDK-1314]: https://gadak.dev/backlog/#/?ks=GDK-1314
 [GDK-1321]: https://gadak.dev/backlog/#/?ks=GDK-1321
-[GDK-1323]: https://gadak.dev/backlog/#/?ks=GDK-1323
 [GDK-1325]: https://gadak.dev/backlog/#/?ks=GDK-1325
 [GDK-1335]: https://gadak.dev/backlog/#/?ks=GDK-1335
 [GDK-1336]: https://gadak.dev/backlog/#/?ks=GDK-1336
@@ -1637,7 +1528,6 @@ Jira サイトでも同じ意味になる軸をキーにします。解決の判
 [GDK-1360]: https://gadak.dev/backlog/#/?ks=GDK-1360
 [GDK-1361]: https://gadak.dev/backlog/#/?ks=GDK-1361
 [GDK-1362]: https://gadak.dev/backlog/#/?ks=GDK-1362
-[GDK-1369]: https://gadak.dev/backlog/#/?ks=GDK-1369
 [GDK-1380]: https://gadak.dev/backlog/#/?ks=GDK-1380
 [GDK-1382]: https://gadak.dev/backlog/#/?ks=GDK-1382
 [GDK-1383]: https://gadak.dev/backlog/#/?ks=GDK-1383
@@ -1655,70 +1545,31 @@ Jira サイトでも同じ意味になる軸をキーにします。解決の判
 [GDK-1399]: https://gadak.dev/backlog/#/?ks=GDK-1399
 [GDK-1400]: https://gadak.dev/backlog/#/?ks=GDK-1400
 [GDK-1401]: https://gadak.dev/backlog/#/?ks=GDK-1401
-[GDK-1404]: https://gadak.dev/backlog/#/?ks=GDK-1404
-[GDK-1449]: https://gadak.dev/backlog/#/?ks=GDK-1449
-[GDK-1453]: https://gadak.dev/backlog/#/?ks=GDK-1453
 [GDK-1491]: https://gadak.dev/backlog/#/?ks=GDK-1491
 [GDK-1493]: https://gadak.dev/backlog/#/?ks=GDK-1493
-[GDK-1496]: https://gadak.dev/backlog/#/?ks=GDK-1496
 [GDK-1497]: https://gadak.dev/backlog/#/?ks=GDK-1497
 [GDK-1498]: https://gadak.dev/backlog/#/?ks=GDK-1498
 [GDK-1500]: https://gadak.dev/backlog/#/?ks=GDK-1500
 [GDK-1501]: https://gadak.dev/backlog/#/?ks=GDK-1501
 [GDK-1508]: https://gadak.dev/backlog/#/?ks=GDK-1508
 [GDK-1537]: https://gadak.dev/backlog/#/?ks=GDK-1537
-[GDK-1560]: https://gadak.dev/backlog/#/?ks=GDK-1560
-[GDK-1601]: https://gadak.dev/backlog/#/?ks=GDK-1601
 [GDK-1617]: https://gadak.dev/backlog/#/?ks=GDK-1617
 [GDK-1626]: https://gadak.dev/backlog/#/?ks=GDK-1626
 [GDK-1633]: https://gadak.dev/backlog/#/?ks=GDK-1633
 [GDK-1634]: https://gadak.dev/backlog/#/?ks=GDK-1634
 [GDK-1635]: https://gadak.dev/backlog/#/?ks=GDK-1635
-[GDK-1636]: https://gadak.dev/backlog/#/?ks=GDK-1636
 [GDK-1637]: https://gadak.dev/backlog/#/?ks=GDK-1637
-[GDK-1638]: https://gadak.dev/backlog/#/?ks=GDK-1638
-[GDK-1639]: https://gadak.dev/backlog/#/?ks=GDK-1639
-[GDK-1640]: https://gadak.dev/backlog/#/?ks=GDK-1640
-[GDK-1641]: https://gadak.dev/backlog/#/?ks=GDK-1641
-[GDK-1644]: https://gadak.dev/backlog/#/?ks=GDK-1644
-[GDK-1645]: https://gadak.dev/backlog/#/?ks=GDK-1645
-[GDK-1646]: https://gadak.dev/backlog/#/?ks=GDK-1646
 [GDK-1647]: https://gadak.dev/backlog/#/?ks=GDK-1647
-[GDK-1648]: https://gadak.dev/backlog/#/?ks=GDK-1648
-[GDK-1650]: https://gadak.dev/backlog/#/?ks=GDK-1650
-[GDK-1652]: https://gadak.dev/backlog/#/?ks=GDK-1652
 [GDK-1653]: https://gadak.dev/backlog/#/?ks=GDK-1653
-[GDK-1654]: https://gadak.dev/backlog/#/?ks=GDK-1654
 [GDK-1656]: https://gadak.dev/backlog/#/?ks=GDK-1656
-[GDK-1657]: https://gadak.dev/backlog/#/?ks=GDK-1657
 [GDK-1660]: https://gadak.dev/backlog/#/?ks=GDK-1660
-[GDK-1661]: https://gadak.dev/backlog/#/?ks=GDK-1661
 [GDK-1666]: https://gadak.dev/backlog/#/?ks=GDK-1666
-[GDK-1667]: https://gadak.dev/backlog/#/?ks=GDK-1667
-[GDK-1673]: https://gadak.dev/backlog/#/?ks=GDK-1673
-[GDK-1677]: https://gadak.dev/backlog/#/?ks=GDK-1677
 [GDK-1693]: https://gadak.dev/backlog/#/?ks=GDK-1693
-[GDK-1694]: https://gadak.dev/backlog/#/?ks=GDK-1694
 [GDK-1709]: https://gadak.dev/backlog/#/?ks=GDK-1709
-[GDK-1711]: https://gadak.dev/backlog/#/?ks=GDK-1711
 [GDK-1712]: https://gadak.dev/backlog/#/?ks=GDK-1712
-[GDK-1721]: https://gadak.dev/backlog/#/?ks=GDK-1721
-[GDK-1722]: https://gadak.dev/backlog/#/?ks=GDK-1722
-[GDK-1723]: https://gadak.dev/backlog/#/?ks=GDK-1723
-[GDK-1725]: https://gadak.dev/backlog/#/?ks=GDK-1725
-[GDK-1726]: https://gadak.dev/backlog/#/?ks=GDK-1726
-[GDK-1744]: https://gadak.dev/backlog/#/?ks=GDK-1744
 [GDK-1753]: https://gadak.dev/backlog/#/?ks=GDK-1753
-[GDK-1791]: https://gadak.dev/backlog/#/?ks=GDK-1791
-[GDK-1792]: https://gadak.dev/backlog/#/?ks=GDK-1792
 [GDK-1798]: https://gadak.dev/backlog/#/?ks=GDK-1798
-[GDK-1812]: https://gadak.dev/backlog/#/?ks=GDK-1812
-[GDK-1813]: https://gadak.dev/backlog/#/?ks=GDK-1813
-[GDK-1815]: https://gadak.dev/backlog/#/?ks=GDK-1815
-[GDK-1824]: https://gadak.dev/backlog/#/?ks=GDK-1824
-[GDK-1826]: https://gadak.dev/backlog/#/?ks=GDK-1826
 [GDK-1833]: https://gadak.dev/backlog/#/?ks=GDK-1833
-[GDK-1835]: https://gadak.dev/backlog/#/?ks=GDK-1835
 [GDK-1837]: https://gadak.dev/backlog/#/?ks=GDK-1837
 [GDK-1839]: https://gadak.dev/backlog/#/?ks=GDK-1839
 [GDK-1848]: https://gadak.dev/backlog/#/?ks=GDK-1848
