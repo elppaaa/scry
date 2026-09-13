@@ -505,51 +505,51 @@ export const strings: Record<Locale, Strings> = {
   ja: {
     htmlLang: 'ja',
     ogLocale: 'ja_JP',
-    title: 'gadak｜Jira の課題を SQL で集計する',
+    title: 'gadak｜Jiraの課題をSQLで集計する',
     description:
-      'gadak は、指定した範囲の Jira と Confluence をキャッシュするツールです。課題・コメント・変更履歴・wiki ページをまとめて検索でき、SQL で集計できます。テレメトリはありません。',
+      'gadakは、指定した範囲のJiraとConfluenceをキャッシュするツールです。課題・コメント・変更履歴・wikiページをまとめて検索でき、SQLで集計できます。テレメトリはありません。',
     nav: { demo: 'ライブデモ', changelog: '変更履歴', install: 'インストール', github: 'GitHub' },
     copy: { label: 'コピー', copied: 'コピーしました' },
     ogImageAlt:
-      'gadak｜Jira の課題を SQL で集計する。指定した範囲の Jira と Confluence をキャッシュし、まとめて検索できます。',
+      'gadak｜Jiraの課題をSQLで集計する。指定した範囲のJiraとConfluenceをキャッシュし、まとめて検索できます。',
     langName: '日本語',
     langBanner: {
       offer: 'このページは日本語でも読めます。',
-      cta: '日本語で表示 →',
+      cta: '日本語で表示→',
       dismiss: '閉じる',
     },
-    // Qiita・Zenn の検索から来る読者: 何をする道具か → いま試せる SQL → 計測値
-    // → 検索 → 導入前に確認したいこと（この市場では購買条件）→ インストール
-    // → エージェント → 対応範囲と開発状況 → 試した結果を教えてください。
+    // Qiita・Zennの検索から来る読者:何をする道具か→いま試せるSQL →計測値
+    // →検索→導入前に確認したいこと（この市場では購買条件）→インストール
+    // →エージェント→対応範囲と開発状況→試した結果を教えてください。
     layout: ['hero', 'query', 'speed', 'search', 'connect', 'install', 'agent', 'status', 'ask'],
-    // 会社の PC は brew を止められていることが多く、ブラウザーで試すのが唯一の
-    // 入口になる読者がいる。だからデモのカードを先に置く (GDK-1623)。
+    //会社のPCはbrewを止められていることが多く、ブラウザーで試すのが唯一の
+    //入口になる読者がいる。だからデモのカードを先に置く(GDK-1623)。
     heroDoorOrder: ['demo', 'install'],
     hero: {
       eyebrow: 'gadak',
       heading: TAGLINE.ja.heading,
       lede:
-        'gadak は、指定した範囲の Jira と Confluence をキャッシュするツールです。課題・コメント・変更履歴・wiki ページをまとめて検索でき、SQL で集計できます。デスクトップアプリ、ブラウザー、CLI から使えて、画面は日本語表示に対応しています。接続できるのは Jira Cloud と Server / Data Center です。',
-      videoCaption: '検索の録画です。デモのスナップショットを課題 2 万件に増やしたキャッシュを検索していて、文字を打つ速さに結果が追いつきます。',
+        'gadakは、指定した範囲のJiraとConfluenceをキャッシュするツールです。課題・コメント・変更履歴・wikiページをまとめて検索でき、SQLで集計できます。デスクトップアプリ、ブラウザー、CLIから使えて、画面は日本語表示に対応しています。接続できるのはJira CloudとServer / Data Centerです。',
+      videoCaption: '検索の録画です。デモのスナップショットを課題2万件に増やしたキャッシュを検索していて、文字を打つ速さに結果が追いつきます。',
       doors: {
         installTitle: 'インストール',
-        installSub: 'macOS は Homebrew、Windows は Microsoft Store から入れます。Linux は CLI を入れて、gadak serve でブラウザーから使います。',
+        installSub: 'macOSはHomebrew、WindowsはMicrosoft Storeから入れます。LinuxはCLIを入れて、gadak serveでブラウザーから使います。',
         demoTitle: 'ライブデモ',
-        demoSub: 'ブラウザーの中で 534 件の課題をそのまま開けます。インストールもアカウントも要りません。',
+        demoSub: 'ブラウザーの中で534件の課題をそのまま開けます。インストールもアカウントも要りません。',
       },
     },
     query: {
       label: 'エピックごとの未完了件数を数える',
-      heading: 'JQL に GROUP BY はありません。',
-      lead: 'ページサイズを超えると、API が返すのは行だけで、集計は自分で書くことになります。キャッシュがあれば、同じ答えを SQL 1 本で出せます:',
-      datasetteLabel: 'デモデータでこの SQL を試す（Datasette Lite、インストール不要）→',
+      heading: 'JQLにGROUP BYはありません。',
+      lead: 'ページサイズを超えると、APIが返すのは行だけで、集計は自分で書くことになります。キャッシュがあれば、同じ答えをSQL 1本で出せます:',
+      datasetteLabel: 'デモデータでこのSQLを試す（Datasette Lite、インストール不要）→',
       result:
-        '2026-08-26 に課題 3,296 件のサイトで計測したところ、REST API の結果を 8 ページ取得して集計する処理は 4,761 ms、同期済みのキャッシュに対する gadak の SQL は 22 ms でした。数値は中央値で、gadak 側は CLI の起動時間を含みます。',
+        '2026-08-26に課題3,296件のサイトで計測したところ、REST APIの結果を8ページ取得して集計する処理は4,761 ms、同期済みのキャッシュに対するgadakのSQLは22 msでした。数値は中央値で、gadak側はCLIの起動時間を含みます。',
     },
     speed: {
       label: '計測条件と制約',
-      heading: 'REST API とキャッシュの応答時間',
-      note: '上と同じ、2026-08-26 の計測です。エピックごとの未完了件数は、REST API 側が 8 ページを取得して集計した値、gadak 側はクエリ 1 本の値です。gadak が負ける行もあります。このサイトの初回フル同期には 3.7 分かかり（2026-09-09 計測）、キャッシュは同期間隔 1 回ぶん遅れます。計測方法と再計測の履歴は次にまとめています: ',
+      heading: 'REST APIとキャッシュの応答時間',
+      note: '上と同じ、2026-08-26の計測です。エピックごとの未完了件数は、REST API側が8ページを取得して集計した値、gadak側はクエリ1本の値です。gadakが負ける行もあります。このサイトの初回フル同期には3.7分かかり（2026-09-09計測）、キャッシュは同期間隔1回ぶん遅れます。計測方法と再計測の履歴は次にまとめています: ',
       rows: [
         { what: '全文検索', value: '543 ms', alt: '41 ms', ratio: '13×' },
         { what: 'エピックごとの未完了件数（GROUP BY）', value: '4,761 ms', alt: '22 ms', ratio: '214×' },
@@ -558,51 +558,51 @@ export const strings: Record<Locale, Strings> = {
       colGadak: 'gadak',
     },
     ux: {
-      label: '課題と wiki をまとめて検索する',
+      label: '課題とwikiをまとめて検索する',
       search: {
         heading: '入力に追いつく検索',
         body:
-          '課題のタイトル・本文・コメントと wiki ページを、まとめて全文検索できます。検索はキャッシュの中だけで行うので、単語を打ち終える前に結果が返り、通信を待つ時間もありません。',
+          '課題のタイトル・本文・コメントとwikiページを、まとめて全文検索できます。検索はキャッシュの中だけで行うので、単語を打ち終える前に結果が返り、通信を待つ時間もありません。',
       },
     },
     agent: {
       label: 'コーディングエージェントから使う',
       heading: 'エージェントから課題を操作する',
       body:
-        'スキルを 1 つ入れると、Claude Code が gadak の CLI で課題を検索し、作成し、ステータスを変更します。その結果は同じボードで確認できます。スキルには、日本語のアカウントで引っかかりやすい落とし穴も書いてあります。ステータスと優先度の表示名は、Jira がアカウントの言語ごとに翻訳するので、英語の名前で問い合わせるとエラーも出ないまま 0 行が返り、エージェントはそれを「該当する課題はない」と読みます。エージェントが書いたコメントと作成した課題には、そのエージェントの名前が付きます。',
-      setupLink: 'ホストごとの設定 → docs/AGENT_SETUP.md',
+        'スキルを1つ入れると、Claude CodeがgadakのCLIで課題を検索し、作成し、ステータスを変更します。その結果は同じボードで確認できます。スキルには、日本語のアカウントで引っかかりやすい落とし穴も書いてあります。ステータスと優先度の表示名は、Jiraがアカウントの言語ごとに翻訳するので、英語の名前で問い合わせるとエラーも出ないまま0行が返り、エージェントはそれを「該当する課題はない」と読みます。エージェントが書いたコメントと作成した課題には、そのエージェントの名前が付きます。',
+      setupLink: 'ホストごとの設定→ docs/AGENT_SETUP.md',
       driveCaption:
-        '画面もプロンプトも日本語で収録した、Claude Code のライブセッションです。gadak のターミナルペインで動かしていて、1 文目で課題の一覧が変わり、2 文目で同じウィンドウにダッシュボードが開きます。エージェントが作業している区間は早送りです。',
-      showcaseLink: 'ほかの録画: ダッシュボード、チームのテーマ、ランチャー、MCP のライブセッション → docs/SHOWCASE.md',
+        '画面もプロンプトも日本語で収録した、Claude Codeのライブセッションです。gadakのターミナルペインで動かしていて、1文目で課題の一覧が変わり、2文目で同じウィンドウにダッシュボードが開きます。エージェントが作業している区間は早送りです。',
+      showcaseLink: 'ほかの録画:ダッシュボード、チームのテーマ、ランチャー、MCPのライブセッション→ docs/SHOWCASE.md',
       setup: {
-        skillLead: 'Claude Code にスキルを入れます:',
-        mcpLead: 'Claude Desktop には MCP サーバーを登録します:',
+        skillLead: 'Claude Codeにスキルを入れます:',
+        mcpLead: 'Claude DesktopにはMCPサーバーを登録します:',
       },
     },
     connect: {
       label: '導入前に確認したいこと',
       heading: '何を写し、どこに置き、何が外に出るのか',
-      // 読む人が知りたい順に 7 行。行の頭に何の答えかを置いて、読まずに
-      // 目で追えるようにしています（ファクト台帳 §11・§16）。
+      //読む人が知りたい順に7行。行の頭に何の答えかを置いて、読まずに
+      //目で追えるようにしています（ファクト台帳§11・§16）。
       points: [
-        '<strong>接続先。</strong> Atlassian Cloud は API トークンで、Jira Server / Data Center は <code>gadak init --server</code> と個人アクセストークンで接続します。Cloud はトークン 1 つで同じサイトの Jira と Confluence の両方を写します。Confluence Server はクライアントがないため、Server のワークスペースが写すのは課題だけです。',
-        '<strong>写す範囲。</strong> <code>--projects</code> で挙げたプロジェクトを、自分のアカウントで見えるぶんだけ写します。<code>--spaces</code> でスペースを指定するまで wiki には触れません。',
-        '<strong>置き場所と新しさ。</strong> 使っているマシンの中の SQLite ファイル 1 つです。初回はフル同期が要り、その後の読み取りは直近の同期時点の内容になります。消しても失うものはなく、もう一度同期すれば元に戻ります。',
-        '<strong>外に出るもの。</strong> テレメトリも、解析も、gadak のアカウントもありません。接続するのは自分で設定した先だけで、読み取りはそのファイルから行います。接続先に訊くのは 4 つだけです。添付ファイルの表示、<code>gadak issue --editmeta</code>、<code>gadak fields</code>、<code>gadak api</code>。',
-        '<strong>トークンの置き場所。</strong> <code>~/.gadak/config.json</code> にパーミッション <code>0600</code> で置き、送る先は自分のサイトだけです。キャッシュにもログにもスナップショットにも書き込まれません。',
-        '<strong>書き込みの流れ。</strong> 先に Jira へ届き、Jira が受け付けてからキャッシュが更新されます。届かなかった書き込みはその場で失敗として返り、キャッシュに溜まることはありません。',
-        '<strong>エージェントを使うとき。</strong> キャッシュを読んだエージェントは、読んだ内容を自分のモデルへ送ります。gadak 自体はどこにも送りません。エージェントに見せてよい範囲だけを写してください。',
+        '<strong>接続先。</strong>Atlassian CloudはAPIトークンで、Jira Server / Data Centerは<code>gadak init --server</code>と個人アクセストークンで接続します。Cloudはトークン1つで同じサイトのJiraとConfluenceの両方を写します。Confluence Serverはクライアントがないため、Serverのワークスペースが写すのは課題だけです。',
+        '<strong>写す範囲。</strong><code>--projects</code>で挙げたプロジェクトを、自分のアカウントで見えるぶんだけ写します。<code>--spaces</code>でスペースを指定するまでwikiには触れません。',
+        '<strong>置き場所と新しさ。</strong>使っているマシンの中のSQLiteファイル1つです。初回はフル同期が要り、その後の読み取りは直近の同期時点の内容になります。消しても失うものはなく、もう一度同期すれば元に戻ります。',
+        '<strong>外に出るもの。</strong>テレメトリも、解析も、gadakのアカウントもありません。接続するのは自分で設定した先だけで、読み取りはそのファイルから行います。接続先に訊くのは4つだけです。添付ファイルの表示、<code>gadak issue --editmeta</code>、<code>gadak fields</code>、<code>gadak api</code>。',
+        '<strong>トークンの置き場所。</strong><code>~/.gadak/config.json</code>にパーミッション<code>0600</code>で置き、送る先は自分のサイトだけです。キャッシュにもログにもスナップショットにも書き込まれません。',
+        '<strong>書き込みの流れ。</strong>先にJiraへ届き、Jiraが受け付けてからキャッシュが更新されます。届かなかった書き込みはその場で失敗として返り、キャッシュに溜まることはありません。',
+        '<strong>エージェントを使うとき。</strong>キャッシュを読んだエージェントは、読んだ内容を自分のモデルへ送ります。gadak自体はどこにも送りません。エージェントに見せてよい範囲だけを写してください。',
       ],
       links: [
-        { href: `${DOCS}SECURITY.md`, label: '外に出る通信の一覧と条件 → SECURITY.md' },
-        { href: `${DOCS}docs/NETWORK.md`, label: '各接続を無効にする方法 → docs/NETWORK.md' },
+        { href: `${DOCS}SECURITY.md`, label: '外に出る通信の一覧と条件→ SECURITY.md' },
+        { href: `${DOCS}docs/NETWORK.md`, label: '各接続を無効にする方法→ docs/NETWORK.md' },
       ],
     },
     changelog: {
       heading: '変更履歴',
       lede:
-        'リリースの内容は、出した本人が書いています。課題キーは公開バックログにリンクしているので、ここの 1 行から、それを求めた課題までさかのぼれます。',
-      source: 'リポジトリの CHANGELOG.ja.md から描画しています。英語版を訳したものです。',
+        'リリースの内容は、出した本人が書いています。課題キーは公開バックログにリンクしているので、ここの1行から、それを求めた課題までさかのぼれます。',
+      source: 'リポジトリのCHANGELOG.ja.mdから描画しています。英語版を訳したものです。',
       jumpLabel: 'バージョンへ移動',
       // Back to a placeholder: ja got its own CHANGELOG.ja.md on 2026-09-09,
       // so changelogIsFallback('ja') is false and this no longer renders. It
@@ -612,21 +612,21 @@ export const strings: Record<Locale, Strings> = {
     install: {
       label: 'インストールと初回同期',
       heading: 'インストール',
-      macosApp: 'デスクトップアプリ（CLI 同梱）:',
-      cliOnly: 'CLI のみ:',
-      windowsBefore: 'Windows のデスクトップアプリは',
+      macosApp: 'デスクトップアプリ（CLI同梱）:',
+      cliOnly: 'CLIのみ:',
+      windowsBefore: 'Windowsのデスクトップアプリは',
       windowsAfter: 'からインストールできます。',
       firstRun:
-        'チームの Jira Cloud サイトに接続します。サイト、メールアドレス、API トークン、写すプロジェクトを順に聞かれます。wiki も同期するなら --spaces を付けます:',
+        'チームのJira Cloudサイトに接続します。サイト、メールアドレス、APIトークン、写すプロジェクトを順に聞かれます。wikiも同期するなら--spacesを付けます:',
     },
     status: {
       label: '開発状況',
       heading: '対応範囲と開発状況',
       points: [
-        '状態: 0.22、まだ 0.x です。同期、読み取り API、書き込み、デスクトップアプリ、ウェブ、CLI、MCP は、実際のサイトで検証しています。',
-        'メンテナーは現在 1 人で、ライセンスは Apache-2.0 です。キャッシュはただの SQLite ファイルなので、gadak がなくなっても、どの SQLite クライアントからでも開けます。',
-        'スプリント計画、管理作業、アプリの画面でのページ編集、1 分の遅れが問題になる作業は、Jira 側で続けてください。',
-        'Atlassian Cloud、Jira Server / Data Center、Linear、内蔵トラッカーを共通のコマンドで操作できます。接続先ごとの対応状況は、セルごとに実際に実行して 1 枚の表にまとめています。',
+        '状態: 0.22、まだ0.xです。同期、読み取りAPI、書き込み、デスクトップアプリ、ウェブ、CLI、MCPは、実際のサイトで検証しています。',
+        'メンテナーは現在1人で、ライセンスはApache-2.0です。キャッシュはただのSQLiteファイルなので、gadakがなくなっても、どのSQLiteクライアントからでも開けます。',
+        'スプリント計画、管理作業、アプリの画面でのページ編集、1分の遅れが問題になる作業は、Jira側で続けてください。',
+        'Atlassian Cloud、Jira Server / Data Center、Linear、内蔵トラッカーを共通のコマンドで操作できます。接続先ごとの対応状況は、セルごとに実際に実行して1枚の表にまとめています。',
       ],
       links: [
         { href: `${DOCS}docs/SUPPORT_MATRIX.md`, label: '接続先ごとの対応状況' },
@@ -639,17 +639,17 @@ export const strings: Record<Locale, Strings> = {
       label: 'フィードバック',
       heading: '試した結果を教えてください',
       body: '何に使って、その後も使っているかを教えてください。うまくいかなかった話や、導入を見送った理由も歓迎します。',
-      caution: '実際の課題データ、API トークン、サイト URL は載せないでください。',
+      caution: '実際の課題データ、APIトークン、サイトURLは載せないでください。',
       links: [
-        { href: `${GITHUB}/issues`, label: 'GitHub issue を開く' },
-        { href: 'mailto:midagedev@gmail.com', label: 'メール midagedev@gmail.com' },
+        { href: `${GITHUB}/issues`, label: 'GitHub issueを開く' },
+        { href: 'mailto:midagedev@gmail.com', label: 'メールmidagedev@gmail.com' },
       ],
     },
     landing: {
-      flagshipSlot: '録画 · 課題 2 万件',
+      flagshipSlot: '録画·課題2万件',
       searchSlot: '検索',
       agentSlot: 'ウィンドウの中のエージェント',
-      allPlatforms: 'すべてのプラットフォーム →',
+      allPlatforms: 'すべてのプラットフォーム→',
     },
     footer: {
       builtBy: '作者:',

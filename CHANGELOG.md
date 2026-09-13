@@ -18,6 +18,18 @@ English line never made, and two names for one number; the Japanese hint ended
 two sentences on the same predicate. Every one of them was rewritten against
 what the English says ([GDK-1848]).
 
+**The Japanese pages are set the way Japanese is set.** A reader said the
+site's Japanese read as though it had been spaced and lettered by someone who
+does not use the language, and both halves of that measured. 162 ASCII spaces
+sat beside a Japanese character on `/ja/` alone — between a numeral and its
+counter as much as wherever Latin met kana — and `font-probe` read Latin on a
+`lang=ja` page as Hiragino Sans, so gadak, Jira, SQL and every number on the
+page were drawn in a Japanese face's Latin ([GDK-1853], [GDK-1854]). The
+spaces are gone and gated (`tools/ja-spacing.py`, doc-checks #60), a source
+line break between Japanese characters stopped rendering as a space on
+`/ja/changelog/`, and the system Latin faces now sit in front of the Japanese
+ones — the order the product's own stylesheet already used.
+
 ## v0.22.0 — 2026-09-13
 
 **Self-hosted Jira is an origin type.** `gadak init --site <base-url> --server`
@@ -1557,3 +1569,5 @@ priority sorting keyed on `priority_rank`.
 [GDK-1837]: https://gadak.dev/backlog/#/?ks=GDK-1837
 [GDK-1839]: https://gadak.dev/backlog/#/?ks=GDK-1839
 [GDK-1848]: https://gadak.dev/backlog/#/?ks=GDK-1848
+[GDK-1853]: https://gadak.dev/backlog/#/?ks=GDK-1853
+[GDK-1854]: https://gadak.dev/backlog/#/?ks=GDK-1854

@@ -39,7 +39,7 @@ export const TAGLINE = {
     body: '필요한 Jira 프로젝트와 Confluence 스페이스를 골라 캐시합니다.',
   },
   ja: {
-    heading: 'Jira の課題を SQL で集計する。',
-    body: '指定した範囲の Jira と Confluence をキャッシュし、まとめて検索できます。',
+    heading: 'Jiraの課題をSQLで集計する。',
+    body: '指定した範囲のJiraとConfluenceをキャッシュし、まとめて検索できます。',
   },
 }

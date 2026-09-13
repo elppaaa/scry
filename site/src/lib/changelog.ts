@@ -84,10 +84,69 @@ export async function renderMarkdown(md: string): Promise<string> {
   return code
 }
 
+/**
+ * Japanese sets solid, and a soft line break does not.
+ *
+ * CommonMark keeps a wrapped line's newline, HTML collapses it to a space,
+ * and the changelog files are wrapped at 80 columns — so every wrap point
+ * inside a Japanese paragraph grew a space that is invisible in the file and
+ * visible on the page. Measured 2026-09-13: 16 of them on /ja/changelog/,
+ * which is what a reader saw as the page being spaced like Korean.
+ *
+ * The join is per line pair and only where both sides are Japanese, so a
+ * wrap between Latin words still renders as the space it means. Fenced code
+ * is left alone: a break inside a fence is a line of the program.
+ *
+ * This is the rendering half of the rule. The other half — that the file's
+ * own prose puts no ASCII space beside a Japanese character — is
+ * tools/ja-spacing.py, which CHANGELOG.ja.md is under. The Japanese prose
+ * that is not a page of this site, README.ja.md first among it, is not
+ * (GDK-1855).
+ */
+const JA_TAIL = /[\u3000-\u303f\u3040-\u30ff\u3400-\u9fff\uff01-\uff60]$/
+const JA_HEAD = /^[\u3000-\u303f\u3040-\u30ff\u3400-\u9fff\uff01-\uff60]/
+/** Emphasis markers render as nothing, so they do not decide adjacency:
+ *  a paragraph opening `**…できます。**` still ends in Japanese. */
+function rendered(line: string, end: 'tail' | 'head' = 'tail'): string {
+  return end === 'tail' ? line.trimEnd().replace(/[*_]+$/, '') : line.trimStart().replace(/^[*_]+/, '')
+}
+
+/** A line that opens a block of its own is never a continuation of the one above. */
+const BLOCK = /^\s*(#{1,6}\s|[-*+]\s|\d+\.\s|>|\||\[[^\]]*\]:|<|=|```|~~~)/
+
+export function joinJapaneseWraps(md: string): string {
+  const out: string[] = []
+  let fenced = false
+  for (const line of md.split('\n')) {
+    if (/^\s*(```|~~~)/.test(line)) fenced = !fenced
+    const prev = out[out.length - 1]
+    const joinable =
+      !fenced &&
+      prev !== undefined &&
+      prev.trim() !== '' &&
+      line.trim() !== '' &&
+      !BLOCK.test(line) &&
+      !/^\s*#{1,6}\s/.test(prev) &&
+      // Either side being Japanese is enough. The wrap points are where the
+      // 80-column wrapper found a space, and after tools/ja-spacing.py the
+      // only spaces left in Japanese prose are the ones inside Latin runs —
+      // so a break with Japanese on one side is a break the file put in the
+      // middle of solid text.
+      (JA_TAIL.test(rendered(prev)) || JA_HEAD.test(rendered(line, 'head')))
+    if (joinable) {
+      out[out.length - 1] = prev.trimEnd() + line.trimStart()
+      continue
+    }
+    out.push(line)
+  }
+  return out.join('\n')
+}
+
 export async function renderChangelog(
   lang: Locale,
 ): Promise<{ html: string; releases: Release[] }> {
   const raw = readFileSync(new URL(FILES[lang], import.meta.url), 'utf8')
-  const html = await renderMarkdown(stripTitleBlock(raw))
+  const prepared = lang === 'ja' ? joinJapaneseWraps(stripTitleBlock(raw)) : stripTitleBlock(raw)
+  const html = await renderMarkdown(prepared)
   return { html, releases: readReleases(html) }
 }

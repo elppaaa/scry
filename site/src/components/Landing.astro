@@ -16,6 +16,11 @@ const copiedLabel = t.copy.copied
 const installHref = pathFor(lang, '/install/')
 const storeHref = 'https://apps.microsoft.com/detail/9NZW91TXH36G'
 const docs = 'https://github.com/midagedev/gadak/blob/main/'
+// Japanese sets solid. A space a template puts between a copy fragment and
+// the inline element after it is correct in en and ko and a defect in ja —
+// it is a real space in the rendered text, so tools/ja-spacing.py, which
+// reads the catalogue, cannot see it (GDK-1854).
+const gap = lang === 'ja' ? '' : ' '
 // The sections and their order come from this locale's `layout` (i18n.ts):
 // the three landings are parallel editions, not translations. The 2026-09-08
 // review round (GDK-1632) set the shape every edition now follows — say what
@@ -221,7 +226,7 @@ const jsonLd = JSON.stringify({
                 </tbody>
               </table>
               <p class="note">
-                {t.compare.note} <a href={`${docs}${t.compare.noteLink}`}>{t.compare.noteLink}</a>
+                {t.compare.note}{gap}<a href={`${docs}${t.compare.noteLink}`}>{t.compare.noteLink}</a>
               </p>
             </section>
           </>
@@ -261,7 +266,7 @@ const jsonLd = JSON.stringify({
               <Snippet code="brew install --cask midagedev/tap/gadak" copyLabel={copyLabel} copiedLabel={copiedLabel} />
               <p>{t.install.cliOnly}</p>
               <Snippet code="brew install midagedev/tap/gadak-cli" copyLabel={copyLabel} copiedLabel={copiedLabel} />
-              <p>{t.install.windowsBefore} <a href={storeHref}>Microsoft Store</a>{t.install.windowsAfter}</p>
+              <p>{t.install.windowsBefore}{gap}<a href={storeHref}>Microsoft Store</a>{t.install.windowsAfter}</p>
               <p>{t.install.firstRun}</p>
               <Snippet code="gadak init && gadak serve" copyLabel={copyLabel} copiedLabel={copiedLabel} />
               {t.install.setup && (

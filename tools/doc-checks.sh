@@ -2503,6 +2503,26 @@ if [ -n "$i18n_applied" ]; then
 fi
 ok "the applied ko and ja recording fixtures carry no English prose"
 
+# ---------------------------------------------------------------------------
+# #60  Japanese copy is set solid.
+#
+# Japanese puts no space between a word and the next one, and none between a
+# numeral and its counter. The site's Japanese pages had 162 ASCII spaces
+# sitting beside a Japanese character on /ja/ alone, and a reader's first
+# report of it was that the page looked like it had been spaced by someone
+# who does not read the language (2026-09-13, GDK-1854).
+#
+# The rule and the removal live in tools/ja-spacing.py; this is the gate that
+# keeps new copy under it. FAIL-first: 1,449 hits across six files at
+# 051043a1.
+# ---------------------------------------------------------------------------
+if ! ja_spacing_out="$(python3 "$ROOT/tools/ja-spacing.py" --check 2>&1)"; then
+  fail "Japanese copy carries ASCII spaces beside Japanese characters:
+$ja_spacing_out"
+else
+  ok "Japanese copy is set solid (no space beside a Japanese character)"
+fi
+
 # ── 42. A script that calls itself a gate is wired into something that runs ─
 # (v0.21 release audit: unwired-script finding). check-lockfile-platforms.sh and ci-status-test.sh both existed
 # with "gate" in their own headers and nothing anywhere executing them — an
