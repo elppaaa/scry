@@ -87,6 +87,24 @@ if (( $(size_bytes) > MAX_BYTES )); then
   echo "export-sprint-retro-hero: gif $(size_bytes) bytes > 4MB, retrying at fps=7 width=800 colors=64" >&2
   make_gif 7 800 64
 fi
+if (( $(size_bytes) > MAX_BYTES )); then
+  echo "export-sprint-retro-hero: gif $(size_bytes) bytes > 4MB, retrying at fps=6 width=760 colors=64" >&2
+  make_gif 6 760 64
+fi
+
+# The ladder's last rung is not the last word. gifsicle re-quantizes and
+# re-optimizes across frames, which the palette pass cannot do, and it is
+# what the mcp and claude-drive gifs already run (MEDIA.md size budget).
+# Measured 2026-09-13 on this take: 4.16 MB -> 3.99 MB (ko), 4.16 -> 4.00
+# (en), 4.03 -> 3.86 (ja) -- every locale was over the ceiling after the
+# last rung, and the script exited 0 anyway.
+if (( $(size_bytes) > MAX_BYTES )) && command -v gifsicle >/dev/null; then
+  echo "export-sprint-retro-hero: gif $(size_bytes) bytes > 4MB, gifsicle -O3 --colors 64" >&2
+  gifsicle -O3 --colors 64 "$OUT_DIR/sprint-retro-hero${TAG}.gif" \
+    -o "$OUT_DIR/sprint-retro-hero${TAG}.gif.opt"
+  mv -f "$OUT_DIR/sprint-retro-hero${TAG}.gif.opt" "$OUT_DIR/sprint-retro-hero${TAG}.gif"
+fi
+
 
 # The poster, cut from the mp4 this run just wrote — same reason as the
 # sibling (export-search.sh): a hand-run ffmpeg line is how a locale variant
@@ -102,3 +120,15 @@ ffmpeg -y -v error -ss "$POSTER_AT" -i "$OUT_DIR/sprint-retro-hero${TAG}.mp4" -f
 echo "export-sprint-retro-hero: wrote $OUT_DIR/sprint-retro-hero${TAG}.gif ($(size_bytes) bytes)"
 echo "export-sprint-retro-hero: wrote $OUT_DIR/sprint-retro-hero${TAG}.mp4 ($(wc -c <"$OUT_DIR/sprint-retro-hero${TAG}.mp4" | tr -d ' ') bytes)"
 echo "export-sprint-retro-hero: wrote $OUT_DIR/sprint-retro-hero-poster${TAG}.png"
+
+# A budget that only prints is not a budget. Every rung above is a retry;
+# this is the refusal — an over-ceiling gif goes on the README and the
+# landing, and nothing downstream weighs it. It comes after the poster on
+# purpose: the mp4 and the poster are good bytes whatever the gif weighs.
+if (( $(size_bytes) > MAX_BYTES )); then
+  echo "export-sprint-retro-hero: gif $(size_bytes) bytes still > ${MAX_BYTES} after every rung." >&2
+  command -v gifsicle >/dev/null || echo "  gifsicle is not on PATH — 'brew install gifsicle' recovers ~4% and is the next rung." >&2
+  echo "  The mp4 and the poster above are written and usable; the gif is not." >&2
+  echo "  Shorten the take's beats, or add a rung (lower fps before width — MEDIA.md)." >&2
+  exit 4
+fi

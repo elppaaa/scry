@@ -12,6 +12,12 @@ test that had been failing since the v0.22.0 heading appeared went with
 them. `gadak doctor` still reports a leftover `~/.scry` directory, because
 that stays true ([GDK-1143]).
 
+**The retro screen speaks Korean and Japanese.** The Korean copy carried a
+sentence whose subject could not do its verb, a lagging-and-leading framing the
+English line never made, and two names for one number; the Japanese hint ended
+two sentences on the same predicate. Every one of them was rewritten against
+what the English says ([GDK-1848]).
+
 ## v0.22.0 — 2026-09-13
 
 **A self-hosted Jira is an origin type.**
@@ -1690,3 +1696,4 @@ priority sorting keyed on `priority_rank`.
 [GDK-1835]: https://gadak.dev/backlog/#/?ks=GDK-1835
 [GDK-1837]: https://gadak.dev/backlog/#/?ks=GDK-1837
 [GDK-1839]: https://gadak.dev/backlog/#/?ks=GDK-1839
+[GDK-1848]: https://gadak.dev/backlog/#/?ks=GDK-1848

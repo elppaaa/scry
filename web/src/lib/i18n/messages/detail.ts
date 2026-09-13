@@ -1079,12 +1079,12 @@ export const detail = {
    */
   'retro.sentence': {
     en: 'Closed {closed} ({unplanned} unplanned), reopened {reopened}, oldest in progress {age}.',
-    ko: '닫힌 것 {closed}(계획 외 {unplanned}), 되돌아온 것 {reopened}, 가장 오래된 진행 중 {age}.',
+    ko: '완료 {closed}(계획 외 {unplanned}), 되돌아온 것 {reopened}, 가장 오래된 진행 중 {age}.',
     ja: '完了 {closed}（計画外 {unplanned}）、戻ってきたもの {reopened}、最も古い進行中 {age}。',
   },
   'retro.sentenceSprint': {
     en: 'Closed {closed} ({unplanned} unplanned), reopened {reopened}, oldest in progress {age}, added after sprint start {added}.',
-    ko: '닫힌 것 {closed}(계획 외 {unplanned}), 되돌아온 것 {reopened}, 가장 오래된 진행 중 {age}, 스프린트 시작 후 들어온 것 {added}.',
+    ko: '완료 {closed}(계획 외 {unplanned}), 되돌아온 것 {reopened}, 가장 오래된 진행 중 {age}, 스프린트 시작 후 들어온 것 {added}.',
     ja: '完了 {closed}（計画外 {unplanned}）、戻ってきたもの {reopened}、最も古い進行中 {age}、スプリント開始後に入ったもの {added}。',
   },
   /*
@@ -1097,19 +1097,19 @@ export const detail = {
    */
   'retro.sentenceNoReopen': {
     en: 'Closed {closed} ({unplanned} unplanned), oldest in progress {age}.',
-    ko: '닫힌 것 {closed}(계획 외 {unplanned}), 가장 오래된 진행 중 {age}.',
+    ko: '완료 {closed}(계획 외 {unplanned}), 가장 오래된 진행 중 {age}.',
     ja: '完了 {closed}（計画外 {unplanned}）、最も古い進行中 {age}。',
   },
   'retro.sentenceSprintNoReopen': {
     en: 'Closed {closed} ({unplanned} unplanned), oldest in progress {age}, added after sprint start {added}.',
-    ko: '닫힌 것 {closed}(계획 외 {unplanned}), 가장 오래된 진행 중 {age}, 스프린트 시작 후 들어온 것 {added}.',
+    ko: '완료 {closed}(계획 외 {unplanned}), 가장 오래된 진행 중 {age}, 스프린트 시작 후 들어온 것 {added}.',
     ja: '完了 {closed}（計画外 {unplanned}）、最も古い進行中 {age}、スプリント開始後に入ったもの {added}。',
   },
   'retro.actions.title': { en: 'Decided last time', ko: '지난번에 정한 것', ja: '前回決めたこと' },
   'retro.actions.hint': {
     en: 'Issues labelled retro-action stand here, with the number they named then and now.',
-    ko: 'retro-action 라벨을 단 이슈가 여기 섭니다. 그때 가리킨 수와 지금 수가 함께 보입니다.',
-    ja: 'retro-action ラベルを付けた課題がここに並びます。そのとき指した数と今の数が並びます。',
+    ko: 'retro-action 라벨이 붙은 이슈가 여기 모입니다. 그때 짚은 숫자와 지금 숫자를 나란히 보여줍니다.',
+    ja: 'retro-action ラベルの付いた課題がここに並びます。そのとき挙げた数字と今の数字を並べて表示します。',
   },
   'retro.actions.thenNow': { en: 'then {then} → now {now}', ko: '그때 {then} → 지금 {now}', ja: 'そのとき {then} → 今 {now}' },
   'retro.aging.title': { en: 'Aging work in progress', ko: '진행 중인 일의 나이', ja: '進行中の仕事の古さ' },
@@ -1123,17 +1123,17 @@ export const detail = {
   'retro.surprise.reversal': { en: 'went back and forth', ko: '상태를 오갔다', ja: 'ステータスを行き来した' },
   'retro.surprise.added_after_start': { en: 'joined after the start', ko: '시작한 뒤 들어왔다', ja: '開始後に入ってきた' },
   'retro.surprise.carried': { en: 'carried over', ko: '넘어왔다', ja: '持ち越された' },
-  'retro.closed.title': { en: 'What closed', ko: '닫힌 것', ja: '完了したもの' },
+  'retro.closed.title': { en: 'What closed', ko: '완료된 것', ja: '完了したもの' },
   'retro.closed.byType': { en: 'By type', ko: '유형별', ja: '種類別' },
   'retro.closed.byEpic': { en: 'By epic', ko: '에픽별', ja: 'エピック別' },
   'retro.closed.noEpic': { en: '(no epic)', ko: '(에픽 없음)', ja: '(エピックなし)' },
   'retro.closed.unplanned': { en: 'Unplanned {n}', ko: '계획 외 {n}', ja: '計画外 {n}' },
   'retro.closed.cycle': { en: 'Cycle time of each', ko: '하나하나의 사이클 타임', ja: '一件ごとのサイクルタイム' },
   'retro.closed.clipped': { en: '{n} above the top', ko: '위쪽 밖 {n}개', ja: '上端の外に {n}件' },
-  'retro.closed.none': { en: 'Nothing closed in this window.', ko: '이 구간에 닫힌 것이 없습니다.', ja: 'この区間に完了したものはありません。' },
-  'retro.seen.title': { en: 'Seen and moved', ko: '본 것과 움직인 것', ja: '見たものと動いたもの' },
-  'retro.seen.notMoved': { en: 'Opened, never moved {n}', ko: '열었지만 안 움직인 것 {n}', ja: '開いたが動かなかったもの {n}' },
-  'retro.moved.notSeen': { en: 'Moved, never opened {n}', ko: '움직였지만 안 본 것 {n}', ja: '動いたが見ていないもの {n}' },
+  'retro.closed.none': { en: 'Nothing closed in this window.', ko: '이 구간에 완료된 것이 없습니다.', ja: 'この区間に完了したものはありません。' },
+  'retro.seen.title': { en: 'Seen and moved', ko: '본 이슈와 움직인 이슈', ja: '見たものと動いたもの' },
+  'retro.seen.notMoved': { en: 'Opened, never moved {n}', ko: '열어봤지만 안 움직인 이슈 {n}', ja: '開いたが動かなかったもの {n}' },
+  'retro.moved.notSeen': { en: 'Moved, never opened {n}', ko: '움직였지만 안 본 이슈 {n}', ja: '動いたが見ていないもの {n}' },
   'retro.table.title': { en: 'Every number', ko: '숫자 표 전체', ja: '数値表のすべて' },
   'retro.table.show': { en: 'Show', ko: '펼치기', ja: '開く' },
   'retro.table.hide': { en: 'Hide', ko: '접기', ja: '畳む' },
@@ -1146,12 +1146,12 @@ export const detail = {
   },
   'retro.explain.aging.why': {
     en: 'Cycle time is what finished work already cost. Age is the one figure you can still change.',
-    ko: '끝난 일의 사이클 타임은 뒤늦은 지표이고, 나이는 아직 손댈 수 있는 유일한 앞선 지표입니다.',
+    ko: '사이클 타임은 이미 끝난 일이 치른 값입니다. 나이는 아직 바꿀 수 있는 유일한 숫자입니다.',
     ja: '終わった仕事のサイクルタイムは後追いの指標です。古さは今からまだ動かせる唯一の指標です。',
   },
   'retro.explain.aging.how': {
     en: 'The bars past the p85 line are next week\u2019s first look. If the line itself drifts right, flow has slowed.',
-    ko: 'p85 선을 넘은 막대가 다음 주에 먼저 볼 것입니다. 선 자체가 오른쪽으로 밀리면 흐름이 느려진 것입니다.',
+    ko: 'p85 선을 넘은 막대부터 다음 주에 봅니다. 선 자체가 오른쪽으로 밀리면 흐름이 느려진 것입니다.',
     ja: 'p85 の線を越えた棒が来週まず見るものです。線そのものが右へ動いたなら、流れが遅くなっています。',
   },
   'retro.explain.events.what': {

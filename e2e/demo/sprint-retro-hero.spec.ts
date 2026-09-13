@@ -5,8 +5,9 @@
  * what that sprint is in a line of its own: name, dates, days left, a
  * progress bar counted over the whole sprint (GDK-1709). Then the retro,
  * from the palette: the running bucket summarised above the table, a
- * sparkline on every row, the cut switched to sprints, and one number
- * clicked open into the issues behind it (GDK-1712, GDK-1693).
+ * sparkline on every row, the cut switched to sprints, the table scrolled
+ * into frame, and one number clicked open into the issues behind it
+ * (GDK-1712, GDK-1693).
  *
  * No hover beats. Playwright's recording carries no cursor, so a beat
  * whose whole content is a tooltip records as a still — the first take
@@ -120,16 +121,28 @@ test.describe('sprint + retro hero', () => {
     await expect(page.getByTestId('retro-summary-title')).toContainText(T['retro.thisSprint'])
     await beat(page, 900)
     await page.getByTestId('retro-table-toggle').click()
-    await expect(page.getByTestId('retro-table')).toBeVisible()
+    const table = page.getByTestId('retro-table')
+    await expect(table).toBeVisible()
     await expect(page.getByTestId('retro-week')).toHaveCount(2)
     await expect(page.getByTestId('retro-week').last()).toContainText(T['retro.thisSprint'])
     await expect(page.getByTestId('retro-summary-title')).toContainText(T['retro.thisSprint'])
+    // Visible is not in frame. The table unfolds at the foot of a long
+    // report, so toBeVisible() passes on a header line clipped by the
+    // viewport edge and the numbers never enter the take — all three vision
+    // judges of the 0.22 release cut reported the same thing, and the last
+    // beat's cause ("a number is pressed, its issues stand") went with them.
+    // Scroll it in and prove a cell is on screen before the click.
+    await table.scrollIntoViewIfNeeded()
+    await expect(page.getByTestId('retro-cell').first()).toBeInViewport()
     await beat(page, 1800)
 
-    // Beat 4 — a number is a door. The in-progress cell of the running
-    // sprint opens the issues behind it, as a keys view (the fuller list of
-    // the two doors in the demo mirror).
-    const cell = page.locator('[data-testid="retro-cell"][data-metric="in progress"]').last()
+    // Beat 4 — a number is a door. The closed cell of the running sprint,
+    // not the in-progress one: "in progress" is defined as the count at the
+    // bucket's end, which for the running sprint is now — the whole pool's
+    // 144, standing under a header that says Sprint 42 beside a board that
+    // said 4. Closed is the bucket's own number, so the door agrees with the
+    // column it hangs under (GDK-1846).
+    const cell = page.locator('[data-testid="retro-cell"][data-metric="closed"]').last()
     await expect(cell).toBeVisible()
     await cell.click()
     await expect(view).toBeHidden()

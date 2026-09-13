@@ -13,6 +13,8 @@ What changes, by id family (see extract.py for the ids):
                            summary inside issues_raw.raw so a re-ingest agrees
   issue:<KEY>:desc:<n>     the text node in issues_raw.description_adf; then
                            items.body_text is regenerated from the translated tree
+  issue:<KEY>:reopen_reason  issues_raw.reopen_reason — a plain column the retro
+                           prints beside a translated title
   comment:<KEY>:<id>:<n>   comments.body_adf node; comments.body_text regenerated
   page:<KEY>:title         items.title
   page:<KEY>:body:<n>      pages.body_adf node; pages.excerpt regenerated
@@ -93,8 +95,9 @@ def main() -> int:
     for k, v in tr.items():
         p = k.split(":")
         if p[0] == "issue":
-            d = issues.setdefault(p[1], {"title": None, "nodes": {}})
+            d = issues.setdefault(p[1], {"title": None, "nodes": {}, "reopen_reason": None})
             if p[2] == "title": d["title"] = v
+            elif p[2] == "reopen_reason": d["reopen_reason"] = v
             else: d["nodes"][int(p[3])] = v
         elif p[0] == "comment":
             # The comment id itself carries a colon ("jira:10358"), so the
@@ -124,6 +127,8 @@ def main() -> int:
             new_adf, plain = set_text_nodes(adf, d["nodes"])
             con.execute("UPDATE issues_raw SET description_adf = ? WHERE item_id = ?", (new_adf, item_id))
             con.execute("UPDATE items SET body_text = ? WHERE id = ?", (plain, item_id))
+        if d["reopen_reason"] is not None:
+            con.execute("UPDATE issues_raw SET reopen_reason = ? WHERE item_id = ?", (d["reopen_reason"], item_id))
         n_issue += 1
     for (key, cid), nodes in comments.items():
         row = con.execute("SELECT c.item_id, c.body_adf FROM comments c JOIN items it ON it.id = c.item_id WHERE it.key = ? AND c.id = ?", (key, cid)).fetchone()

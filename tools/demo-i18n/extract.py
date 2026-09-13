@@ -8,6 +8,7 @@ Ids are stable paths into the fixture, so a translation file keyed the same
 way applies without any English-string matching:
   issue:<KEY>:title                    items.title of an issue
   issue:<KEY>:desc:<n>                 nth text node (document order) of issues_raw.description_adf
+  issue:<KEY>:reopen_reason            issues_raw.reopen_reason (a column, not ADF)
   comment:<KEY>:<comment_id>:<n>       nth text node of comments.body_adf
   page:<item_key>:title                items.title of a wiki page
   page:<item_key>:body:<n>             nth text node of pages.body_adf
@@ -51,6 +52,15 @@ def extract(db: Path) -> dict:
         s[f"issue:{key}:title"] = title or ""
         for n, t in enumerate(text_nodes(desc)):
             s[f"issue:{key}:desc:{n}"] = t
+    # The reopen reason is a derived column, not a document — and the retro
+    # prints it beside a translated title, so an untranslated one puts an
+    # English sentence in the middle of a ko/ja report (GDK, 2026-09-13:
+    # three vision judges called the ja take a blocker for exactly this).
+    # A column is its own id family: every other issue: id ends in a node
+    # index, and apply.py splits on that.
+    for key, reason in con.execute(
+        "SELECT key, reopen_reason FROM issues_raw WHERE reopen_reason IS NOT NULL AND reopen_reason != '' ORDER BY key"):
+        s[f"issue:{key}:reopen_reason"] = reason
     for key, cid, adf in con.execute(
         "SELECT it.key, c.id, c.body_adf FROM comments c JOIN items it ON it.id = c.item_id ORDER BY it.key, c.created_at, c.id"):
         for n, t in enumerate(text_nodes(adf)):
