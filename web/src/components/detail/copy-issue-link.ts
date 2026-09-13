@@ -29,17 +29,26 @@ function httpIssueLink(key: string): string {
   return `${location.origin}${prefix}/#/?issue=${key}`
 }
 
-/** The clipboard text for a key — origin page first, then the app links. */
+/** The clipboard text for a key — the origin's page when there is one,
+ *  the app links only where there is not. */
 export function issueLinkText(key: string): string {
   // The origin's page for this key — the address that survives a paste into
   // chat. Same resolution as the detail key anchor (issueOriginUrl: the row's
   // stored url, else the site's /browse/KEY); null on the built-in tracker,
   // where the app links are the only shareable address.
+  //
+  // GDK-1858: when there is one, it is the whole clipboard. GDK-1290 put it
+  // on line one and kept the app links below it, so a paste into Slack still
+  // carried a gadak:// line nobody there can open — and the toast that says
+  // "{tracker} link copied" was describing only the first line of what it
+  // wrote. The phone already drew this boundary (mobile/src/lib/share.ts
+  // refuses a non-http url outright); the desk now draws the same one.
   const originUrl = issueOriginUrl(key)
-  // Desktop has no shareable http origin (in-process webview). Serve/hosted
-  // copy both lines so a paste into Slack still works without the app.
-  const appText = isDesktop() ? gadakIssueLink(key) : `${gadakIssueLink(key)}\n${httpIssueLink(key)}`
-  return originUrl ? `${originUrl}\n${appText}` : appText
+  if (originUrl) return originUrl
+  // No origin page — the built-in tracker, and a Linear row the mirror has
+  // no url for. Desktop has no shareable http origin (in-process webview);
+  // serve/hosted copy both lines so a paste still works without the app.
+  return isDesktop() ? gadakIssueLink(key) : `${gadakIssueLink(key)}\n${httpIssueLink(key)}`
 }
 
 export async function copyIssueLink(key: string): Promise<void> {

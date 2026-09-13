@@ -285,8 +285,8 @@ export const detail = {
     ko: '복사됨',
     ja: 'コピーしました',
   },
-  // The paste's first line is the origin's own page for the key, so the
-  // toast names the tracker that page belongs to. {tracker} is a brand name
+  // The paste is the origin's own page for the key (GDK-1858), so the toast
+  // names the tracker that page belongs to. {tracker} is a brand name
   // (Jira/Linear) and passes through untranslated. The built-in tracker has
   // no origin page and keeps detail.linkCopied above.
   'detail.originLinkCopied': {

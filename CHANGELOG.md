@@ -12,11 +12,19 @@ workspace to read and nothing else. gadak is in the official MCP Registry under
 `io.github.midagedev/gadak`, and a tag now builds both from its own published
 archives ([GDK-1822]).
 
-**The rename compatibility reached its sunset.** gadak stopped answering
-to its old name: the `SCRY_*` environment variables are no longer read, and a
-`~/.scry` home, a `scry.db`, the old binary-name hint and the `scry:`
-localStorage migrations are all gone. `gadak doctor` still reports a leftover
-`~/.scry` directory, because that stays true ([GDK-1143]).
+**gadak takes its own name and its own address off surfaces they do not
+belong on.** It stopped answering to its old name: the `SCRY_*` environment
+variables are no longer read, and a `~/.scry` home, a `scry.db`, the old
+binary-name hint and the `scry:` localStorage migrations are all gone. `gadak
+doctor` still reports a leftover `~/.scry` directory, because that stays true
+([GDK-1143]). The detail header's copy-link does the same thing one surface
+over: on a Jira or Linear workspace it puts that issue's own page on the
+clipboard and nothing else. It used to append a `gadak://` deep link under
+that page — and, on a served workspace, an http line under that — so every
+paste into chat carried an address only the sender's machine could open, while
+the toast said a Jira link had been copied ([GDK-1858]). A workspace on the
+built-in tracker has no origin page and keeps copying the app links: there,
+they are the address.
 
 **The Korean and the Japanese read like they were written that way.** The retro
 screen's Korean carried a sentence whose subject could not do its verb, a
@@ -1576,3 +1584,4 @@ priority sorting keyed on `priority_rank`.
 [GDK-1848]: https://gadak.dev/backlog/#/?ks=GDK-1848
 [GDK-1853]: https://gadak.dev/backlog/#/?ks=GDK-1853
 [GDK-1854]: https://gadak.dev/backlog/#/?ks=GDK-1854
+[GDK-1858]: https://gadak.dev/backlog/#/?ks=GDK-1858

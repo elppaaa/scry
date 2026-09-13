@@ -284,14 +284,17 @@ test.describe('detail', () => {
   })
 
   /*
-   * GDK-1290: the paste's first line is the origin's own page for the key —
-   * the Jira /browse/ URL a teammate can open — followed by the app links, so
-   * a paste into chat still opens gadak. The fixture serves site
-   * https://nimbus.example.com (e2e/serve.sh), so this is the connected-Jira
-   * shape; copy is asserted against the real clipboard, not the toast alone
-   * (GDK-178: a toast that lies is worse than a button that fails aloud).
+   * GDK-1858: the paste is the origin's own page for the key and nothing
+   * else — the Jira /browse/ URL a teammate can open. GDK-1290 put that URL
+   * on line one but kept the gadak:// and http lines under it, so every
+   * paste into chat carried an address only this machine can open. The
+   * fixture serves site https://nimbus.example.com (e2e/serve.sh), so this
+   * is the connected-Jira shape; copy is asserted against the real
+   * clipboard, not the toast alone (GDK-178: a toast that lies is worse
+   * than a button that fails aloud) — and the toast's "Jira link copied"
+   * is now the whole truth about the payload, which is the point.
    */
-  test('copy-link writes the origin URL first, then the gadak:// and http forms', async ({
+  test('copy-link writes the origin URL and nothing else', async ({
     page,
   }) => {
     const errors = attachConsoleErrors(page)
@@ -313,22 +316,25 @@ test.describe('detail', () => {
     await expect(copy).toBeVisible()
     await copy.click()
 
-    const origin = new URL(page.url()).origin
-    const want = `https://nimbus.example.com/browse/NMB-110\ngadak://view?issue=NMB-110\n${origin}/#/?issue=NMB-110`
+    const want = 'https://nimbus.example.com/browse/NMB-110'
     await expect.poll(async () => page.evaluate(() => navigator.clipboard.readText())).toBe(want)
 
-    // The toast names what line one is: the tracker whose page was copied.
+    // The toast names the tracker whose page was copied — and that page is
+    // the entire clipboard, so no second line contradicts it.
     await expect(page.getByTestId('toast')).toContainText('Jira link copied')
 
     expect(errors, `console errors:\n${errors.join('\n')}`).toEqual([])
   })
 
   /*
-   * GDK-1290, the other side: a workspace with no origin page — the built-in
-   * tracker's serve sends jiraBaseUrl "" (originbind seeds cfg.Site = ""),
-   * originType "gadak", workspaceKind "standalone" — copies exactly what it
-   * copied before: the deep link first, then the serve http line. No first
-   * line is invented for it, and the toast stays the plain "Copied".
+   * GDK-1290, the other side, and the regression guard for GDK-1858: a
+   * workspace with no origin page — the built-in tracker's serve sends
+   * jiraBaseUrl "" (originbind seeds cfg.Site = ""), originType "gadak",
+   * workspaceKind "standalone" — copies exactly what it copied before: the
+   * deep link first, then the serve http line. Those app links are the only
+   * shareable address there, so dropping them the way the origin branch
+   * dropped them would leave nothing to paste. No origin line is invented
+   * for it either, and the toast stays the plain "Copied".
    */
   test('copy-link without an origin page keeps the gadak:// and http forms', async ({ page }) => {
     const errors = attachConsoleErrors(page)
@@ -534,11 +540,9 @@ test.describe('detail — Linear origin (GDK-1149)', () => {
     await expect(anchor).toHaveAttribute('href', LINEAR_URL)
     await expect(anchor).toHaveAttribute('title', 'Open in Linear')
 
-    // Copy-link: Linear page first, then the app links; toast names Linear.
+    // Copy-link: the Linear page alone (GDK-1858); toast names Linear.
     await panel.getByTestId('issue-copy-link').click()
-    const origin = new URL(page.url()).origin
-    const want = `${LINEAR_URL}\ngadak://view?issue=NMB-110\n${origin}/#/?issue=NMB-110`
-    await expect.poll(async () => page.evaluate(() => navigator.clipboard.readText())).toBe(want)
+    await expect.poll(async () => page.evaluate(() => navigator.clipboard.readText())).toBe(LINEAR_URL)
     await expect(page.getByTestId('toast')).toContainText('Linear link copied')
 
     // `o` with the detail open goes to the same page (serve: window.open).
