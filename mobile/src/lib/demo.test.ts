@@ -74,8 +74,16 @@ const DEMO_BOOTSTRAP: BootstrapResponse = {
       comment_count: 0,
       reopen_count: 0,
       duedate: null,
+      labels: ['demo-label'],
+      components: [],
+      fix_versions: [],
+      parent_key: null,
+      epic_key: null,
     },
   ],
+  // The demo site's own discovered fields (GDK-1870): the contamination
+  // contract below proves they stay in RAM and never reach a host namespace.
+  field_specs: [{ alias: 'cf_demo', label: 'Demo field', role: 'plain' }],
 }
 
 const REAL_BOOTSTRAP: BootstrapResponse = {
@@ -260,6 +268,10 @@ describe('demo session contamination gates', () => {
     await enterDemo()
     expect(app.demo).toBe(true)
     expect(app.phase).toBe('paired')
+    // The demo's field specs are read into RAM (GDK-1870) — the Fields
+    // section works in the demo — while the byte comparison below is what
+    // proves they did not reach a host's cache key.
+    expect(app.fieldSpecs.map((f) => f.alias)).toEqual(['cf_demo'])
     // Browse activity that has persistence-capable side paths.
     setScope('demo-scope')
     rememberSearch('demo query')

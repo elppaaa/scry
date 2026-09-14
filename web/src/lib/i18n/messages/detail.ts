@@ -31,6 +31,14 @@ export const detail = {
     ko: '첨부',
     ja: '添付',
   },
+  // The phone's Fields section heading (GDK-1870) — every field the mirror
+  // holds for the issue, under one label. The desk has the same rows but no
+  // heading of its own for them yet.
+  'detail.fields': {
+    en: 'Fields',
+    ko: '필드',
+    ja: 'フィールド',
+  },
   /* ── Commands in the body, and the shell they go to (GDK-1162/GDK-1164) ──
      "Place", never "run". The button puts a line someone else wrote at a
      prompt; the Enter that runs it is a keystroke a person makes, and the

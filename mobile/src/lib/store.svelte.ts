@@ -30,6 +30,7 @@ import {
 import { tokenGet, tokenSet, tokenDel } from './secure'
 import {
   CACHE_KEY,
+  FIELD_SPECS_KEY,
   HOST_SCOPED_KEYS,
   META_KEY,
   PAGES_KEY,
@@ -46,6 +47,7 @@ import { serveTokenOf, terminalTokenOf, OfferScopeError, type OfferToken } from 
 import type {
   BootstrapResponse,
   CredentialDoc,
+  FieldSpec,
   FlowSummary,
   IssueLite,
   Me,
@@ -60,8 +62,8 @@ import type {
   VisitedRow,
 } from './types'
 
-// The seven host-scoped session keys
-// (META/TERM_META/CACHE/VIEWS/PAGES/SPRINTS/SCOPE)
+// The nine host-scoped session keys
+// (META/TERM_META/CACHE/VIEWS/PAGES/SPRINTS/SCOPE/DRAFTS/FIELD_SPECS)
 // are imported from host-keys.ts (GDK-1097 B2): the module that namespaces
 // them owns their names. UNPAIRED_KEY is a device-wide verdict and
 // RECENTS_KEY a device-wide history — neither belongs to a host.
@@ -121,6 +123,14 @@ export const app = $state({
    * only here.
    */
   sprints: [] as SprintRow[],
+  /**
+   * The site's discovered custom fields (bootstrap `field_specs`, GDK-1870)
+   * — the Fields section's extra rows, in the order the site's own catalog
+   * lists them. Empty on a serve older than the field, on a site that
+   * configured none, and offline before the first answer; all three mean the
+   * same thing to Detail: the system rows it can derive, and nothing else.
+   */
+  fieldSpecs: [] as FieldSpec[],
   /**
    * Personal feed (GET issues/feed/), the glance strip's data (GDK-871).
    * Null = no cycle has answered yet, or unpaired — the strip is absent,
@@ -480,6 +490,13 @@ async function enterPaired(meta: PairMeta, token: string): Promise<void> {
   if (cachedSprints) {
     app.sprints = cachedSprints.sprints ?? []
   }
+  // Cached beside the snapshot for the same reason (GDK-1870): the rows it
+  // labels are restored on the first frame, so a Detail opened offline shows
+  // the site's own field names instead of raw aliases until sync answers.
+  const cachedSpecs = readJSON<{ specs: FieldSpec[] }>(scopedKey(FIELD_SPECS_KEY))
+  if (cachedSpecs) {
+    app.fieldSpecs = cachedSpecs.specs ?? []
+  }
   const scope = readJSON<string>(scopedKey(SCOPE_KEY))
   // A scope id an older build wrote may name a row that no longer exists
   // (GDK-1542): domain.ts owns that mapping, not this reader.
@@ -533,6 +550,11 @@ export async function sync(): Promise<void> {
       // "nothing to learn from" — the desktop's own default takes over.
       app.flow = res.body.flow ?? null
       setFlow(app.flow)
+      // The Fields section's labels (GDK-1870). Its own document, not part of
+      // the snapshot: the snapshot is etagged and a 304 must keep the specs
+      // that were already restored, which it does because nothing here runs.
+      app.fieldSpecs = res.body.field_specs ?? []
+      writeJSON(scopedKey(FIELD_SPECS_KEY), { specs: app.fieldSpecs })
       etag = res.etag
       writeJSON(scopedKey(CACHE_KEY), {
         etag,
@@ -829,6 +851,7 @@ function resetSessionState(): void {
   app.sources = []
   app.pages = []
   app.sprints = []
+  app.fieldSpecs = []
   app.feed = null
   app.scopeId = SCOPE_MY_WORK
   app.loaded = false
@@ -879,6 +902,10 @@ export async function enterDemo(): Promise<void> {
     const res = await request<BootstrapResponse>('issues/bootstrap/')
     if (res.body) {
       app.issues = res.body.issues
+      // RAM only, like every other demo row: writeJSON here would put demo
+      // labels in a real host's namespace (demo.test.ts's contamination
+      // contract).
+      app.fieldSpecs = res.body.field_specs ?? []
       app.loaded = true
       app.lastSyncAt = new Date()
     } else {

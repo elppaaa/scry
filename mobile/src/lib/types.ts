@@ -92,7 +92,26 @@ export type IssueLite = Pick<
   | 'sprint_id'
   | 'sprint_name'
   | 'sprint_state'
+  // The Fields section's system half (GDK-1870). All five have ridden the
+  // bootstrap payload since v0.1 and the phone simply did not read them.
+  // Non-optional on the owner, so the annotation over the serve's golden
+  // pins them; a snapshot an older phone cached still predates them, which
+  // is why lib/fields.ts coalesces every one of them before it reads.
+  | 'labels'
+  | 'components'
+  | 'fix_versions'
+  | 'parent_key'
+  | 'epic_key'
 >
+
+/**
+ * One discovered custom field (GDK-1870) — the owner's shape as-is. `alias`
+ * is the top-level key the issue row carries the value under (the server
+ * spreads them, they are not nested under a `custom` object); `label` is the
+ * Jira display name in the account's language, used as the row label when
+ * the shared catalog has no word of its own for the alias.
+ */
+export type { FieldSpec } from '../../../web/src/lib/types'
 
 /**
  * GET `issues/sprints/` (GDK-1656) — the owner's rows as-is (GDK-1867). The
@@ -109,7 +128,10 @@ export interface Me {
 }
 
 /**
- * GET `bootstrap/` — the four fields the phone drinks. `flow` is the learned
+ * GET `bootstrap/` — the five fields the phone drinks. `field_specs` is the
+ * site's discovered custom fields (GDK-1870), absent on older serves and on
+ * a site with none — either way the Fields section falls back to the system
+ * rows it can always derive. `flow` is the learned
  * stale threshold (p85 cycle time), sent only when the workspace has a
  * distribution to learn from and no threshold is set — the server owns that
  * precedence; absent → the row age falls back to the shared default
@@ -121,7 +143,7 @@ export interface Me {
  */
 export type BootstrapResponse = Pick<
   WebBootstrapResponse,
-  'server_time' | 'sync_version' | 'flow'
+  'server_time' | 'sync_version' | 'flow' | 'field_specs'
 > & {
   issues: IssueLite[]
 }

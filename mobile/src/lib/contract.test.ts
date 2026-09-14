@@ -855,6 +855,20 @@ describe('GDK-803 — the phone decodes the serve’s own goldens', () => {
     expect(nmb1.comment_count).toBe(1)
     expect(nmb1.started_at).toBe('2026-07-03T00:00:00.000Z')
     expect(nmb1.status_changed_at).toBe('2026-07-03T00:00:00.000Z')
+    // The Fields section's system half (GDK-1870). These are annotations
+    // first: before the Pick was widened, naming `labels` here was a
+    // `npm run check` error — "Property 'labels' does not exist on type
+    // 'IssueLite'" — which is the pin. The values below say the serve's own
+    // golden carries them filled and empty, the two cases fieldRows splits on.
+    expect(nmb1.labels).toEqual(['batch'])
+    expect(nmb1.components).toEqual(['api'])
+    expect(nmb1.fix_versions).toEqual([])
+    expect(nmb1.parent_key).toBeNull()
+    expect(nmb1.epic_key).toBeNull()
+    // Discovered custom fields ride the same response. The contract fixture
+    // configures none, so the phone's fallback — system rows only — is what
+    // this golden pins; the filled case is lib/fields.test.ts.
+    expect(bootstrap.field_specs).toEqual([])
     // Null is a value on the wire, not absence: an unassigned reporter (and
     // on NMA-9 an unassigned assignee) arrive as null, and the phone's
     // fallbacks key on exactly that.

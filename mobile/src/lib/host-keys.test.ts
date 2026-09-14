@@ -41,8 +41,10 @@ describe('hostKey — composition', () => {
   // An inventory, not a threshold: a session document that is not listed
   // here is a document two hosts would share. GDK-1863 added the seventh (gadak.drafts.v1) and GDK-1867 the eighth
   // (gadak.sprints, the sprint line's rows) — the sprint of one workspace
-  // must not name the sprint of another.
-  it('scopes exactly the eight session documents', () => {
+  // must not name the sprint of another. GDK-1870 added the ninth
+  // (gadak.field-specs): two sites configure different custom fields, and an
+  // alias discovered on one names nothing on the other.
+  it('scopes exactly the nine session documents', () => {
     expect([...HOST_SCOPED_KEYS].sort()).toEqual(
       [
         'gadak.pairing.meta',
@@ -53,6 +55,7 @@ describe('hostKey — composition', () => {
         'gadak.sprints',
         'gadak.issues.scope',
         'gadak.drafts.v1',
+        'gadak.field-specs',
       ].sort(),
     )
   })

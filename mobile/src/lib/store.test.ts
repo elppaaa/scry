@@ -59,6 +59,13 @@ function issue(over: Partial<IssueLite> & { issue_key: string }): IssueLite {
     comment_count: 0,
     reopen_count: 0,
     duedate: null,
+    // The Fields section's five (GDK-1870): required on the wire, so a
+    // fixture that omits them is not a row the phone could ever receive.
+    labels: [],
+    components: [],
+    fix_versions: [],
+    parent_key: null,
+    epic_key: null,
     ...over,
   }
 }

@@ -23,6 +23,7 @@
     getPriorities,
     searchUsers,
   } from '../lib/writes'
+  import { fieldRows } from '../lib/fields'
   import { keyboardInset } from '../lib/keyboard'
   import { clearDraft, loadDraft, saveDraft, type DraftKind } from '../lib/drafts'
   import { t, fieldLabel } from '../lib/i18n'
@@ -53,6 +54,15 @@
 
   let detail = $state<DetailResponse | null>(null)
   let detailError = $state<string | null>(null)
+
+  /*
+   * Every field the mirror holds for this row (GDK-1870, DESIGN.md §1).
+   * Decided by lib/fields.ts, not here: which rows exist, in what order and
+   * under which word is a contract pinned in vitest, and this screen only
+   * paints the answer. Empty — a row with no labels, no component, no parent
+   * — takes the whole section away rather than drawing an empty heading.
+   */
+  const fields = $derived(fieldRows(lite, app.fieldSpecs))
 
   let sheetOpen = $state(false)
   let transitions = $state<TransitionDoc[] | null>(null)
@@ -805,6 +815,27 @@
           <p class="none">{t('detail.noDescription')}</p>
         {/if}
 
+        {#if fields.length > 0}
+          <h3>{t('detail.fields')}</h3>
+          <div data-testid="detail-fields">
+            {#each fields as f (f.alias)}
+              {#if f.kind === 'key'}
+                <!-- A key is a place to go, so the row is the button and the
+                     44pt floor app.css puts on every button applies. -->
+                <button class="field" onclick={() => openIssue(String(f.value))}>
+                  <span class="f-label">{f.label}</span>
+                  <span class="f-key">{f.value}</span>
+                </button>
+              {:else}
+                <div class="field">
+                  <span class="f-label">{f.label}</span>
+                  <span class="f-value">{Array.isArray(f.value) ? f.value.join(', ') : f.value}</span>
+                </div>
+              {/if}
+            {/each}
+          </div>
+        {/if}
+
         {#if detail.linked_issues.length > 0}
           <h3>{t('detail.linked')}</h3>
           {#each detail.linked_issues as l (l.key + l.direction + l.type)}
@@ -1449,6 +1480,51 @@
     white-space: nowrap;
     font-size: var(--text-micro);
     color: var(--color-text-secondary);
+  }
+
+  /* Fields (GDK-1870). The linked-issue dialect one for one — same rule,
+     same gaps, same micro type — turned into a ledger pair: the field's name
+     on the left, what the issue carries on the right.
+
+     The value wraps, and that is the point of the round. Three fix versions
+     comma-joined do not fit 402px, and an ellipsis there would be the same
+     defect this section exists to close: the mirror holding something the
+     phone does not show. A second line is cheaper than a hidden value. */
+  .field {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    /* Every row takes the control floor, not only the key rows that are
+       buttons: the 2026-09-14 vision pass saw the three plain rows at half
+       the Parent row's pitch and read the section as two blocks. One
+       rhythm, and the tap target on the key rows is unchanged. */
+    min-height: var(--spacing-control);
+    gap: 12px;
+    padding: 6px 0;
+    text-align: left;
+    border-bottom: 1px solid var(--color-border-subtle);
+    min-width: 0;
+  }
+  .f-label {
+    flex: none;
+    font-size: var(--text-micro);
+    color: var(--color-text-muted);
+  }
+  .f-value {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: right;
+    overflow-wrap: anywhere;
+    font-size: var(--text-micro);
+    color: var(--color-text-secondary);
+  }
+  .f-key {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: var(--text-micro);
+    color: var(--color-accent-text);
   }
 
   .comment {
