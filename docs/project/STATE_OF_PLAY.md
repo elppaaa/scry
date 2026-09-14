@@ -4,7 +4,8 @@
 "what the docs describe" and "what actually exists right now", written so a fresh
 session can start work without re-deriving anything.
 
-Last updated: 2026-09-13 — main at v0.22.0, **the release where a self-hosted
+Last updated: 2026-09-14 — main at v0.22.1, a patch on v0.22.0 (a copied
+Jira link is the Jira link alone, GDK-1858), and v0.22.0 is **the release where a self-hosted
 Jira became an origin and a sprint became an object**: `gadak init --site
 <base-url> --server` binds Jira Server / Data Center with a personal access
 token and reads every shape Server sends as Server sends it; the mirror
@@ -142,7 +143,7 @@ notify-only (banner + brew/dmg), and releases deliberately ship no
 rebuilt around `query` with error echoes, the three pipe contracts written
 down (`issues_full` + RECIPES, `gadak sql` stdout, `views open --keys -`),
 personal-row export/import, brew renamed so `gadak` is the app cask, and the
-first live benchmark (`docs/BENCHMARKS.md`). Last tagged: v0.22.0.
+first live benchmark (`docs/BENCHMARKS.md`). Last tagged: v0.22.1.
 
 ## In one paragraph
 
