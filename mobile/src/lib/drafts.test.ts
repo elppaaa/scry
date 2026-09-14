@@ -133,29 +133,29 @@ describe('drafts — cap and eviction', () => {
   it(`keeps at most ${MAX_DRAFTS}, evicting the oldest by updatedAt`, () => {
     for (let i = 0; i < MAX_DRAFTS; i++) {
       vi.setSystemTime(new Date(Date.UTC(2026, 8, 14, 0, 0, i)))
-      saveDraft('comment', `GDK-${i}`, `text ${i}`)
+      saveDraft('comment', `NMB-${i}`, `text ${i}`)
     }
     expect(listDrafts()).toHaveLength(MAX_DRAFTS)
     // Touch NMA-0 so it is no longer the oldest — NMA-1 must go instead.
     vi.setSystemTime(new Date(Date.UTC(2026, 8, 14, 0, 1, 0)))
     saveDraft('comment', 'NMA-0', 'text 0 again')
     vi.setSystemTime(new Date(Date.UTC(2026, 8, 14, 0, 1, 1)))
-    saveDraft('comment', 'GDK-new', 'the 51st')
+    saveDraft('comment', 'NMB-new', 'the 51st')
     expect(listDrafts()).toHaveLength(MAX_DRAFTS)
     expect(loadDraft('comment', 'NMA-1')).toBeNull()
     expect(loadDraft('comment', 'NMA-0')).toBe('text 0 again')
-    expect(loadDraft('comment', 'GDK-new')).toBe('the 51st')
+    expect(loadDraft('comment', 'NMB-new')).toBe('the 51st')
   })
 
   it('the cap is one budget across kinds — a page draft evicts the oldest issue draft', () => {
     for (let i = 0; i < MAX_DRAFTS; i++) {
       vi.setSystemTime(new Date(Date.UTC(2026, 8, 14, 0, 0, i)))
-      saveDraft('comment', `GDK-${i}`, `text ${i}`)
+      saveDraft('comment', `NMB-${i}`, `text ${i}`)
     }
     vi.setSystemTime(new Date(Date.UTC(2026, 8, 14, 0, 2, 0)))
     saveDraft('page-comment', '491848', 'the page line')
     expect(listDrafts()).toHaveLength(MAX_DRAFTS)
-    expect(loadDraft('comment', 'GDK-0')).toBeNull() // the oldest went
+    expect(loadDraft('comment', 'NMB-0')).toBeNull() // the oldest went
     expect(loadDraft('page-comment', '491848')).toBe('the page line')
     expect(listDrafts()[0]).toMatchObject({ kind: 'page-comment', issueKey: '491848' })
   })
