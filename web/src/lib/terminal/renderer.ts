@@ -237,6 +237,17 @@ export type BehaviorTerminalRenderer = TerminalRenderer & {
    *  buffer), so this lands between the create response and the first
    *  replay byte — nothing is frozen at open. */
   applyBehavior(b: TerminalBehavior): void
+  /**
+   * The pane's width said three ways, for the debug attribute (GDK-1844).
+   *
+   * `cols` is what the PTY is told (the pane relays exactly this), and
+   * `screenWidth / cellWidth` is what the DOM renderer actually paints. A
+   * report of "the character at the fold vanished" is first of all a
+   * question of which of the three disagrees, and before this there was no
+   * way to ask it without a debugger: the 2026-09-15 round had to measure
+   * the painted width off a video frame to rule our side out.
+   */
+  metrics(): { cols: number; rows: number; cellWidth: number; screenWidth: number }
   /** Empties the screen and the scrollback. The pane calls this when it
    *  switches sessions (GDK-1153): the next session's ring replay is a
    *  complete scrollback of its own, so leaving the previous one above it
@@ -333,6 +344,26 @@ async function createXtermRenderer(): Promise<BehaviorTerminalRenderer> {
     applyBehavior(b: TerminalBehavior) {
       term.options.scrollback = b.scrollback
       term.options.cursorBlink = b.cursorBlink
+    },
+    metrics() {
+      // The cell size lives on the render service, which is internal API —
+      // read defensively so a version bump degrades to zeros rather than
+      // throwing inside a resize. The screen element is the painted grid
+      // (cols x cellWidth); term.element is the whole pane, which open()
+      // stretches to 100% and is therefore wider on purpose.
+      const core = (term as unknown as { _core?: { _renderService?: { dimensions?: unknown } } })
+        ._core
+      const dims = core?._renderService?.dimensions as
+        | { css?: { cell?: { width?: number } } }
+        | undefined
+      const cellWidth = dims?.css?.cell?.width ?? 0
+      const screen = term.element?.querySelector('.xterm-screen') as HTMLElement | null
+      return {
+        cols: term.cols,
+        rows: term.rows,
+        cellWidth,
+        screenWidth: screen?.getBoundingClientRect().width ?? 0,
+      }
     },
     reset() {
       term.reset()

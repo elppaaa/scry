@@ -21,7 +21,15 @@
 export const DEBUG_ATTRS_KEY = 'gadak_debug_attrs'
 
 /** Closed set: every debug attribute this app publishes is named here. */
-export type DebugAttrName = 'dashRowFetch' | 'detailCache' | 'lastDashOpen' | 'panelOpen'
+export type DebugAttrName =
+  | 'dashRowFetch'
+  | 'detailCache'
+  | 'lastDashOpen'
+  | 'panelOpen'
+  /** The terminal pane's width said three ways — `pty/xterm/rendered`
+   *  (GDK-1844). "The glyph at the fold vanished" is first the question of
+   *  which of the three disagrees, and the answer used to need a debugger. */
+  | 'termWidths'
 
 let enabledMemo: boolean | null = null
 

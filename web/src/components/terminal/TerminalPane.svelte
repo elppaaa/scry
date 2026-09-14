@@ -21,6 +21,7 @@
   import { createSkeletonGrace } from '../../lib/skeleton-grace.svelte'
   import { createRenderer, type BehaviorTerminalRenderer } from '../../lib/terminal/renderer'
   import { createTerminalDriver } from '../../lib/terminal/driver'
+  import { publishDebugAttr } from '../../lib/debug-attrs'
   import {
     createSession,
     classifyCreateFail,
@@ -152,6 +153,26 @@
       renderer?.fit()
       const cols = renderer?.cols || 80
       const rows = renderer?.rows || 24
+      // The one place the pane decides what the PTY will be told, so the one
+      // place that can say whether the three widths agree (GDK-1844). The
+      // thunk is the contract of publishDebugAttr: with debug attributes off
+      // — every production build that has not opted in — metrics() is never
+      // called, and this costs a boolean.
+      //
+      // A settle-time reading, not a live one. fit() moves cols
+      // synchronously while the screen element is laid out on a later frame,
+      // and driver.resizeNow returns before ever calling this when the
+      // socket is not live — so right after a resize the triple can carry a
+      // new cols against an old painted width, and between sessions it
+      // simply stands. Read it once the pane has settled (the gate waits out
+      // RESIZE_SETTLE_MS); a mismatch that survives that is the real thing.
+      publishDebugAttr('termWidths', () => {
+        const m = renderer?.metrics()
+        const rendered = m && m.cellWidth > 0 ? m.screenWidth / m.cellWidth : 0
+        // pty/xterm/rendered. Fractional rendered cols is the interesting
+        // case, so it is not rounded away.
+        return `${cols}/${m?.cols ?? 0}/${rendered.toFixed(2)}`
+      })
       return { cols, rows }
     }
 
