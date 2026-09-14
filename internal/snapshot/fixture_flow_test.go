@@ -344,9 +344,9 @@ func percentileOf(sorted []float64, p float64) float64 {
 	return sorted[i]
 }
 
-func scanFloats(t *testing.T, db *sql.DB, query string) []float64 {
+func scanFloats(t *testing.T, db *sql.DB, query string, args ...any) []float64 {
 	t.Helper()
-	rows, err := db.Query(query)
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -366,14 +366,49 @@ func scanFloats(t *testing.T, db *sql.DB, query string) []float64 {
 	return out
 }
 
+// fixtureNow is the instant the committed fixture was generated at — the
+// clock every age in it was shaped against (clone.go shapeFlow takes `now`).
+// The generator stamps that instant as the newest updated_at, so the fixture
+// carries its own "now" and a test that measures an age reads it from here,
+// never from the wall clock (GDK-1881: julianday of the wall clock made the static
+// fixture one day older per calendar day, and TestDemoFixtureWIPAgeIsDays
+// went red on 2026-09-14 when p50 crossed 10.0d with no commit touching it).
+func fixtureNow(t *testing.T, db *sql.DB) string {
+	t.Helper()
+	var now string
+	if err := db.QueryRow(`SELECT MAX(updated_at) FROM issues_raw`).Scan(&now); err != nil {
+		t.Fatal(err)
+	}
+	if now == "" {
+		t.Fatal("fixture has no updated_at to anchor on")
+	}
+	t.Logf("fixture now = %s (max updated_at)", now)
+	return now
+}
+
+// Contract 0 — no fixture contract measures against the wall clock. The
+// fixture is static; its ages are only meaningful against fixtureNow.
+func TestDemoFixtureTestsDoNotReadWallClock(t *testing.T) {
+	src, err := os.ReadFile("fixture_flow_test.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The needle is spelled in two halves so this test does not match itself.
+	needle := "julianday('" + "now')"
+	if n := strings.Count(string(src), needle); n != 0 {
+		t.Errorf("fixture_flow_test.go uses %s %d time(s); anchor on fixtureNow instead (GDK-1881)", needle, n)
+	}
+}
+
 // Contract 1 — work in progress is days old, not months. A couple of stale
 // ones stay: the aging chart exists to show them.
 func TestDemoFixtureWIPAgeIsDays(t *testing.T) {
 	db := fixtureDB(t)
+	now := fixtureNow(t, db)
 	ages := scanFloats(t, db, `
-		SELECT (julianday('now') - julianday(started_at))
+		SELECT (julianday(?) - julianday(started_at))
 		FROM issues_raw
-		WHERE status_category = 'inprogress' AND started_at IS NOT NULL AND started_at != ''`)
+		WHERE status_category = 'inprogress' AND started_at IS NOT NULL AND started_at != ''`, now)
 	if len(ages) < 50 {
 		t.Fatalf("in-progress sample = %d, want ≥50", len(ages))
 	}
