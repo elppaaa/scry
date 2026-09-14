@@ -27,7 +27,11 @@ Fields section listing labels, components, fix versions, parent and epic, and
 every custom field the site configured, under the site's own field names — the
 same rows the desk shows, which the phone had been receiving since 0.1 and
 never drawing. Empty fields draw no row; the parent and epic rows open that
-issue ([GDK-1870]).
+issue ([GDK-1870]). A wiki page
+takes a comment from the phone: the page detail carries the same composer
+the issue detail has, with the same saved draft, and posts the comment to
+the origin. Editing a page stays on the desk, where a rich-text page cannot
+lose its formatting ([GDK-1873]).
 
 ## v0.22.1 — 2026-09-14
 
@@ -1630,3 +1634,4 @@ priority sorting keyed on `priority_rank`.
 [GDK-1867]: https://gadak.dev/backlog/#/?ks=GDK-1867
 [GDK-1869]: https://gadak.dev/backlog/#/?ks=GDK-1869
 [GDK-1870]: https://gadak.dev/backlog/#/?ks=GDK-1870
+[GDK-1873]: https://gadak.dev/backlog/#/?ks=GDK-1873
