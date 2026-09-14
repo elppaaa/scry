@@ -38,7 +38,12 @@ to type a new one; the due date in the header opens the phone's date
 wheel. Each is one write, and a refused one keeps what you chose
 ([GDK-1871]). And a photo goes with the comment: the paperclip in the
 composer opens the phone's own camera or library, the picture uploads as you
-pick it, and it lands inside the comment ([GDK-1872]).
+pick it, and it lands inside the comment ([GDK-1872]). And what stays on the
+desk says so where you look for it: editing a page, editing a custom field,
+authoring a view, laying out a dashboard and moving cards on the board each
+have one dimmed line on the phone, at the spot where you would look for them,
+saying they are done on the desktop — no more finding out by searching
+([GDK-1874]).
 
 ## v0.22.1 — 2026-09-14
 
@@ -1644,3 +1649,4 @@ priority sorting keyed on `priority_rank`.
 [GDK-1871]: https://gadak.dev/backlog/#/?ks=GDK-1871
 [GDK-1872]: https://gadak.dev/backlog/#/?ks=GDK-1872
 [GDK-1873]: https://gadak.dev/backlog/#/?ks=GDK-1873
+[GDK-1874]: https://gadak.dev/backlog/#/?ks=GDK-1874
