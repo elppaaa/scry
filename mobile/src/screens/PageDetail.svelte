@@ -2,6 +2,7 @@
   import Screen from '../ui/Screen.svelte'
   import { untrack } from 'svelte'
   import AdfBody from '../ui/AdfBody.svelte'
+  import DeskRow from '../ui/DeskRow.svelte'
   import { app, closeIssue, openIssue } from '../lib/store.svelte'
   import { relTime, spaceLabel } from '../lib/domain'
   import { request, errorMessage, ApiError } from '../lib/api'
@@ -220,6 +221,17 @@
       {/if}
     </article>
 
+    <!-- GDK-1874: page edit stays on the desk, and now says so rather than
+         being an absence. The reason has not changed since GDK-1873 — the
+         server refuses a plain-text replace with 409 format_loss, so a phone
+         that offered an edit could not finish it — but "there is no edit
+         here" was something a person could only discover by looking for one.
+         Above the body it describes, and above the comment composer, which
+         is the write this screen does have. -->
+    <div class="desk">
+      <DeskRow label={t('doc.content')} testid="desk-row-page-edit" />
+    </div>
+
     <section class="body">
       {#if detailError}
         <p class="error">{detailError}</p>
@@ -363,6 +375,12 @@
     font-size: var(--text-micro);
     color: var(--color-accent-text);
     padding: 0 4px;
+  }
+
+  /* 8 here plus the row's own 8 is the 16px column the article above and
+     the body below both sit on. */
+  .desk {
+    padding: 0 8px;
   }
 
   .body {

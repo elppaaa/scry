@@ -1,4 +1,5 @@
 <script lang="ts">
+  import DeskRow from './DeskRow.svelte'
   import { t } from '../lib/i18n'
   import { sprintCounts, sprintDaysLeft } from '../lib/sprint'
   import type { IssueLite, SprintRow } from '../lib/types'
@@ -87,6 +88,15 @@
       <span class="goal">{sprint.goal}</span>
     {/if}
   </button>
+  <!-- GDK-1874: the board itself. Eighteen of the collected phone
+       complaints are board/sprint reads and none asked for drag-and-drop on
+       a phone — but "there is no board here" is something a person finds out
+       by looking for one. The line above is the read; this row is where the
+       moving happens, said next to it. Its own band, under the line's
+       border, because it is a different claim. -->
+  <div class="desk">
+    <DeskRow label={t('board.label')} testid="desk-row-board" />
+  </div>
 {/if}
 
 <style>
@@ -110,6 +120,15 @@
   }
   .sprint:active {
     background: var(--color-bg-hover);
+  }
+  /* The desk row's own 8px plus 8 here puts its label on the 16px column
+     every band above the queue shares — the sheet reaches the same number
+     the same way (.list 8 + .row 8). The border is the band grammar the
+     line above already wears, so the two read as two rows and not as one
+     row with a tail. */
+  .desk {
+    padding: 0 8px;
+    border-bottom: 1px solid var(--color-border-subtle);
   }
   .top {
     display: flex;

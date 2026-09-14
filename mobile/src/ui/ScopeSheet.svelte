@@ -1,4 +1,5 @@
 <script lang="ts">
+  import DeskRow from './DeskRow.svelte'
   import Sheet from './Sheet.svelte'
   import { t } from '../lib/i18n'
   import type { Scope, ScopeSection } from '../lib/domain'
@@ -53,12 +54,21 @@
   const CAP = 8
   let expanded = $state(new Set<ScopeSection>())
 
+  /*
+   * The saved-views group is the one that survives having no rows (GDK-1874).
+   * Authoring a view — the filter form, the JQL box, the save — is desk-only,
+   * and zero saved views is exactly the state in which someone goes looking
+   * for where one is made. An empty heading with one desk row under it
+   * answers that; an absent section leaves them searching, which is the
+   * complaint this round is named after. Every other section is still absent
+   * when empty: it has nothing to say that the desk row does not.
+   */
   const groups = $derived(
     ORDER.map((section) => ({
       section,
       heading: t(HEADING[section] as Parameters<typeof t>[0]),
       rows: scopes.filter((s) => s.section === section),
-    })).filter((g) => g.rows.length > 0),
+    })).filter((g) => g.rows.length > 0 || g.section === 'views'),
   )
 
   function shown(section: ScopeSection, rows: Scope[]): Scope[] {
@@ -82,27 +92,43 @@
         {#if scope.stance && scope.stance !== group.rows[i - 1]?.stance}
           <div class="stance">{t(STANCE[scope.stance] as Parameters<typeof t>[0])}</div>
         {/if}
-        <button
-          class="row"
-          class:on={scope.id === current}
-          disabled={blocked}
-          aria-current={scope.id === current ? 'true' : undefined}
-          onclick={() => onpick(scope.id)}
-        >
-          <span class="name">{scope.name}</span>
-          {#if blocked}
-            <span class="why">{t('sidebar.scopeOpenDesktop')}</span>
-          {:else if n !== null}
-            <span class="n">{n}</span>
-          {/if}
-        </button>
+        {#if blocked}
+          <!-- The dialect's origin, now the shared component (GDK-1874):
+               same values, so this row is unchanged. A blocked scope can
+               never be the current one — the row that would select it is
+               disabled — so it carries no `on`/aria-current branch. -->
+          <DeskRow label={scope.name} />
+        {:else}
+          <button
+            class="row"
+            class:on={scope.id === current}
+            aria-current={scope.id === current ? 'true' : undefined}
+            onclick={() => onpick(scope.id)}
+          >
+            <span class="name">{scope.name}</span>
+            {#if n !== null}
+              <span class="n">{n}</span>
+            {/if}
+          </button>
+        {/if}
       {/each}
       {#if group.rows.length > CAP && !expanded.has(group.section)}
         <button class="more" onclick={() => expand(group.section)}>
           {t('sidebar.scopeShowAll', { n: group.rows.length })}
         </button>
       {/if}
+      {#if group.section === 'views'}
+        <!-- Making and editing a view is the desk's form: filters, JQL,
+             columns, sort, save. The catalog's own word for that surface
+             (its comment lists "save view"), at the end of the views it
+             would produce. -->
+        <DeskRow label={t('view.settings')} testid="desk-row-views" />
+      {/if}
     {/each}
+    <!-- Dashboards, last: a layout of panels is the one scope-shaped thing
+         the phone has no plate for at all, so it is named at the end of the
+         list rather than inside a group it would be the only member of. -->
+    <DeskRow label={t('sidebar.dashboards')} testid="desk-row-dashboards" />
   </div>
 </Sheet>
 
@@ -134,11 +160,11 @@
     text-align: left;
     min-width: 0;
   }
-  .row:active:not(:disabled) {
+  /* No `:not(:disabled)` guard any more: a blocked scope is a DeskRow, so
+     every `.row` here is a live one. The dim it used to wear moved into that
+     component with the rest of the dialect (GDK-1874). */
+  .row:active {
     background: var(--color-bg-hover);
-  }
-  .row:disabled {
-    opacity: 0.5;
   }
   .row.on .name {
     font-weight: 600;
@@ -156,11 +182,6 @@
     flex: none;
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
-    font-size: var(--text-micro);
-    color: var(--color-text-muted);
-  }
-  .why {
-    flex: none;
     font-size: var(--text-micro);
     color: var(--color-text-muted);
   }

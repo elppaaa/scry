@@ -4,6 +4,7 @@
   import Sheet from '../ui/Sheet.svelte'
   import CreateSheet from '../ui/CreateSheet.svelte'
   import AdfBody from '../ui/AdfBody.svelte'
+  import DeskRow from '../ui/DeskRow.svelte'
   import { app, closeIssue, openIssue, sync } from '../lib/store.svelte'
   import {
     dueDateLabel,
@@ -33,6 +34,7 @@
     getPriorities,
     searchUsers,
   } from '../lib/writes'
+  import { hasCustomFieldRow } from '../lib/desk'
   import { fieldRows, type FieldRow } from '../lib/fields'
   import { knownLabels, sameLabels, splitLabelInput } from '../lib/labels'
   import { keyboardInset } from '../lib/keyboard'
@@ -75,6 +77,21 @@
    * — takes the whole section away rather than drawing an empty heading.
    */
   const fields = $derived(fieldRows(lite, app.fieldSpecs))
+
+  /*
+   * GDK-1874: a configured custom field is shown and cannot be changed here
+   * — the desk owns the field editor — so the section says so once, after
+   * the last row. Once and not per row: six rows each repeating "Open on the
+   * desktop" is the noise this section was built to remove.
+   *
+   * The predicate is lib/desk.ts, and it reads the rows rather than
+   * `app.fieldSpecs`: a field the site configured but this issue does not
+   * carry never becomes a row, and a row nobody can see owes no sentence.
+   * The demo fixture configures none, so this is false there and the browser
+   * gate can only confirm the absence — the present case is pinned in
+   * lib/desk.test.ts.
+   */
+  const fieldsNeedDesk = $derived(hasCustomFieldRow(fields))
 
   /*
    * The three one-line edits this screen gained (GDK-1871, DESIGN.md §1:
@@ -1156,6 +1173,11 @@
                 </div>
               {/if}
             {/each}
+            {#if fieldsNeedDesk}
+              <div class="desk">
+                <DeskRow label={t('detail.fields')} testid="desk-row-fields" />
+              </div>
+            {/if}
           </div>
         {/if}
 
@@ -1996,6 +2018,12 @@
     text-align: left;
     border-bottom: 1px solid var(--color-border-subtle);
     min-width: 0;
+  }
+  /* The desk row carries the sheet's own 8px inset, and this section is
+     already inside .body's 16 — so pull back 8 and its label lands on the
+     same column the field rows above it use. */
+  .desk {
+    margin: 0 -8px;
   }
   .f-label {
     flex: none;
