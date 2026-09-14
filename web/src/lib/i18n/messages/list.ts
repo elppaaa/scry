@@ -61,10 +61,14 @@ export const list = {
     ko: '이 뷰 링크 복사',
     ja: 'このビューのリンクをコピー',
   },
+  // GDK-1858: a Jira link that carries the whole view is copied alone, so
+  // this toast is the other branch — the app link came along because the
+  // Jira address would open a wider list than the view does, and it says
+  // which clauses are the reason.
   'filter.jqlCopiedPartial': {
-    en: 'Copied JQL (not in Jira: {omitted})',
-    ko: 'JQL 복사 (Jira에 없는 항목: {omitted})',
-    ja: 'JQL をコピーしました（Jira にない項目: {omitted}）',
+    en: 'Copied the app link too: the Jira link cannot carry {omitted}.',
+    ko: 'Jira 링크가 {omitted}을 담지 못해 앱 링크까지 복사했습니다.',
+    ja: 'Jira のリンクは {omitted} を運べないので、アプリのリンクも一緒にコピーしました。',
   },
   'filter.jqlApplied': {
     en: 'JQL filter applied.',

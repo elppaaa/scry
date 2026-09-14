@@ -548,6 +548,22 @@ export function workspaceName(): string {
   return m ? m[1] : ''
 }
 
+/**
+ * The app's own URL prefix for a link someone else will open — the mount
+ * this page is served from, with a trailing slash.
+ *
+ * GDK-1860: the copy-link builders used to write `location.origin` plus a
+ * `/w/<name>` mount and nothing else, which is right on `gadak serve` and
+ * wrong on the hosted demo, where the same bundle is served under `/demo/`
+ * and `/backlog/`: the copied address pointed at the site's root instead of
+ * the app. A workspace mount wins when there is one (serve's own `/w/<name>/`
+ * carries no `<base href>`); otherwise the base the document declares.
+ */
+export function appMountPath(): string {
+  const ws = workspaceName()
+  return ws ? `/w/${ws}/` : basePath()
+}
+
 /** Host of a Jira site URL, or '' when none. Used only as a cache partition. */
 function siteHost(siteUrl: string): string {
   const raw = siteUrl.trim()

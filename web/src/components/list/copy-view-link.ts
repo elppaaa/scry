@@ -17,7 +17,10 @@ export async function copyViewLink(): Promise<void> {
     write.toast(t('clipboard.copyFailed'), 'error')
     return
   }
-  if (link.omitted.length) {
+  // The partial toast talks about the origin's line, so it is only true when
+  // there is one: a Jira-family workspace with no site address copies the app
+  // links alone and has nothing for a clause to have failed to travel in.
+  if (link.omitted.length && link.origin) {
     write.toast(t('filter.jqlCopiedPartial', { omitted: link.omitted.join(', ') }), 'info')
   } else {
     write.toast(

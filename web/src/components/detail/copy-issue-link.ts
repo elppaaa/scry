@@ -10,7 +10,7 @@
  */
 import { t } from '../../lib/i18n'
 import { copyText } from '../../lib/copy-text'
-import { config, isDesktop, originTrackerName, profileName, workspaceName } from '../../lib/config'
+import { appMountPath, config, isDesktop, originTrackerName, profileName } from '../../lib/config'
 import { issueOriginUrl } from '../../lib/issue-origin'
 import { write } from '../../stores/write.svelte'
 
@@ -24,9 +24,7 @@ function gadakIssueLink(key: string): string {
 }
 
 function httpIssueLink(key: string): string {
-  const ws = workspaceName()
-  const prefix = ws ? `/w/${ws}` : ''
-  return `${location.origin}${prefix}/#/?issue=${key}`
+  return `${location.origin}${appMountPath()}#/?issue=${key}`
 }
 
 /** The clipboard text for a key — the origin's page when there is one,

@@ -24,7 +24,12 @@ that page — and, on a served workspace, an http line under that — so every
 paste into chat carried an address only the sender's machine could open, while
 the toast said a Jira link had been copied ([GDK-1858]). A workspace on the
 built-in tracker has no origin page and keeps copying the app links: there,
-they are the address.
+they are the address. The list's copy-link follows the same rule where it
+holds: a view whose clauses all became JQL copies the navigator address
+alone, and when a clause could not travel, the app link comes along and the
+toast names the clause that is the reason. A copied http address also carries
+the mount it was copied from now — on the hosted demo it pointed at the
+site's root rather than at the app ([GDK-1860]).
 
 **What a reader sees is what is true.** The Korean and the Japanese read
 like they were written that way. The retro
@@ -1593,3 +1598,4 @@ priority sorting keyed on `priority_rank`.
 [GDK-1854]: https://gadak.dev/backlog/#/?ks=GDK-1854
 [GDK-1858]: https://gadak.dev/backlog/#/?ks=GDK-1858
 [GDK-1859]: https://gadak.dev/backlog/#/?ks=GDK-1859
+[GDK-1860]: https://gadak.dev/backlog/#/?ks=GDK-1860

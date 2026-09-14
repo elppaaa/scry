@@ -1,8 +1,10 @@
 /*
- * "Copy link" for the list — the same three-line contract the issue
- * detail's copy link keeps (DetailHeader.copyLink), for a view (GDK-1343):
+ * "Copy link" for the list — the issue detail's rule (copy-issue-link.ts),
+ * for a view (GDK-1343, GDK-1858):
  *
- *   <origin address>        Jira: the issue navigator with this view's JQL
+ *   <origin address>        Jira: the issue navigator with this view's JQL,
+ *                           and the whole clipboard when the JQL carries
+ *                           every clause the view has
  *   gadak://view?<hash>     the app, primary or /w/<profile> mount
  *   <http>/#/?<hash>        serve / hosted only — desktop has no http origin
  *
@@ -11,9 +13,13 @@
  * can take a filter in a URL: Jira. Linear has no public filter parameter
  * and the built-in tracker has no site, so those copy the app lines alone —
  * the same branch the detail takes on a built-in origin, never a stand-in.
+ *
+ * The app lines also stay when a clause could not become JQL (`omitted`):
+ * the origin line then opens a *wider* list than the view, so the faithful
+ * address is the app's, and the toast says which clauses did not travel.
  */
 import { emitJql } from './api'
-import { config, isDesktop, isHostedDemo, jiraFilterUrl, profileName, workspaceName } from './config'
+import { appMountPath, config, isDesktop, isHostedDemo, jiraFilterUrl, profileName } from './config'
 import type { ViewConfig } from './view-config'
 import { isJiraFamily } from './workspace'
 
@@ -37,9 +43,7 @@ export function gadakViewLink(params: string): string {
 }
 
 export function httpViewLink(params: string): string {
-  const ws = workspaceName()
-  const prefix = ws ? `/w/${ws}` : ''
-  return `${location.origin}${prefix}/#/${params ? `?${params}` : ''}`
+  return `${location.origin}${appMountPath()}#/${params ? `?${params}` : ''}`
 }
 
 export async function buildViewLink(cfg: ViewConfig, email?: string | null): Promise<ViewLink> {
@@ -51,7 +55,16 @@ export async function buildViewLink(cfg: ViewConfig, email?: string | null): Pro
     const res = await emitJql(cfg.filters, cfg.display, email)
     const url = jiraFilterUrl('', res.jql)
     if (!url) return { text: app, origin: false, omitted: res.omitted ?? [] }
-    return { text: `${url}\n${app}`, origin: true, omitted: res.omitted ?? [] }
+    const omitted = res.omitted ?? []
+    // GDK-1858's rule, with the one exception this surface has: when the
+    // origin's address says everything the view says, it is the whole
+    // clipboard, exactly as it is for an issue. It is only when a clause
+    // could not become JQL that the origin line is a wider list than the
+    // view — and then the app lines are the view's only faithful address,
+    // so they come along and the toast names what the origin line lost.
+    return omitted.length
+      ? { text: `${url}\n${app}`, origin: true, omitted }
+      : { text: url, origin: true, omitted }
   } catch {
     return { text: app, origin: false, omitted: [] }
   }

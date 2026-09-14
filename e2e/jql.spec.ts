@@ -36,11 +36,11 @@ test.describe('JQL paste', () => {
     expect(body.jql).toContain('project = NMA')
     expect(body.jql).toMatch(/statusCategory = "In Progress"/)
 
-    // GDK-1343: the same three lines the issue detail copies — the origin's
-    // own address for this view (the navigator with the JQL), then the app.
-    const origin = new URL(page.url()).origin
-    const hash = new URL(page.url()).hash.replace(/^#\/?\??/, '')
-    const want = `https://nimbus.example.com/issues/?jql=${encodeURIComponent(body.jql)}\ngadak://view?${hash}\n${origin}/#/?${hash}`
+    // GDK-1343, GDK-1858: this view's clauses all became JQL, so the origin's
+    // own address for it — the navigator with that JQL — is the whole
+    // clipboard, the way an issue's page is. The app lines appear here only
+    // when a clause could not travel, which is the `omitted` branch.
+    const want = `https://nimbus.example.com/issues/?jql=${encodeURIComponent(body.jql)}`
     await expect.poll(async () => page.evaluate(() => navigator.clipboard.readText())).toBe(want)
 
     expect(errors, `console errors:\n${errors.join('\n')}`).toEqual([])
