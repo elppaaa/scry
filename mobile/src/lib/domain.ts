@@ -2,7 +2,7 @@
 // unit-tested. Repo contract: logic keys on status_category and
 // priority_rank, never on display names (display names are labels only).
 
-import { collator, locale, t, type MessageKey } from './i18n'
+import { categoryLabel, collator, locale, t, type MessageKey } from './i18n'
 import type {
   DetailComment,
   DetailResponse,
@@ -13,6 +13,7 @@ import type {
   SavedViewDoc,
   SearchMatch,
   SourceViewDoc,
+  SprintRow,
   ViewFilters,
   VisitedRow,
 } from './types'
@@ -256,7 +257,15 @@ export function sortIssues(issues: IssueLite[]): IssueLite[] {
   })
 }
 
-export interface PrioritySection {
+/**
+ * One group header plus its rows. Named for what it is rather than for one
+ * of its two groupings (GDK-1867): the list groups by priority everywhere
+ * except inside the sprint scope, where it groups by status category, and
+ * the screen paints both through the same header. `rank` is the render
+ * order and the keyed-each key; `label` is a display string and logic never
+ * reads it.
+ */
+export interface ListSection {
   /** Display label — never used as a key by logic. */
   label: string
   rank: number
@@ -264,8 +273,8 @@ export interface PrioritySection {
 }
 
 /** Groups a sorted list into priority sections, in rank order. */
-export function groupByPriority(sorted: IssueLite[]): PrioritySection[] {
-  const sections: PrioritySection[] = []
+export function groupByPriority(sorted: IssueLite[]): ListSection[] {
+  const sections: ListSection[] = []
   for (const issue of sorted) {
     const rank = rankKey(issue)
     const last = sections[sections.length - 1]
@@ -275,6 +284,37 @@ export function groupByPriority(sorted: IssueLite[]): PrioritySection[] {
       sections.push({ label: issue.priority ?? 'No priority', rank, issues: [issue] })
     }
   }
+  return sections
+}
+
+/** The order work moves through the three categories. */
+const CATEGORY_ORDER = ['new', 'inprogress', 'done'] as const
+
+/**
+ * Groups a sorted list by status category, in the order work moves through
+ * it: new → inprogress → done (GDK-1867). The sprint scope's grouping — a
+ * sprint is read as "what is left, what is moving, what landed", which
+ * priority order cannot say.
+ *
+ * The bucket is `effectiveCategory`, the desk's alias table, never the
+ * status display name: `status = 'In Progress'` is silently zero rows on a
+ * Korean account. Labels are `category.*` from the shared catalog, so the
+ * headers are the desk's own three words in all three languages. A category
+ * with no rows is absent rather than an empty header.
+ */
+export function groupByCategory(sorted: IssueLite[]): ListSection[] {
+  const buckets = new Map<(typeof CATEGORY_ORDER)[number], IssueLite[]>()
+  for (const issue of sorted) {
+    const cat = effectiveCategory(issue)
+    const rows = buckets.get(cat)
+    if (rows) rows.push(issue)
+    else buckets.set(cat, [issue])
+  }
+  const sections: ListSection[] = []
+  CATEGORY_ORDER.forEach((cat, rank) => {
+    const rows = buckets.get(cat)
+    if (rows && rows.length > 0) sections.push({ label: categoryLabel(cat), rank, issues: rows })
+  })
   return sections
 }
 
@@ -301,6 +341,18 @@ export type ScopeSection = 'builtin' | 'views' | 'filters' | 'docs'
 export const SCOPE_MY_WORK = 'builtin:my-work'
 /** The desktop builtin `all-open`, which the phone already ran as its "All". */
 export const SCOPE_ALL_OPEN = 'builtin:all-open'
+/**
+ * The active sprint (GDK-1867) — the scope the sprint line taps into.
+ *
+ * Not a desk built-in: `web/src/lib/builtin-views.ts` has no sprint view,
+ * because the desk asks this question with the board's own scope control
+ * (SprintScope.svelte) and the phone has no board. So the row is the
+ * phone's, and only its *name* is borrowed — `board.scopeActive`, the same
+ * catalog key that control's active segment wears. Offered only while the
+ * mirror actually holds an active sprint; a kanban workspace never sees it.
+ */
+export const SCOPE_ACTIVE_SPRINT = 'builtin:active-sprint'
+
 /**
  * Whole-mirror documents plate. Named `docs.tabUpdated` ("Updated"), not a
  * second "Documents" under the Documents heading: the desk's all-documents
@@ -335,6 +387,15 @@ export interface Scope {
    * Keyed on `space_key`, never on the display name.
    */
   spaceKey?: string | null
+  /**
+   * Sprint this scope selects, by `sprint_id` (GDK-1867) — never by
+   * `sprint_name`, which is a display string an origin renames under you.
+   * Present only on the active-sprint row, and it is the one discriminator
+   * that row needs: it selects the rows *and* switches the list's grouping
+   * to status category, because a sprint is read as what is left / moving /
+   * landed rather than by priority.
+   */
+  sprintId?: number
   /**
    * Which reading stance a built-in belongs to (THEORY.md "Two stances"):
    * `mine` is the contributor's question, `team` the steward's. Only the
@@ -504,6 +565,7 @@ export function buildScopes(
   sources: SourceViewDoc[],
   me: Me | null,
   pages: PageLite[] = [],
+  sprint: SprintRow | null = null,
 ): Scope[] {
   const out: Scope[] = []
   /*
@@ -533,6 +595,26 @@ export function buildScopes(
       filters,
       unsupported: unsupportedAxes(filters),
       stance: view.stance,
+    })
+  }
+  /*
+   * The active sprint, last in the built-in section (GDK-1867). It wears
+   * the `team` stance the three rows before it wear, so it joins their
+   * sub-heading instead of opening a fourth one: a sprint is the team's
+   * cadence, not the contributor's queue. Absent — not disabled — when the
+   * mirror holds no active sprint, the same stance the two identity views
+   * take without an identity.
+   */
+  if (sprint) {
+    out.push({
+      id: SCOPE_ACTIVE_SPRINT,
+      section: 'builtin',
+      kind: 'issues',
+      name: t('board.scopeActive'),
+      filters: null,
+      unsupported: [],
+      stance: 'team',
+      sprintId: sprint.id,
     })
   }
   for (const v of views) {
@@ -637,6 +719,9 @@ export function resolveScope(scopes: Scope[], wantId: string | null, me: Me | nu
 export function scopeIssues(issues: IssueLite[], me: Me | null, scope: Scope): IssueLite[] | null {
   if (scope.kind === 'pages') return null
   if (scope.unsupported.length > 0) return null
+  // The sprint holds what it holds: done rows stay, because "how far has
+  // this sprint come" is unanswerable without them (GDK-1867).
+  if (scope.sprintId != null) return issues.filter((i) => i.sprint_id === scope.sprintId)
   if (scope.id === SCOPE_ALL_OPEN) return openIssues(issues)
   return scope.filters ? applyFilters(issues, scope.filters, me) : null
 }
@@ -686,7 +771,7 @@ export function bodyParagraphs(text: string): string[] {
 }
 
 export interface IssueListView {
-  sections: PrioritySection[]
+  sections: ListSection[]
   total: number
   /** The scope actually painted — an empty My issues falls back. */
   scopeId: string
@@ -715,7 +800,10 @@ export function buildList(issues: IssueLite[], me: Me | null, scope: Scope): Iss
     }
   }
   const sorted = sortIssues(rows)
-  return { sections: groupByPriority(sorted), total: rows.length, scopeId: scope.id, fellBack: false }
+  // Grouping is the scope's, not the screen's: the sprint scope reads
+  // new → inprogress → done, every other scope reads by priority.
+  const sections = scope.sprintId != null ? groupByCategory(sorted) : groupByPriority(sorted)
+  return { sections, total: rows.length, scopeId: scope.id, fellBack: false }
 }
 
 /** Instant local match over key + summary, case-insensitive. */

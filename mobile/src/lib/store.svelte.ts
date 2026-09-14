@@ -34,11 +34,13 @@ import {
   META_KEY,
   PAGES_KEY,
   SCOPE_KEY,
+  SPRINTS_KEY,
   TERM_META_KEY,
   VIEWS_KEY,
   hostKey,
   migrateHostKeys,
 } from './host-keys'
+import { loadSprints } from './sprint'
 import { probeShellPairing } from './terminal/api'
 import { serveTokenOf, terminalTokenOf, OfferScopeError, type OfferToken } from './offer'
 import type {
@@ -52,11 +54,14 @@ import type {
   PairMeta,
   SavedViewDoc,
   SourceViewDoc,
+  SprintRow,
+  SprintsResponse,
   ViewsResponse,
   VisitedRow,
 } from './types'
 
-// The six host-scoped session keys (META/TERM_META/CACHE/VIEWS/PAGES/SCOPE)
+// The seven host-scoped session keys
+// (META/TERM_META/CACHE/VIEWS/PAGES/SPRINTS/SCOPE)
 // are imported from host-keys.ts (GDK-1097 B2): the module that namespaces
 // them owns their names. UNPAIRED_KEY is a device-wide verdict and
 // RECENTS_KEY a device-wide history — neither belongs to a host.
@@ -107,6 +112,15 @@ export const app = $state({
   sources: [] as SourceViewDoc[],
   /** Mirrored wiki pages (GET issues/pages/). Empty → no Documents section. */
   pages: [] as PageLite[],
+  /**
+   * The mirror's sprint rows (GET issues/sprints/, GDK-1867). Empty on a
+   * kanban workspace, on a serve older than the route, and offline before
+   * the first answer — all three mean the same thing to the Issues screen:
+   * no sprint line and no sprint scope. Never derived from the issue rows:
+   * a sprint the snapshot has no issues for still exists, and `state` lives
+   * only here.
+   */
+  sprints: [] as SprintRow[],
   /**
    * Personal feed (GET issues/feed/), the glance strip's data (GDK-871).
    * Null = no cycle has answered yet, or unpaired — the strip is absent,
@@ -459,6 +473,13 @@ async function enterPaired(meta: PairMeta, token: string): Promise<void> {
   if (cachedPages) {
     app.pages = cachedPages.pages ?? []
   }
+  // Cached for the same reason views are: a phone whose stored scope is the
+  // active sprint would otherwise paint the fallback's name for one frame
+  // and jump when sync answered.
+  const cachedSprints = readJSON<{ sprints: SprintRow[] }>(scopedKey(SPRINTS_KEY))
+  if (cachedSprints) {
+    app.sprints = cachedSprints.sprints ?? []
+  }
   const scope = readJSON<string>(scopedKey(SCOPE_KEY))
   // A scope id an older build wrote may name a row that no longer exists
   // (GDK-1542): domain.ts owns that mapping, not this reader.
@@ -552,6 +573,20 @@ export async function sync(): Promise<void> {
       }
     } catch {
       // Keep whatever we already painted (offline). No pages → no section.
+    }
+    // The sprint line's rows (GDK-1867). Same cache shape and same stance
+    // as pages: an answer is adopted, a refusal keeps what is painted.
+    // `[]` is an answer — a workspace that closed its last sprint takes the
+    // line away — while a 404 (serve older than the route) or a network
+    // error is not, and null is how loadSprints says which happened. No
+    // error chrome either way: no rows, no line, no sprint scope row.
+    const sprintRows = await loadSprints(async () => {
+      const res = await request<SprintsResponse>('issues/sprints/')
+      return res.body
+    })
+    if (sprintRows) {
+      app.sprints = sprintRows
+      writeJSON(scopedKey(SPRINTS_KEY), { sprints: app.sprints })
     }
     try {
       // The idle plate's issue half (GDK-875): the visit ledger the serve
@@ -793,6 +828,7 @@ function resetSessionState(): void {
   app.views = []
   app.sources = []
   app.pages = []
+  app.sprints = []
   app.feed = null
   app.scopeId = SCOPE_MY_WORK
   app.loaded = false

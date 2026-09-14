@@ -82,7 +82,9 @@ test('walk', async ({ page }) => {
   await page.locator('.pane:not(.off) h1 button.scope').click()
   await page.locator('button.cancel').waitFor()
   await shoot(page, 'scope-sheet', 'the heading is the scope control')
-  await page.getByRole('button', { name: /cancel/i }).first().click()
+  // button.cancel, not the role query: the scrim shares the aria-label and
+  // a taller sheet (the sprint row) puts the panel over the scrim's centre.
+  await page.locator('button.cancel').click()
   await page.locator('button.cancel').waitFor({ state: 'hidden' })
 
   await page.locator('.pane:not(.off) button.row').first().click()

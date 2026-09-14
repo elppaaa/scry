@@ -731,17 +731,37 @@ describe('GDK-1495 A4 vision FIX — the five points the blind judge sent back',
     expect(detail).toMatch(/resumeDismissed = true/)
   })
 
-  it('⑤ the five built-ins read as one section, and there is no sixth', () => {
+  it('⑤ the built-ins read as one section, and only a named row joins them', () => {
     // A phone-authored "Assigned to me" sat alone under MY ISSUES while the
     // other four wore stance sub-labels under VIEWS, so the desk's one
     // built-in set read as two groups; folding it in left two rows with the
     // same count. It is gone (GDK-1542) — the section is the shared
-    // catalog's five, and nothing else may push into it.
+    // catalog's five, and what joins them must be named here.
+    //
+    // Re-pinned 2026-09-14 (GDK-1867), not loosened. The defect this test
+    // closed was a DUPLICATE: a phone predicate asking a desk view's own
+    // question, so the sheet drew two rows with one count. The active
+    // sprint duplicates nothing — web/src/lib/builtin-views.ts has no
+    // sprint view, because the desk asks that question with the board's
+    // scope control (SprintScope.svelte) and the phone has no board — and
+    // it wears that control's own catalog name rather than a phone-authored
+    // one. So the count moves from "one push" to "one push plus this one,
+    // spelled out", and a third still fails here.
+    // FAIL-first, verified against the pre-GDK-1867 domain.ts: expected
+    // [ …(2) ] to have a length of 3 but got 2.
     const at = domain.indexOf("section: 'builtin'")
     expect(at).toBeGreaterThan(-1)
-    // The only `section: 'builtin'` in the file is inside the catalog loop.
-    expect(domain.split("section: 'builtin'")).toHaveLength(2)
+    // Two `section: 'builtin'` pushes in the file: the catalog loop, and
+    // the sprint row below it.
+    expect(domain.split("section: 'builtin'")).toHaveLength(3)
     expect(domain.slice(0, at)).toMatch(/for \(const view of builtinViews\(\)\) \{/)
+    const second = domain.indexOf("section: 'builtin'", at + 1)
+    const between = domain.slice(at, second)
+    expect(between).toMatch(/if \(sprint\) \{/)
+    expect(between).toMatch(/id: SCOPE_ACTIVE_SPRINT,/)
+    // The name is the desk's word for this slice, not a phone triple — the
+    // same key the board's own scope control wears (SprintScope.svelte).
+    expect(domain.split("t('board.scopeActive')")).toHaveLength(2)
     expect(domain).not.toMatch(/SCOPE_ME/)
     expect(domain).not.toMatch(/ScopeSection = 'me'/)
     // The picker no longer draws a heading of its own for it.

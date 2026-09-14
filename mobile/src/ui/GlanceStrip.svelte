@@ -5,8 +5,11 @@
   import { app, markGlanceAllRead, markGlanceIssueRead, openIssue } from '../lib/store.svelte'
 
   /*
-   * The glance strip (GDK-871): what moved while the phone was away, as the
-   * Issues queue's first band — not a fourth tab (DESIGN.md §1 non-jobs).
+   * The glance strip (GDK-871): what moved while the phone was away, as a
+   * band above the Issues queue — not a fourth tab (DESIGN.md §1 non-jobs).
+   * It led the bands when it was written; the session strip (GDK-1495) and
+   * the sprint line (GDK-1867) now sit above it, both of which say what is
+   * true of the workspace rather than what is unread by this person.
    * Present only while something is unread (counts.all === 0 → this whole
    * section is absent, no empty box), scope-independent: the feed is a
    * person's, not a scope's. Rows never mark themselves read by being seen;

@@ -7,6 +7,7 @@
   import Skeleton from '../ui/Skeleton.svelte'
   import ScopeSheet from '../ui/ScopeSheet.svelte'
   import Sheet from '../ui/Sheet.svelte'
+  import SprintLine from '../ui/SprintLine.svelte'
   import { t } from '../lib/i18n'
   import { ApiError, errorMessage } from '../lib/api'
   import { createIssue, getCreateMeta } from '../lib/writes'
@@ -30,11 +31,13 @@
     scopeCount,
     scopePages,
     sessionLine,
+    SCOPE_ACTIVE_SPRINT,
     SCOPE_ALL_OPEN,
     SCOPE_DOCS_UPDATED,
     SCOPE_MY_WORK,
     type Scope,
   } from '../lib/domain'
+  import { pickActiveSprint } from '../lib/sprint'
 
   // The desktop has no name for its list screen: its main column is titled by
   // the current view's name. The phone adopts that — the tab is the object
@@ -56,7 +59,14 @@
   let createError = $state<string | null>(null)
   let creating = $state(false)
 
-  const scopes = $derived(buildScopes(app.views, app.sources, app.me, app.pages))
+  /*
+   * The sprint line's subject (GDK-1867), and the scope row that goes with
+   * it — one derivation, so the line and the picker row can never name two
+   * different sprints. Null on a kanban workspace, between sprints, or on a
+   * serve that has no `issues/sprints/` route: then neither exists.
+   */
+  const activeSprint = $derived(pickActiveSprint(app.sprints, app.issues))
+  const scopes = $derived(buildScopes(app.views, app.sources, app.me, app.pages, activeSprint))
   const scope = $derived<Scope>(
     resolveScope(scopes, app.scopeId, app.me) ?? {
       id: SCOPE_ALL_OPEN,
@@ -241,9 +251,22 @@
     </button>
   {/if}
 
-  <!-- GDK-871: the glance strip — first band under the heading, above every
-       plate, scope-independent (the feed is a person's, not a scope's). It
-       gates itself on unread counts and renders nothing otherwise. -->
+  <!-- GDK-1867: the current sprint as one line, under the heading and above
+       the queue it describes. Inside the scroller, like every band here —
+       a band in the header would cost the list a row of density
+       (mobile/e2e/viewport.spec.ts floors it at 9). Tapping it scopes the
+       list to that sprint; absent when there is no active one. -->
+  <SprintLine
+    sprint={activeSprint}
+    issues={app.issues}
+    now={app.now}
+    current={scope.id === SCOPE_ACTIVE_SPRINT}
+    onpick={() => setScope(SCOPE_ACTIVE_SPRINT)}
+  />
+
+  <!-- GDK-871: the glance strip — the last band before the plates, and the
+       only scope-independent one (the feed is a person's, not a scope's).
+       It gates itself on unread counts and renders nothing otherwise. -->
   <GlanceStrip />
 
   {#if bootKind === 'skeleton'}

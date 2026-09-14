@@ -1,7 +1,7 @@
-// Host-scoped cache keys (GDK-1097 B2). The seven localStorage documents a
+// Host-scoped cache keys (GDK-1097 B2). The eight localStorage documents a
 // paired session owns — the pairing metas, the issue snapshot, views,
-// pages, the scope, the composer drafts (GDK-1863) — are namespaced per
-// roster host so two hosts never read each other's cache:
+// pages, sprints, the scope, the composer drafts (GDK-1863) — are namespaced
+// per roster host so two hosts never read each other's cache:
 // 'gadak.snapshot' becomes 'gadak.snapshot@<hostId>'
 // once a host is active. A null host id keeps the bare key, which is the
 // address every pre-B2 phone's data lives at (and what an unmigrated phone
@@ -17,6 +17,8 @@ export const TERM_META_KEY = 'gadak.pairing.meta.terminal'
 export const CACHE_KEY = 'gadak.snapshot'
 export const VIEWS_KEY = 'gadak.views'
 export const PAGES_KEY = 'gadak.pages'
+/** The mirror's sprint rows (GDK-1867) — the sprint line's own document. */
+export const SPRINTS_KEY = 'gadak.sprints'
 export const SCOPE_KEY = 'gadak.issues.scope'
 export const DRAFTS_KEY = 'gadak.drafts.v1'
 
@@ -30,6 +32,7 @@ export const HOST_SCOPED_KEYS = [
   CACHE_KEY,
   VIEWS_KEY,
   PAGES_KEY,
+  SPRINTS_KEY,
   SCOPE_KEY,
   DRAFTS_KEY,
 ] as const

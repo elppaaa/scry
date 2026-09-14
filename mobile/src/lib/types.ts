@@ -89,7 +89,18 @@ export type IssueLite = Pick<
   | 'started_at'
   | 'status_changed_at'
   | 'url'
+  | 'sprint_id'
+  | 'sprint_name'
+  | 'sprint_state'
 >
+
+/**
+ * GET `issues/sprints/` (GDK-1656) — the owner's rows as-is (GDK-1867). The
+ * phone reads `id`, `state`, `end_at`, `name`, `goal`; the server-side
+ * counts ride along but the sprint line counts the snapshot it holds
+ * instead, so the line and the list under it cannot disagree.
+ */
+export type { SprintRow, SprintsResponse } from '../../../web/src/lib/types'
 
 export interface Me {
   email: string | null

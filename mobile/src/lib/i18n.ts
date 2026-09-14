@@ -14,5 +14,7 @@
 // fieldLabel rides the same seam (GDK-875): the Detail meta line labels the
 // due date with whatever the desk's field renderer calls that field — the
 // catalog's field.due, trilingual already, so no phone-authored word exists.
-export { collator, fieldLabel, initLocale, locale, setLocale, t } from '../../../web/src/lib/i18n'
+// categoryLabel too (GDK-1867): the sprint scope's group headers are the
+// desk's own `category.*` words, not a phone-authored triple.
+export { categoryLabel, collator, fieldLabel, initLocale, locale, setLocale, t } from '../../../web/src/lib/i18n'
 export type { Locale, MessageKey } from '../../../web/src/lib/i18n'

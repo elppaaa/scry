@@ -38,7 +38,11 @@ describe('hostKey — composition', () => {
     expect(hostKey(META_KEY, 'paired:0123abcd')).toBe('gadak.pairing.meta@paired:0123abcd')
   })
 
-  it('scopes exactly the seven session documents', () => {
+  // An inventory, not a threshold: a session document that is not listed
+  // here is a document two hosts would share. GDK-1863 added the seventh (gadak.drafts.v1) and GDK-1867 the eighth
+  // (gadak.sprints, the sprint line's rows) — the sprint of one workspace
+  // must not name the sprint of another.
+  it('scopes exactly the eight session documents', () => {
     expect([...HOST_SCOPED_KEYS].sort()).toEqual(
       [
         'gadak.pairing.meta',
@@ -46,6 +50,7 @@ describe('hostKey — composition', () => {
         'gadak.snapshot',
         'gadak.views',
         'gadak.pages',
+        'gadak.sprints',
         'gadak.issues.scope',
         'gadak.drafts.v1',
       ].sort(),
