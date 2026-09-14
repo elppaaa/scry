@@ -274,7 +274,12 @@ describe('GDK-934 resting Send is not the accent thread', () => {
     // button names share (the description Save had already forked the
     // grammar with its own `.save:disabled` dim — the drift a per-screen
     // pair invites). This still demands accent-on-armed; it reads the owner.
-    const owner = read('app.css').match(/\.save\.armed,\s*\.send\.armed\s*\{[^}]+\}/)?.[0]
+    // 2026-09-14 (screen review): the owner is `button.save.armed` now. A
+    // bare `.save.armed` tied the component's scoped `.save.svelte-x` on
+    // specificity and lost on order — typed comment, Save with a title,
+    // both photographed in the resting tan. FAIL-first: the old regex
+    // matched the old rule that never painted.
+    const owner = read('app.css').match(/button\.save\.armed,\s*button\.send\.armed\s*\{[^}]+\}/)?.[0]
     expect(owner).toBeTruthy()
     expect(owner).toMatch(/background:\s*var\(--color-accent\)/)
   })
@@ -295,7 +300,7 @@ describe('GDK-1525 the armed fill is one grammar, owned once', () => {
     // dimmed the armed fill exactly the way Send's dim was removed for. The
     // fix is ownership, not another local patch: one rule in app.css covers
     // every `.save`/`.send` button, and no disabled state dims either.
-    const owner = read('app.css').match(/\.save\.armed,\s*\.send\.armed\s*\{[^}]+\}/)?.[0]
+    const owner = read('app.css').match(/button\.save\.armed,\s*button\.send\.armed\s*\{[^}]+\}/)?.[0]
     expect(owner).toBeTruthy()
     expect(owner).toMatch(/background:\s*var\(--color-accent\)/)
     expect(owner).toMatch(/color:\s*var\(--color-bg-base\)/)
@@ -512,7 +517,7 @@ describe('GDK-1497 A2 — the header is a control surface', () => {
     // (`.save.armed, .send.armed`) — this pin reads that owner now instead
     // of a local pair, so the sheet's Save cannot regrow a private accent
     // rule. Re-pointed with FAIL-first evidence in the round report.
-    const owner = read('app.css').match(/\.save\.armed,\s*\.send\.armed\s*\{[^}]+\}/)?.[0]
+    const owner = read('app.css').match(/button\.save\.armed,\s*button\.send\.armed\s*\{[^}]+\}/)?.[0]
     expect(owner).toMatch(/background:\s*var\(--color-accent\)/)
   })
 

@@ -2,7 +2,7 @@
 // unit-tested. Repo contract: logic keys on status_category and
 // priority_rank, never on display names (display names are labels only).
 
-import { categoryLabel, collator, locale, t, type MessageKey } from './i18n'
+import { categoryLabel, collator, fieldLabel, locale, t, type MessageKey } from './i18n'
 import type {
   DetailComment,
   DetailResponse,
@@ -1008,6 +1008,10 @@ export interface FeedItem {
   /** Why this row is relevant to the paired identity: assignee / reporter / mention / watched. */
   reasons: string[]
   read_at: string | null
+  /** The desk's fields (web/src/lib/types.ts FeedItem); optional here so an older serve still paints a row. */
+  summary?: string
+  current_status?: string
+  payload?: Record<string, unknown>
 }
 
 export interface FeedUnreadCounts {
@@ -1043,6 +1047,56 @@ const FEED_KIND_KEYS: Record<string, MessageKey> = {
 export function feedKindLabel(eventType: string): string {
   const key = FEED_KIND_KEYS[eventType]
   return key ? t(key) : eventType
+}
+
+function payloadString(item: FeedItem, key: string): string {
+  const value = item.payload?.[key]
+  return typeof value === 'string' ? value : ''
+}
+
+/**
+ * What the event did, in the desk's own words (PersonalFeed.svelte
+ * eventDetail, carried over verbatim): the moved-to status, the new
+ * assignee, the changed fields by display name, a comment's first line.
+ * Without it the strip read "NMS-45 Field change · just now" three times
+ * over (review 2026-09-14) — a feed that says something happened and not
+ * what is the notification flood the voices complain about, one row at a
+ * time. Empty when the payload has nothing to say; the row then shows the
+ * kind alone, never a blank.
+ */
+export function feedDetail(item: FeedItem): string {
+  switch (item.event_type) {
+    case 'comment_added':
+      return payloadString(item, 'excerpt')
+    case 'attachment_added':
+      return payloadString(item, 'filename')
+    case 'status_changed':
+    case 'reopened':
+    case 'assigned': {
+      const to = payloadString(item, 'to')
+      return to === '' ? '' : `${payloadString(item, 'from')} → ${to}`
+    }
+    case 'fields_changed': {
+      const fields = Array.isArray(item.payload?.fields) ? item.payload.fields : []
+      const named = fields
+        .slice(0, 3)
+        .map((f) => (typeof f === 'string' ? fieldLabel(f) : ''))
+        .filter(Boolean)
+      if (named.length) return named.join(', ')
+      const changes = Array.isArray(item.payload?.changes) ? item.payload.changes : []
+      return changes
+        .slice(0, 3)
+        .map((c) => {
+          if (!c || typeof c !== 'object') return ''
+          const label = (c as Record<string, unknown>).label
+          return typeof label === 'string' ? fieldLabel(label) : ''
+        })
+        .filter(Boolean)
+        .join(', ')
+    }
+    default:
+      return item.current_status ?? ''
+  }
 }
 
 /** Rows the strip shows: unread only, newest first, capped (null stamps last). */

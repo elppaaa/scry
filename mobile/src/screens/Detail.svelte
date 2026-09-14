@@ -714,37 +714,41 @@
             </button>
           </div>
         {/if}
-        <p class="meta">
-          {lite.issue_type}
-          <span aria-hidden="true">·</span>
-          <button class="m-btn" onclick={openPriority} disabled={writesOff}>
-            {lite.priority ?? t('write.changePriority')}
-            <svg class="m-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </button>
-          <span aria-hidden="true">·</span>
-          <button class="m-btn" onclick={openAssignee} disabled={writesOff}>
-            {lite.assignee ?? t('common.unassigned')}
-            <svg class="m-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="m6 9 6 6 6-6" />
-            </svg>
-          </button>
-          <span aria-hidden="true">·</span>
-          {#if lite.duedate}
-            <!-- Data, not a control (GDK-875): the deadline rides the meta
-                 line in the desk's own absolute form — the calendar module's
-                 date kind, which keeps the written day whatever zone this
-                 phone sits in. Label from the shared field catalog. -->
-            <span class="due">{fieldLabel('due')}: {dueDateLabel(lite.duedate)}</span>
-            <span aria-hidden="true">·</span>
-          {/if}
-          {t('detail.updatedWhen', { when: relTime(lite.updated_at, app.now) })}
-          {#if lite.reporter}
-            <span aria-hidden="true">·</span>
-            {t('detail.byline', { name: lite.reporter })}
-          {/if}
-        </p>
+        <!-- Two rows on purpose (review 2026-09-14): controls on the first
+             (type · priority · assignee · due), provenance on the second
+             (updated · by). One flex-wrap line broke after "updated 4d ·"
+             and left the separator dangling at the line's end; the dots are
+             now CSS on the item that follows, so a wrap can never orphan one. -->
+        <div class="meta">
+          <p class="m-row">
+            <span class="m-item">{lite.issue_type}</span>
+            <button class="m-btn m-item" onclick={openPriority} disabled={writesOff}>
+              {lite.priority ?? t('write.changePriority')}
+              <svg class="m-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            <button class="m-btn m-item" onclick={openAssignee} disabled={writesOff}>
+              {lite.assignee ?? t('common.unassigned')}
+              <svg class="m-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            {#if lite.duedate}
+              <!-- Data, not a control (GDK-875): the deadline rides the meta
+                   line in the desk's own absolute form — the calendar module's
+                   date kind, which keeps the written day whatever zone this
+                   phone sits in. Label from the shared field catalog. -->
+              <span class="m-item due">{fieldLabel('due')}: {dueDateLabel(lite.duedate)}</span>
+            {/if}
+          </p>
+          <p class="m-row">
+            <span class="m-item">{t('detail.updatedWhen', { when: relTime(lite.updated_at, app.now) })}</span>
+            {#if lite.reporter}
+              <span class="m-item">{t('detail.byline', { name: lite.reporter })}</span>
+            {/if}
+          </p>
+        </div>
       </article>
     {/if}
 
@@ -889,7 +893,12 @@
               <span class="dot dot-{tr.to_category}" aria-hidden="true"></span>
               <span class="t-text">
                 <span class="t-name">{applying === tr.id ? t('common.applying') : tr.name}</span>
-                <span class="t-to">→ {tr.to_status}{blocked ? ' · ' + t('write.transitionNeedsFields') : ''}</span>
+                <!-- The built-in tracker names a transition after its target,
+                     so "Done / → Done" said everything twice; the arrow line
+                     stays only when it adds a word. -->
+                {#if blocked || tr.to_status !== tr.name}
+                  <span class="t-to">→ {tr.to_status}{blocked ? ' · ' + t('write.transitionNeedsFields') : ''}</span>
+                {/if}
                 {#if failedId === tr.id && transitionError}
                   <span class="t-err">{transitionError}</span>
                 {/if}
@@ -1164,15 +1173,17 @@
     font-weight: 400;
     color: var(--color-status-reopen);
   }
+  /* Data, not a control (DESIGN.md §4 thumb zone: the transition *action*
+     lives in the slab below). The outlined pill read as a second status
+     button over the real one — review 2026-09-14 — so the header chip is
+     now a dot and a word, the same weight as the slab's line. */
   .chip {
     display: flex;
     align-items: center;
     gap: 6px;
-    min-height: var(--spacing-control-sm);
-    padding: 0 10px;
-    border: 1px solid var(--color-border-subtle);
-    border-radius: 6px;
+    min-height: 24px;
     font-size: var(--text-micro);
+    font-weight: 600;
     color: var(--color-text-secondary);
   }
   .dot {
@@ -1278,12 +1289,23 @@
     color: var(--color-accent-text);
   }
   .meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: var(--text-micro);
+    color: var(--color-text-muted);
+  }
+  .m-row {
     margin: 0;
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 0 4px;
-    font-size: var(--text-micro);
+    min-width: 0;
+  }
+  .m-item + .m-item::before {
+    content: '·';
+    margin-right: 4px;
     color: var(--color-text-muted);
   }
   .m-btn {
@@ -1318,7 +1340,9 @@
   }
 
   .body {
-    padding: 0 16px;
+    /* 16px under the last paragraph so the description does not butt
+       against the status slab (review 2026-09-14, capture 08). */
+    padding: 0 16px 16px;
   }
   .none {
     margin: 4px 0 0;

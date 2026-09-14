@@ -8,18 +8,19 @@
    * One document row (DESIGN.md §3.4): the issue row's height and hairline,
    * no status mark. The row is one sentence (desktop DocRow): title, then
    * author · relative time · space. The space clause drops when the scope
-   * is that space. Excerpt rides the same second line on the Updated plate
-   * only, so density stays 56px.
+   * is that space. A search snippet replaces author · time on the same
+   * line. The page's own excerpt used to ride the Updated plate's second
+   * line too, and after three clauses it had thirty characters left —
+   * "Themes Users request snooze co…" (review 2026-09-14, capture 06) —
+   * so it is gone; the plate says who and when, the page says what.
    */
   let {
     page,
     showSpace = true,
-    showExcerpt = false,
     snippet = '',
   }: {
     page: PageLite
     showSpace?: boolean
-    showExcerpt?: boolean
     snippet?: string
   } = $props()
 
@@ -37,10 +38,6 @@
       if (space) out.push(t('docs.metaIn', { space }))
     }
     if (snip) out.push(snip)
-    else if (showExcerpt) {
-      const ex = (page.excerpt ?? '').trim()
-      if (ex) out.push(ex)
-    }
     return out
   })
 </script>

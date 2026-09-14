@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
   feedAfterRead,
+  feedDetail,
   feedKindLabel,
   glanceRows,
   type FeedItem,
@@ -188,5 +189,25 @@ describe('GDK-871 the store owns the polling and the receipts', () => {
   it('forgets the feed on unpair, like every other mirrored plate', () => {
     const unpairBody = store.slice(store.indexOf('export async function unpair'))
     expect(unpairBody).toContain('app.feed = null')
+  })
+})
+
+describe('feedDetail — what moved, in the desk\'s words (review 2026-09-14)', () => {
+  it('names the changed fields by display name, three at most', () => {
+    const row = item({ event_id: 'cl:f', issue_key: 'STD-7', event_type: 'fields_changed', payload: { fields: ['priority', 'labels', 'due', 'summary'] } })
+    expect(feedDetail(row)).toBe('Priority, Labels, Due date')
+  })
+  it('reads status and assignee moves as from → to', () => {
+    expect(feedDetail(item({ event_id: 'a', issue_key: 'STD-1', event_type: 'status_changed', payload: { from: 'To Do', to: 'Done' } }))).toBe('To Do → Done')
+    expect(feedDetail(item({ event_id: 'b', issue_key: 'STD-1', event_type: 'assigned', payload: { from: '', to: 'Jane' } }))).toBe(' → Jane')
+  })
+  it('is empty — never "undefined" — when the payload says nothing', () => {
+    expect(feedDetail(item({ event_id: 'c', issue_key: 'STD-1', event_type: 'fields_changed' }))).toBe('')
+    expect(feedDetail(item({ event_id: 'd', issue_key: 'STD-1', event_type: 'status_changed', payload: {} }))).toBe('')
+    expect(feedDetail(item({ event_id: 'e', issue_key: 'STD-1', event_type: 'comment_added', payload: { excerpt: 'Reproduced.' } }))).toBe('Reproduced.')
+  })
+  it('the strip paints the detail where the actor used to be', () => {
+    expect(strip).toContain('feedDetail(item)')
+    expect(strip).toMatch(/\{#if detail\}[\s\S]*\{:else if item\.actor_name\}/)
   })
 })

@@ -33,7 +33,6 @@
     sessionLine,
     SCOPE_ACTIVE_SPRINT,
     SCOPE_ALL_OPEN,
-    SCOPE_DOCS_UPDATED,
     SCOPE_MY_WORK,
     type Scope,
   } from '../lib/domain'
@@ -256,13 +255,17 @@
        a band in the header would cost the list a row of density
        (mobile/e2e/viewport.spec.ts floors it at 9). Tapping it scopes the
        list to that sprint; absent when there is no active one. -->
-  <SprintLine
-    sprint={activeSprint}
-    issues={app.issues}
-    now={app.now}
-    current={scope.id === SCOPE_ACTIVE_SPRINT}
-    onpick={() => setScope(SCOPE_ACTIVE_SPRINT)}
-  />
+  {#if !isDocs}
+    <!-- Issue data: under a documents scope the line described a list that
+         was not on screen (review 2026-09-14, capture 06). -->
+    <SprintLine
+      sprint={activeSprint}
+      issues={app.issues}
+      now={app.now}
+      current={scope.id === SCOPE_ACTIVE_SPRINT}
+      onpick={() => setScope(SCOPE_ACTIVE_SPRINT)}
+    />
+  {/if}
 
   <!-- GDK-871: the glance strip — the last band before the plates, and the
        only scope-independent one (the feed is a person's, not a scope's).
@@ -280,11 +283,7 @@
       <EmptyState title={t('docs.recentEmpty')} />
     {:else}
       {#each docRows as page (page.key)}
-        <DocRow
-          {page}
-          showSpace={!scope.spaceKey}
-          showExcerpt={scope.id === SCOPE_DOCS_UPDATED}
-        />
+        <DocRow {page} showSpace={!scope.spaceKey} />
       {/each}
       <div class="foot" aria-hidden="true"></div>
     {/if}
@@ -347,7 +346,7 @@
         <label class="lbl" for="create-project">{t('common.project')}</label>
         <select id="create-project" bind:value={createProject} disabled={createWritesOff}>
           {#each creatableProjects as p (p.key)}
-            <option value={p.key}>{p.key} · {p.name}</option>
+            <option value={p.key}>{p.key}{p.name && p.name !== p.key ? ` · ${p.name}` : ''}</option>
           {/each}
         </select>
       {/if}

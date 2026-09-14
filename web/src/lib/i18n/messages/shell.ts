@@ -1276,8 +1276,8 @@ export const shell = {
   },
   'app.mirrorSection': {
     en: 'Mirror',
-    ko: '미러',
-    ja: 'ミラー',
+    ko: '캐시',
+    ja: 'キャッシュ',
   },
   'app.mirrorIssues': {
     en: '{n} issues',

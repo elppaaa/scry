@@ -984,7 +984,11 @@
           {#if currentIssue && currentIssue !== currentLabel}
             <span class="key">{currentIssue}</span>
           {/if}
-          <span class="count">{roster.length}</span>
+          {#if roster.length > 1}
+            <!-- One shell needs no tally: "shell 1 · 1" read as a typo
+                 (review 2026-09-14, capture 10). -->
+            <span class="count">{roster.length}</span>
+          {/if}
         </button>
       {/if}
     </div>

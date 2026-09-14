@@ -173,7 +173,6 @@
         <DocRow
           {page}
           showSpace={true}
-          showExcerpt={false}
           snippet={docSnippet(serverMatches[page.key], page.title, query)}
         />
       {/each}

@@ -288,19 +288,25 @@
         <button class="unpair" onclick={exitDemo}>{t('app.demoExit')}</button>
       </section>
     {:else if app.meta}
-      <section>
-        <h3>{t('app.pairedServer')}</h3>
-        <p class="big">{app.meta.label || host(app.meta.endpoint)}</p>
-        <p class="sub mono">{host(app.meta.endpoint)}</p>
-        {#if offerExpiry(app.meta.expires_at)}
-          <p class="sub">{t('app.offerExpires', { when: offerExpiry(app.meta.expires_at) })}</p>
-        {/if}
-      </section>
+      {#if roster.length === 0}
+        <!-- No roster yet (a pre-GDK-1097 pairing): the paired server is
+             its own block. With a roster the active row *is* this block,
+             and the screen said "This Mac (dev)" twice in a row (review
+             2026-09-14, capture 13). -->
+        <section>
+          <h3>{t('app.pairedServer')}</h3>
+          <p class="big">{app.meta.label || host(app.meta.endpoint)}</p>
+          <p class="sub mono">{host(app.meta.endpoint)}</p>
+        </section>
+      {/if}
 
       <!-- Host roster (GDK-1097 B2): switch with a tap, forget an inactive
            row through the two-step arm. -->
       <section>
         <h3>{t('app.hosts.title')}</h3>
+        {#if offerExpiry(app.meta.expires_at)}
+          <p class="sub">{t('app.offerExpires', { when: offerExpiry(app.meta.expires_at) })}</p>
+        {/if}
         {#each roster as h (h.id)}
           <div class="hostrow">
             <button class="host" onclick={() => void onSwitchHost(h.id)}>
@@ -590,14 +596,14 @@
   .hostrow {
     margin: 0 0 4px;
   }
+  /* A ledger row, not a card (GDK-879): hairline under, no frame. */
   .host {
     width: 100%;
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding: 8px 10px;
-    border-radius: 6px;
-    border: 1px solid var(--color-border-subtle);
+    padding: 8px 0;
+    border-bottom: 1px solid var(--color-border-subtle);
     background: transparent;
     text-align: left;
   }

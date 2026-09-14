@@ -1,7 +1,7 @@
 <script lang="ts">
   import { errorMessage } from '../lib/api'
   import { t } from '../lib/i18n'
-  import { feedKindLabel, glanceRows, relTime, type FeedItem } from '../lib/domain'
+  import { feedDetail, feedKindLabel, glanceRows, relTime, type FeedItem } from '../lib/domain'
   import { app, markGlanceAllRead, markGlanceIssueRead, openIssue } from '../lib/store.svelte'
 
   /*
@@ -48,10 +48,16 @@
       <button class="allread" onclick={markAll}>{t('feed.markAllRead')}</button>
     </div>
     {#each rows as item (item.event_id)}
+      {@const detail = feedDetail(item)}
       <button class="g-item" onclick={() => open(item)}>
         <span class="key">{item.issue_key}</span>
         <span class="what">{feedKindLabel(item.event_type)}</span>
-        {#if item.actor_name}
+        {#if detail}
+          <!-- What moved, in place of who moved it: at 402pt the line holds
+               one of the two, and "Priority, Labels" answers the strip's
+               question where a name does not. The actor waits in Detail. -->
+          <span class="who">{detail}</span>
+        {:else if item.actor_name}
           <span class="who">{item.actor_name}</span>
         {/if}
         {#if item.occurred_at}
@@ -127,6 +133,9 @@
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+  .who::before {
+    content: '· ';
   }
   .when {
     flex: none;

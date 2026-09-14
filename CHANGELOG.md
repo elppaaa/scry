@@ -14,7 +14,13 @@ shows one line — the sprint's name, done over total with the percentage, and
 the days left, with the goal beneath — and tapping it scopes the list to that
 sprint, grouped new → in progress → done. There is no board to drag; the phone
 reads the sprint, the desk runs it ([GDK-1867]). The bundled sample workspace
-was regenerated so it carries the fields the phone has read since 0.21.
+was regenerated so it carries the fields the phone has read since 0.21. A
+screen-by-screen read of the phone's captures fixed what a first look sees:
+the Send and Save buttons now actually turn to the accent when armed, the
+meta line no longer strands its separator at a line break, the status word in
+the header is data rather than a second button, the activity strip says which
+field moved instead of "Field change", and the pairing tab names the host
+once ([GDK-1869]).
 
 ## v0.22.1 — 2026-09-14
 
@@ -1615,3 +1621,4 @@ priority sorting keyed on `priority_rank`.
 [GDK-1860]: https://gadak.dev/backlog/#/?ks=GDK-1860
 [GDK-1863]: https://gadak.dev/backlog/#/?ks=GDK-1863
 [GDK-1867]: https://gadak.dev/backlog/#/?ks=GDK-1867
+[GDK-1869]: https://gadak.dev/backlog/#/?ks=GDK-1869

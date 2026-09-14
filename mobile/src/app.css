@@ -164,8 +164,12 @@ button {
   both local pairs in Detail.svelte were deleted for this rule. Tokens
   only (no hex in this file); resting bases stay per-control.
 */
-.save.armed,
-.send.armed {
+/* `button.` on purpose: the component's resting rule is `.save.svelte-x`
+   (two classes), and a bare `.save.armed` ties it, so cascade order decided
+   and the armed colour never painted — measured 2026-09-14 in the review
+   captures (typed comment, Save with a title: both still the resting tan). */
+button.save.armed,
+button.send.armed {
   background: var(--color-accent);
   color: var(--color-bg-base);
 }
