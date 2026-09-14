@@ -494,8 +494,17 @@ round once the tag exists and the manifests still say the old patch, and
 the machine-local pre-push hook runs doc-checks whenever an outgoing
 commit adds a GDK key — so a pins commit cannot leave before the release
 and a manifests commit cannot leave before checksums.txt. The sequence
-that stays green at every step: (1) land the last content commit, tag it,
-push branch then tag; (2) wait for Release and Desktop release; (3) run
+that stays green at every step: (1) land the last content commit and push the branch, and only then tag
+that commit and push the tag — a tag that exists locally before the branch
+push is what `git describe` reads, so the pre-push hook's doc-checks demands
+the `Last tagged:` line and the manifests that step 3 has not made yet
+(measured on v0.22.1; the tag push itself skips the hook); (2) wait for
+Release and Desktop release, and read the Release run's mcpb job: its MCP
+Registry steps run only when the repository variable `MCP_REGISTRY_PUBLISH`
+is `true`, and a skipped publish is green — confirm the publish steps ran
+and that the registry entry's `fileSha256` equals the attached `.mcpb`'s
+sha256 (v0.22.1 tagged with the variable unset and left the registry at
+0.22.0 until the job was re-run); (3) run
 the two update scripts, then `contrib/aur/gadak-bin/verify.sh` — it needs
 a docker daemon (`orb start` on this machine) and is what regenerates
 `.SRCINFO`, since makepkg is not on a mac; (4) bump every file in the pin
