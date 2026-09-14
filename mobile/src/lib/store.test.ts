@@ -708,9 +708,12 @@ describe('switchHost() — per-host caches never cross (GDK-1097 B2)', () => {
       'gadak.views',
       'gadak.pages',
       'gadak.issues.scope',
+      'gadak.drafts.v1',
     ]) {
       mem.set(base, 'legacy residue')
     }
+    // A composer draft under the host's namespace (GDK-1863) leaves with it.
+    mem.set(`gadak.drafts.v1@${a}`, JSON.stringify({ schema: 1, drafts: [] }))
     await bootOn(a)
 
     await unpair()
@@ -722,6 +725,7 @@ describe('switchHost() — per-host caches never cross (GDK-1097 B2)', () => {
       'gadak.views',
       'gadak.pages',
       'gadak.issues.scope',
+      'gadak.drafts.v1',
     ]) {
       expect(mem.get(`${base}@${a}`), `${base}@host dropped`).toBeUndefined()
       expect(mem.get(base), `${base} bare residue dropped`).toBeUndefined()
@@ -733,6 +737,7 @@ describe('switchHost() — per-host caches never cross (GDK-1097 B2)', () => {
   it("removeRosterHost() drops an inactive host's slots, row and documents — the active host untouched", async () => {
     const a = await seedHost(EP_A, 'desk A', 'STD-A1')
     const b = await seedHost(EP_B, 'desk B', 'STD-B1')
+    mem.set(`gadak.drafts.v1@${b}`, JSON.stringify({ schema: 1, drafts: [] }))
     await bootOn(a)
 
     await removeRosterHost(b)
@@ -742,6 +747,7 @@ describe('switchHost() — per-host caches never cross (GDK-1097 B2)', () => {
     expect(mem.get(`gadak.dev.token@${b}`)).toBeUndefined()
     expect(mem.get(`gadak.pairing.meta@${b}`)).toBeUndefined()
     expect(mem.get(`gadak.snapshot@${b}`)).toBeUndefined()
+    expect(mem.get(`gadak.drafts.v1@${b}`)).toBeUndefined()
     expect(mem.get(`gadak.dev.token@${a}`)).toBeDefined()
     expect(app.phase).toBe('paired')
     expect(app.issues.map((i) => i.issue_key)).toEqual(['STD-A1'])

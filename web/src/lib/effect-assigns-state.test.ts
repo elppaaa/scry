@@ -170,7 +170,6 @@ const ALLOWED: Exception[] = [
     'detail',
     'detailError',
     'sheetOpen',
-    'comment',
     'sendError',
     'pending',
     'transitions',

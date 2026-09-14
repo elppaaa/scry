@@ -351,6 +351,13 @@ export const write = {
     ko: '코멘트',
     ja: 'コメント',
   },
+  // GDK-1863: the phone restored what you had typed here before the app
+  // closed. One muted line under the composer, gone on the first keystroke.
+  'write.draftRestored': {
+    en: 'Draft restored',
+    ko: '임시 저장을 불러왔습니다',
+    ja: '下書きを復元しました',
+  },
   // GDK-528: comment restriction (Jira family only — the composer draws
   // nothing on built-in/Linear).
   'write.commentVisibilityLabel': {

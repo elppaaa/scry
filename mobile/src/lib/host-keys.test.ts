@@ -38,7 +38,7 @@ describe('hostKey — composition', () => {
     expect(hostKey(META_KEY, 'paired:0123abcd')).toBe('gadak.pairing.meta@paired:0123abcd')
   })
 
-  it('scopes exactly the six session documents', () => {
+  it('scopes exactly the seven session documents', () => {
     expect([...HOST_SCOPED_KEYS].sort()).toEqual(
       [
         'gadak.pairing.meta',
@@ -47,6 +47,7 @@ describe('hostKey — composition', () => {
         'gadak.views',
         'gadak.pages',
         'gadak.issues.scope',
+        'gadak.drafts.v1',
       ].sort(),
     )
   })

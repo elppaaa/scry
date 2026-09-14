@@ -1,5 +1,6 @@
 <script lang="ts">
   import Screen from '../ui/Screen.svelte'
+  import { untrack } from 'svelte'
   import Sheet from '../ui/Sheet.svelte'
   import AdfBody from '../ui/AdfBody.svelte'
   import { app, closeIssue, openIssue, sync } from '../lib/store.svelte'
@@ -23,6 +24,7 @@
     searchUsers,
   } from '../lib/writes'
   import { keyboardInset } from '../lib/keyboard'
+  import { clearDraft, loadDraft, saveDraft, type DraftKind } from '../lib/drafts'
   import { t, fieldLabel } from '../lib/i18n'
   import { showToast } from '../lib/toast.svelte'
   import { buildSharePayload, shareIssue, ShareRefused } from '../lib/share'
@@ -124,13 +126,87 @@
   /** 409 format_loss answered: the next save re-PUTs with force. */
   let descForceAsk = $state(false)
 
-  let comment = $state('')
+  // What you were typing here last time (GDK-1863). Read once at mount —
+  // App.svelte remounts this screen per key ({#key}), so the initializer is
+  // the per-issue reset and no $effect has to assign it (GDK-692).
+  const commentDraft = loadDraft('comment', untrack(() => issueKey))
+  let comment = $state(commentDraft ?? '')
   let sending = $state(false)
   let sendError = $state<string | null>(null)
   /** RAM-only overlay (DESIGN.md §5). Never written to the snapshot cache. */
   let pending = $state<DetailComment | null>(null)
 
   const thread = $derived(overlayComments(detail?.comments ?? [], pending))
+
+  /*
+   * Composer drafts (GDK-1863). Three composers on this screen used to live
+   * in component state alone, so an app switch, a host switch, a token
+   * refresh or a crash dropped whatever was half-typed. lib/drafts.ts owns
+   * the storage; this screen owns only when to restore, save and forget.
+   *
+   * The debounce handles are plain lets, not $state: nothing renders them,
+   * and the effect's teardown must be able to read them after the last
+   * render. `draftPending` is what a timer still owes storage — flushed on
+   * teardown (a back-tap inside the debounce window must not lose a word)
+   * and before any write that may fail.
+   */
+  const draftTimers: Record<DraftKind, ReturnType<typeof setTimeout> | null> = {
+    comment: null,
+    summary: null,
+    description: null,
+  }
+  const draftPending: Record<DraftKind, string | null> = {
+    comment: null,
+    summary: null,
+    description: null,
+  }
+  /** One muted line per composer, dismissed by the first keystroke. */
+  let commentRestored = $state(commentDraft !== null)
+  let summaryRestored = $state(false)
+  let descRestored = $state(false)
+
+  function queueDraft(kind: DraftKind, key: string, text: string): void {
+    draftPending[kind] = text
+    const running = draftTimers[kind]
+    if (running) clearTimeout(running)
+    draftTimers[kind] = setTimeout(() => {
+      draftTimers[kind] = null
+      draftPending[kind] = null
+      saveDraft(kind, key, text)
+    }, 250)
+  }
+
+  function cancelDraft(kind: DraftKind): void {
+    const running = draftTimers[kind]
+    if (running) clearTimeout(running)
+    draftTimers[kind] = null
+    draftPending[kind] = null
+  }
+
+  /** Writes what the debounce still owes, now. Storage is synchronous, so
+   *  this is safe from an effect teardown and from a send's first line. */
+  function flushDraft(kind: DraftKind, key: string): void {
+    const text = draftPending[kind]
+    cancelDraft(kind)
+    if (text !== null) saveDraft(kind, key, text)
+  }
+
+  const DRAFT_KINDS: readonly DraftKind[] = ['comment', 'summary', 'description']
+
+  function onCommentInput(next: string): void {
+    commentRestored = false
+    queueDraft('comment', issueKey, next)
+  }
+
+  function onSummaryInput(next: string): void {
+    summaryRestored = false
+    queueDraft('summary', issueKey, next)
+  }
+
+  function onDescInput(next: string): void {
+    descRestored = false
+    queueDraft('description', issueKey, next)
+  }
 
   /*
    * Resume card (GDK-1495 ③) — a tinted card above the thread saying what
@@ -222,7 +298,6 @@
     detail = null
     detailError = null
     sheetOpen = false
-    comment = ''
     sendError = null
     pending = null
     transitions = null
@@ -241,12 +316,38 @@
             : errorMessage(err)
       }
     })()
+    /*
+     * The debounce's owed text, written now. The captured key, not the live
+     * prop: this runs on teardown too, which also fires when the screen
+     * moves to another issue, and the debt belongs to the old one.
+     *
+     * An app switch is not a teardown — iOS freezes the webview with the
+     * screen still mounted, so a 250 ms debt would die there. pagehide is
+     * the one event this webview is guaranteed before that (and before a
+     * reload); visibilitychange catches the background that never unloads.
+     * Both are synchronous and localStorage is synchronous, so the write
+     * completes inside the handler. Measured (e2e/drafts.spec.ts, a reload
+     * inside the window): without this the last keystroke was lost. The
+     * iOS background is the reasoned half — pagehide is what that webview
+     * gets — not a device measurement.
+     */
+    const flushAllDrafts = () => {
+      for (const kind of DRAFT_KINDS) flushDraft(kind, key)
+    }
+    const onHidden = () => {
+      if (document.visibilityState === 'hidden') flushAllDrafts()
+    }
+    window.addEventListener('pagehide', flushAllDrafts)
+    document.addEventListener('visibilitychange', onHidden)
     return () => {
       searchSeq++
       if (searchTimer) clearTimeout(searchTimer)
       searchTimer = null
       searchAbort?.abort()
       searchAbort = null
+      window.removeEventListener('pagehide', flushAllDrafts)
+      document.removeEventListener('visibilitychange', onHidden)
+      flushAllDrafts()
     }
   })
 
@@ -302,13 +403,19 @@
   async function send() {
     const text = comment.trim()
     if (writesOff || text === '' || sending) return
+    // The draft goes to storage before the POST, not after: a refused send
+    // must leave it there, and the box is emptied two lines below.
+    flushDraft('comment', issueKey)
+    saveDraft('comment', issueKey, text)
     sending = true
     sendError = null
     const overlay = pendingComment(text, app.me, new Date())
     pending = overlay
     comment = ''
+    commentRestored = false
     try {
       await request(`issues/${issueKey}/comment/`, { method: 'POST', body: { text } })
+      clearDraft('comment', issueKey) // only a landed comment forgets its draft
       pending = null
       const res = await request<DetailResponse>(`issues/${issueKey}/detail/`)
       detail = res.body
@@ -441,18 +548,37 @@
 
   function editSummary() {
     if (writesOff || !lite) return
-    summaryDraft = lite.summary
+    const saved = loadDraft('summary', issueKey)
+    summaryDraft = saved ?? lite.summary
+    summaryRestored = saved !== null && saved.trim() !== lite.summary.trim()
     summaryError = null
     summaryEditing = true
+  }
+
+  /**
+   * Leaving the editor keeps the draft — the user may come back — unless
+   * the text is already what the server holds, which is nothing to return
+   * to. saveDraft treats empty text as a clear, so a wiped box is a clear.
+   */
+  function closeSummaryEdit(): void {
+    cancelDraft('summary')
+    if (summaryDraft.trim() === (lite?.summary ?? '').trim()) clearDraft('summary', issueKey)
+    else saveDraft('summary', issueKey, summaryDraft)
+    summaryEditing = false
+    summaryRestored = false
   }
 
   async function saveSummary() {
     const text = summaryDraft.trim()
     if (writesOff || summarySaving || text === '') return
+    flushDraft('summary', issueKey)
+    saveDraft('summary', issueKey, summaryDraft)
     summarySaving = true
     summaryError = null
     try {
       const res = await setSummary(issueKey, text)
+      clearDraft('summary', issueKey)
+      summaryRestored = false
       written = res.issue
       summaryEditing = false
       void sync()
@@ -468,18 +594,36 @@
     if (writesOff) return
     // description_md is the write format; old serves predate it and the
     // flattened text is the best draft they can offer.
-    descDraft = detail?.description_md ?? detail?.description_text ?? ''
+    const server = detail?.description_md ?? detail?.description_text ?? ''
+    const saved = loadDraft('description', issueKey)
+    descDraft = saved ?? server
+    descRestored = saved !== null && saved.trim() !== server.trim()
     descError = null
     descForceAsk = false
     descOpen = true
   }
 
+  /** Same bargain as the summary editor: closing keeps what differs from
+   *  the server, and forgets what does not. */
+  function closeDescription(): void {
+    cancelDraft('description')
+    const server = detail?.description_md ?? detail?.description_text ?? ''
+    if (descDraft.trim() === server.trim()) clearDraft('description', issueKey)
+    else saveDraft('description', issueKey, descDraft)
+    descOpen = false
+    descRestored = false
+  }
+
   async function saveDescription(force: boolean) {
     if (writesOff || descSaving) return
+    flushDraft('description', issueKey)
+    saveDraft('description', issueKey, descDraft)
     descSaving = true
     descError = null
     try {
       await setDescription(issueKey, descDraft, { force })
+      clearDraft('description', issueKey)
+      descRestored = false
       descOpen = false
       descForceAsk = false
       // Refetch so AdfBody re-renders the stored body, then sync the rows.
@@ -541,6 +685,7 @@
               placeholder={t('write.issueTitle')}
               aria-label={t('write.editTitle')}
               enterkeyhint="done"
+              oninput={(e) => onSummaryInput(e.currentTarget.value)}
               onkeydown={(e) => {
                 if (e.key === 'Enter') void saveSummary()
               }}
@@ -548,7 +693,10 @@
             <button class="save" class:armed={summaryDraft.trim() !== ''} disabled={summarySaving || summaryDraft.trim() === ''} onclick={() => void saveSummary()}>
               {t('common.save')}
             </button>
-            <button class="ghost" onclick={() => (summaryEditing = false)}>{t('common.cancel')}</button>
+            <button class="ghost" onclick={closeSummaryEdit}>{t('common.cancel')}</button>
+            {#if summaryRestored}
+              <p class="draft-note">{t('write.draftRestored')}</p>
+            {/if}
             {#if summaryDraft.trim() === ''}
               <p class="field-err">{t('write.titleRequired')}</p>
             {:else if summaryError}
@@ -696,6 +844,7 @@
             disabled={writesOff}
             placeholder={t('write.commentPlaceholder')}
             enterkeyhint="send"
+            oninput={(e) => onCommentInput(e.currentTarget.value)}
             onkeydown={(e) => {
               if (e.key === 'Enter') void send()
             }}
@@ -710,6 +859,8 @@
           </button>
           {#if sendError && !writesOff}
             <p class="send-error">{sendError}</p>
+          {:else if commentRestored && !writesOff}
+            <p class="draft-note">{t('write.draftRestored')}</p>
           {/if}
         </div>
       </div>
@@ -865,13 +1016,17 @@
   {/if}
 
   {#if descOpen}
-    <Sheet title={t('write.editDescription')} tall onclose={() => (descOpen = false)}>
+    <Sheet title={t('write.editDescription')} tall onclose={closeDescription}>
       <div class="desc-edit">
         <textarea
           bind:value={descDraft}
           placeholder={t('write.descriptionPlain')}
           aria-label={t('write.editDescription')}
+          oninput={(e) => onDescInput(e.currentTarget.value)}
         ></textarea>
+        {#if descRestored}
+          <p class="draft-note">{t('write.draftRestored')}</p>
+        {/if}
         {#if descForceAsk}
           <p class="error">{t('write.descriptionForceAsk')}</p>
           <div class="desc-actions">
@@ -1093,6 +1248,15 @@
     margin: 0;
     font-size: var(--text-micro);
     color: var(--color-status-reopen);
+  }
+  /* Restored-draft caption (GDK-1863): the muted twin of the error lines
+     above and below — same slot, same size, no box of its own. */
+  .draft-note {
+    flex: 1 0 100%;
+    margin: 0;
+    padding: 4px 0 0;
+    font-size: var(--text-micro);
+    color: var(--color-text-muted);
   }
   .save {
     flex: none;
