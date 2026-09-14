@@ -2025,6 +2025,18 @@
   .desk {
     margin: 0 -8px;
   }
+  /* Inside the field list the desk row is the list's last row, not a heading
+     for the section below: its label takes the field rows' micro size and it
+     closes with the same hairline every row above it wears. Scoped here and
+     not in DeskRow — in the scope sheet the same row sits among body-size
+     live rows and that size is right there (2026-09-14 vision pass, axis F:
+     the body-size label read as the LINKED heading). */
+  .desk :global(.desk-row) {
+    border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .desk :global(.desk-row .name) {
+    font-size: var(--text-micro);
+  }
   .f-label {
     flex: none;
     font-size: var(--text-micro);
