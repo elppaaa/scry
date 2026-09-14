@@ -26,15 +26,34 @@ edge that follows an issue from its row into its detail page.
 | "One-line reply / push the status" | Detail composer · transition sheet | thumb only |
 | "Is this thing still connected?" | Pairing tab | rarely visited, always honest |
 
-Non-jobs (deliberately absent in v1): creating issues, editing fields,
-attachments, **wiki writes** (create / edit / comment on a page),
-a feed *tab* or notification center (the glance strip above the queue is
-the phone's whole feed surface — GDK-871; a fourth tab would be a desktop
-column transplanted), JQL. The desktop owns those. History timeline and plugin
-enrichments are read on the desktop too — the phone shows description,
-comments, linked issues, and a page's plain-text body. **Authoring** a view is a
-non-job in the same sense: the phone consumes the names the desk wrote and
-never `POST`s one (iOS Mail does not author smart mailboxes either).
+**Where the phone stops** (rewritten 2026-09-14, user decision, GDK-1875).
+The old list here named creating issues, editing fields, attachments and
+wiki writes as non-jobs. The complaint corpus (272 quotes, wiki page 20002)
+showed the loudest class was "the app is a subset of the web and you find out
+by searching" — and the bootstrap payload already carried most of what the
+phone was hiding. The rule is now one sentence with three clauses:
+
+- **Whatever the mirror holds, the phone shows.** Labels, components, fix
+  versions, due date, parent and epic, custom fields under their
+  `field_specs` display name, linked issues both ways, sprint — one Fields
+  section on Detail, ledger rows, nothing invented. If a row exists in
+  `issues_full`, hiding it on the phone is the defect (GDK-1870).
+- **Whatever is one line to say, the phone writes.** Comment, status, assignee,
+  priority, title, description, create (also under a parent), labels, due
+  date, a photo on a comment or a new issue, a comment on a wiki page. The
+  server route exists for each; the phone adds the control and the draft.
+- **Whatever needs a form, a layout or an editor stays on the desk — and the
+  phone says so on the spot.** Wiki page edit (the server's `format_loss`
+  refusal is the exact data-loss trap the Confluence app is blamed for),
+  custom-field edit, view and JQL authoring, dashboards, board drag. Each gets
+  a disabled row that reads "Open on the desktop", never a silent absence
+  (GDK-1874). A feed *tab* stays out for the same reason as before: the glance
+  strip is the phone's whole feed surface (GDK-871).
+
+**Authoring** a view is on the desk side of that line: the phone consumes the
+names the desk wrote and never `POST`s one (iOS Mail does not author smart
+mailboxes either). History timeline and plugin enrichments are read on the
+desk too.
 
 ## 2. Screen map & navigation model
 
