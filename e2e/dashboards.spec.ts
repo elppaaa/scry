@@ -928,6 +928,17 @@ test('GDK-1060: a missing id is not-found copy without Retry; a 503 shows Retry 
   request,
 }) => {
   const errors = attachConsoleErrors(page)
+  // Opt this context into the debug attributes (single writer, lib/debug-attrs;
+  // off in the production bundle this suite serves). `data-dash-row-fetch`
+  // names who asked for the last row fetch — open, retry, or the version poll
+  // — which is the sentence the GDK-1880 failure could not produce.
+  await page.addInitScript((key) => {
+    try {
+      localStorage.setItem(key, '1')
+    } catch {
+      /* sandboxed frame — the host page is the one that opts in */
+    }
+  }, DEBUG_ATTRS_KEY)
 
   // Measured server behavior first — it is what makes the two UI states
   // distinguishable at all.
@@ -962,7 +973,46 @@ test('GDK-1060: a missing id is not-found copy without Retry; a 503 shows Retry 
   const loadError = page.getByTestId('dashboard-load-error')
   await expect(loadError).toBeVisible()
   await expect(loadError).toContainText('Could not load this dashboard')
-  await page.getByTestId('dashboard-retry').click()
+
+  /*
+   * GDK-1880: the error state has to hold still before anyone can click it.
+   * It did not. The 500ms version poll read the null row as "the first fetch
+   * is still in flight", force-refetched, succeeded, and unmounted this whole
+   * branch — Retry included — while the click's actionability checks were
+   * running. CI run 34858323790 recorded the outcome and could not name it:
+   * one "element was detached from the DOM", then 60s of silence.
+   *
+   * So: hold one handle across a poll period and say what happened. The
+   * settle proves an absence (nothing re-rendered), the same way the two
+   * no-swap assertions earlier in this file do; it buys the click below no
+   * retry budget, which still has to land on the first node it resolves.
+   */
+  const retry = page.getByTestId('dashboard-retry')
+  await expect(retry).toBeVisible()
+  const held = await retry.elementHandle()
+  expect(held, 'no Retry node to hold').not.toBeNull()
+  // A settle proves nothing if the thing that used to move the screen is not
+  // running: data-ui-focus-poll is App.svelte's own statement that the tick is
+  // alive (markFocusPoll, not debug-gated), so this assertion cannot rot into
+  // a no-op if the poll ever stops in headless.
+  expect(
+    await page.evaluate(() => document.documentElement.dataset.uiFocusPoll),
+    'the focus poll was not running, so the settle below proves nothing',
+  ).toBe('on')
+  // The duration is the contract: 700ms clears one full 500ms focus-poll tick
+  // (App.svelte startFocusPoll), which is the thing that used to refetch here.
+  await page.waitForTimeout(700)
+  expect(
+    await held?.evaluate((el) => el.isConnected),
+    'the error state re-rendered on its own: the Retry node was replaced without a tap (GDK-1880)',
+  ).toBe(true)
+  await expect(loadError, 'the error state cleared itself without a tap (GDK-1880)').toHaveCount(1)
+  expect(
+    await page.evaluate(() => document.documentElement.dataset.dashRowFetch),
+    'something refetched the row while the error was showing — this names the trigger',
+  ).toBe('open')
+
+  await retry.click()
   const fl = page.frameLocator(FRAME_SEL)
   await expect(fl.getByTestId('dash-version')).toHaveText('gdk1060')
   await expect(fl.locator('#pushed')).toHaveText(/^[1-9][0-9]*$/)

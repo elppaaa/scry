@@ -11,11 +11,16 @@
  *    the authored HTML is the unit of change; no state preservation duty).
  *    Row gone (404) → close. That is the whole `gadak dashboards save` →
  *    open tab re-renders contract (p95 ≤ 1s: ≤0.5s poll + one row fetch).
+ *    A row load that FAILED is not one still in flight, and the poll leaves
+ *    its error state alone — Retry is a person's gesture, the only way out
+ *    of it (GDK-1880). lib/dashboard-row-sync owns that whole decision.
  *  - Datasource DATA freshness is separate and lives in DashboardView: the
  *    15s delta poll's lastSync re-runs the datasources and re-pushes (≤2s).
  */
 
 import { ApiError, getDashboard, getDashboards } from '../lib/api'
+import { decideRowSync, type RowLoadReason } from '../lib/dashboard-row-sync'
+import { publishDebugAttr } from '../lib/debug-attrs'
 import type { DashboardRow } from '../lib/types'
 import { column } from './column.svelte'
 
@@ -89,7 +94,7 @@ class DashboardsStore {
     this.error = null
     this.row = null
     column.show({ view: 'dashboard', id })
-    void this.loadRow()
+    void this.loadRow('open')
     if (!this.loaded) void this.loadList()
   }
 
@@ -99,10 +104,22 @@ class DashboardsStore {
     column.close('dashboard')
   }
 
-  async loadRow(force = false): Promise<void> {
+  /**
+   * Fetch the open row. `reason` is the whole argument on purpose (GDK-1880):
+   * it says who asked, and "may this pass a fetch already in flight" follows
+   * from that rather than from a separate boolean whose two callers meant
+   * different things by it. It is also what `data-dash-row-fetch` publishes,
+   * so a surprise refetch names its trigger instead of being inferred from a
+   * network panel.
+   */
+  async loadRow(reason: RowLoadReason = 'open'): Promise<void> {
     const id = this.openId
     if (!id) return
-    if (!force && this.#inFlightRow) return
+    // Opening defers to a fetch already running. A person's Retry and a
+    // version move both mean "the answer in flight is not the one we want":
+    // a fetch that started before the save would land the old document.
+    if (reason === 'open' && this.#inFlightRow) return
+    publishDebugAttr('dashRowFetch', () => reason)
     const seq = ++this.#rowSeq
     this.#inFlightRow = true
     try {
@@ -146,20 +163,24 @@ class DashboardsStore {
     this.version = res.version
     if (res.version === before) return false
 
-    // Something changed. Row still there?
+    // Something changed. What that means for the open row is one decision
+    // with one owner (lib/dashboard-row-sync) — including the part this
+    // code used to get wrong, that a null row can mean "failed" and not
+    // only "still in flight" (GDK-1880).
     const id = this.openId
     const listed = res.dashboards.find((d) => d.id === id)
-    if (!listed) {
+    const action = decideRowSync({
+      listed: listed !== undefined,
+      error: this.error,
+      rowUpdatedAt: this.row?.updated_at ?? null,
+      listedUpdatedAt: listed?.updated_at ?? null,
+    })
+    if (action === 'close') {
       this.close()
       return true
     }
-    // The move was another dashboard's save when this row's updated_at did
-    // not move; nothing to swap. (this.row can be null — the initial fetch
-    // still in flight — and then the landing row is fresh enough to render.)
-    if (this.row && listed.updated_at === this.row.updated_at) return false
-    // Force past the in-flight guard: a fetch that started before the save
-    // would land the old document, and this version move is our only signal.
-    await this.loadRow(true)
+    if (action === 'idle') return false
+    await this.loadRow('version')
     this.renderGen++
     return true
   }

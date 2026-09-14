@@ -190,7 +190,7 @@
            another dashboard, which that copy already says how to do. -->
       <button
         type="button"
-        onclick={() => void dashboards.loadRow(true)}
+        onclick={() => void dashboards.loadRow('retry')}
         class="rounded-md border border-border-strong px-3 py-1.5 text-body font-medium text-text-secondary transition-colors hover:bg-bg-hover"
         data-testid="dashboard-retry"
       >

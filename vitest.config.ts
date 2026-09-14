@@ -44,6 +44,8 @@ export default defineConfig({
           exclude: [
             'web/src/lib/hosted-fetch.test.ts',
             'web/src/stores/pages.test.ts',
+            // dashboards.test.ts drives the dashboards store (runes in a class).
+            'web/src/stores/dashboards.test.ts',
             'web/src/stores/filters-actor.test.ts',
             'web/src/stores/docs-empty.test.ts',
             // boards.test.ts imports the boards store (runes in a class).
@@ -80,6 +82,7 @@ export default defineConfig({
           environment: 'node',
           include: [
             'web/src/stores/pages.test.ts',
+            'web/src/stores/dashboards.test.ts',
             'web/src/stores/filters-actor.test.ts',
             'web/src/stores/docs-empty.test.ts',
             'web/src/stores/boards.test.ts',
