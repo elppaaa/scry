@@ -11,6 +11,14 @@ export const write = {
     ko: '새 이슈',
     ja: '新しい課題',
   },
+  /* The phone files a child under an epic (GDK-1871). Short on purpose: it
+     is the label of an icon control in the detail header, read by a screen
+     reader, and the noun the two other clients use for the thing created. */
+  'write.newChild': {
+    en: 'New child',
+    ko: '하위 이슈',
+    ja: '子課題',
+  },
   'write.issueTitle': {
     en: 'Issue title',
     ko: '이슈 제목',

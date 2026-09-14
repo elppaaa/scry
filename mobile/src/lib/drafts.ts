@@ -35,8 +35,19 @@ export type DraftKind = 'comment' | 'summary' | 'description'
  * comment line on a wiki page detail; its key is the page id the server
  * wants, not an issue key — the same second argument, a different namespace,
  * so a page and an issue that share a string never share a draft.
+ *
+ * `'create-summary'` / `'create-description'` (GDK-1871) are the two fields
+ * of the create sheet, whose subject is not an issue at all: the epic a
+ * child is being filed under, or `CREATE_DRAFT_SUBJECT` for the tab's own
+ * new issue. Keying the latter on the picked project would strand the text
+ * the moment the picker changed, which is the opposite of what a draft is
+ * for; keying it on a constant makes it "the new issue you were typing".
  */
-export type StoredDraftKind = DraftKind | 'page-comment'
+export type StoredDraftKind =
+  | DraftKind
+  | 'page-comment'
+  | 'create-summary'
+  | 'create-description'
 
 export interface DraftRow {
   kind: StoredDraftKind
@@ -64,7 +75,21 @@ interface DraftsDoc {
  * is not bumped for an added kind, because a dropped draft is a lost
  * convenience and a refused document would be a lost one for every kind.
  */
-const KINDS: readonly StoredDraftKind[] = ['comment', 'summary', 'description', 'page-comment']
+const KINDS: readonly StoredDraftKind[] = [
+  'comment',
+  'summary',
+  'description',
+  'page-comment',
+  'create-summary',
+  'create-description',
+]
+
+/**
+ * The create sheet's draft subject when nothing is being filed under a
+ * parent. Not a key shape any origin issues, so it cannot collide with the
+ * epic keys the parent path uses.
+ */
+export const CREATE_DRAFT_SUBJECT = 'new'
 
 function isDraftRow(value: unknown): value is DraftRow {
   if (typeof value !== 'object' || value === null) return false

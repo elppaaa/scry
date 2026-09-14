@@ -2,6 +2,7 @@
   import Screen from '../ui/Screen.svelte'
   import { untrack } from 'svelte'
   import Sheet from '../ui/Sheet.svelte'
+  import CreateSheet from '../ui/CreateSheet.svelte'
   import AdfBody from '../ui/AdfBody.svelte'
   import { app, closeIssue, openIssue, sync } from '../lib/store.svelte'
   import {
@@ -18,12 +19,15 @@
   import {
     setDescription,
     setAssignee,
+    setDuedate,
+    setLabels,
     setPriority,
     setSummary,
     getPriorities,
     searchUsers,
   } from '../lib/writes'
-  import { fieldRows } from '../lib/fields'
+  import { fieldRows, type FieldRow } from '../lib/fields'
+  import { knownLabels, sameLabels, splitLabelInput } from '../lib/labels'
   import { keyboardInset } from '../lib/keyboard'
   import { clearDraft, loadDraft, saveDraft, type DraftKind } from '../lib/drafts'
   import { t, fieldLabel } from '../lib/i18n'
@@ -63,6 +67,69 @@
    * — takes the whole section away rather than drawing an empty heading.
    */
   const fields = $derived(fieldRows(lite, app.fieldSpecs))
+
+  /*
+   * The three one-line edits this screen gained (GDK-1871, DESIGN.md §1:
+   * what is one line to say, the phone writes).
+   *
+   * Labels get one exception to fields.ts's "an empty value is no row": with
+   * writes on, an issue carrying no labels still draws the row, because the
+   * row is the affordance and there is no other way to reach the sheet. The
+   * exception lives here and not in fieldRows(), which stays pure and
+   * write-agnostic — it decides what the mirror holds, not what can be
+   * edited. The synthetic row takes labels' own place in that order (before
+   * components / fix versions / the site's own fields) rather than being
+   * appended, so the section reads the same whether the issue has labels
+   * or not.
+   */
+  /** The rows fields.ts orders BEFORE labels — everything else comes after,
+   *  so the first row that is none of these is where the empty one goes. */
+  const BEFORE_LABELS: readonly string[] = ['parent', 'epic', 'sprint']
+  const fieldViews = $derived.by<FieldRow[]>(() => {
+    if (writesOff || fields.some((f) => f.alias === 'labels')) return fields
+    const empty: FieldRow = {
+      alias: 'labels',
+      label: fieldLabel('labels'),
+      kind: 'list',
+      value: [],
+    }
+    const at = fields.findIndex((f) => !BEFORE_LABELS.includes(f.alias))
+    return at === -1 ? [...fields, empty] : [...fields.slice(0, at), empty, ...fields.slice(at)]
+  })
+
+  /** Only an epic may take a child: the server resolves the issue type from
+   *  the project default independently of `parent`, and Jira refuses a
+   *  standard type that names one (write.go handleCreate). */
+  const isEpic = $derived(lite?.hierarchy_level === 1)
+  let childOpen = $state(false)
+
+  let labelsOpen = $state(false)
+  /** The set being edited; the row's own set until a toggle moves it. */
+  let labelDraft = $state<string[]>([])
+  let labelInput = $state('')
+  /** Labels typed in this sitting. Kept apart from the draft so one that is
+   *  added and then turned back off stays on screen as an unchecked row
+   *  rather than vanishing from a list it was never in. */
+  let labelAdded = $state<string[]>([])
+  let labelsSaving = $state(false)
+  let labelsError = $state<string | null>(null)
+  const currentLabels = $derived<string[]>(lite?.labels ?? [])
+  /** Every label this workspace uses, plus any this row carries that the
+   *  snapshot has not caught up with, plus whatever was just typed in. */
+  const labelChoices = $derived(
+    [
+      ...new Set([...knownLabels(app.issues), ...currentLabels, ...labelDraft, ...labelAdded]),
+    ].sort((a, b) => a.localeCompare(b)),
+  )
+  const labelsArmed = $derived(!sameLabels(labelDraft, currentLabels))
+
+  let dueOpen = $state(false)
+  /** `<input type="date">` speaks YYYY-MM-DD and so does the server. */
+  let dueDraft = $state('')
+  let dueSaving = $state(false)
+  let dueError = $state<string | null>(null)
+  const currentDue = $derived((lite?.duedate ?? '').slice(0, 10))
+  const dueArmed = $derived(dueDraft !== '' && dueDraft !== currentDue)
 
   let sheetOpen = $state(false)
   let transitions = $state<TransitionDoc[] | null>(null)
@@ -447,10 +514,11 @@
    *  the transition sheet built: sticky writesOff, one sentence on the
    *  status row, every control recedes. No control ever throws onward. */
 
-  function refuseWrite(err: unknown): boolean {
+  function refuseWrite(err: unknown, keepSheetOpen = false): boolean {
     if (!isCredentialRequired(err)) return false
     refused = true
     transitionError = errorMessage(err)
+    if (keepSheetOpen) return true
     assigneeOpen = false
     priorityOpen = false
     summaryEditing = false
@@ -553,6 +621,85 @@
       failedRow = applyingId
     } finally {
       applyingId = null
+    }
+  }
+
+  /* ── Labels and the due date (GDK-1871). Both are the picker dialect the
+   *  priority sheet set: a sheet of rows, one write, `written = res.issue`
+   *  then `void sync()`.
+   *
+   *  The one departure is the refusal. refuseWrite drops the open sheet so
+   *  its sentence lands on the status row underneath, which is right for a
+   *  picker whose rows are the server's — reopening asks the server again.
+   *  These two sheets hold something the person composed (a set they
+   *  toggled, a date they picked), and eating that on a refusal is the
+   *  defect GDK-1863 closed for words. So the latch is taken (writes are
+   *  off from here on, every control recedes) and the sheet stays standing
+   *  with its set and the same sentence in its own error line. */
+
+  function openLabels() {
+    if (writesOff) return
+    labelDraft = [...currentLabels]
+    labelInput = ''
+    labelAdded = []
+    labelsError = null
+    labelsOpen = true
+  }
+
+  function toggleLabel(label: string) {
+    labelDraft = labelDraft.includes(label)
+      ? labelDraft.filter((l) => l !== label)
+      : [...labelDraft, label]
+  }
+
+  /** Whitespace separates labels rather than sitting inside one: Jira
+   *  refuses a label with a space and the server only trims (lib/labels.ts). */
+  function addTypedLabel() {
+    const typed = splitLabelInput(labelInput)
+    if (typed.length === 0) return
+    labelDraft = [...new Set([...labelDraft, ...typed])]
+    labelAdded = [...new Set([...labelAdded, ...typed])]
+    labelInput = ''
+  }
+
+  async function saveLabels() {
+    if (writesOff || labelsSaving || !labelsArmed) return
+    labelsSaving = true
+    labelsError = null
+    try {
+      const res = await setLabels(issueKey, labelDraft)
+      written = res.issue
+      labelsOpen = false
+      void sync()
+    } catch (err) {
+      labelsError = errorMessage(err)
+      refuseWrite(err, true)
+    } finally {
+      labelsSaving = false
+    }
+  }
+
+  function openDue() {
+    if (writesOff) return
+    dueDraft = currentDue
+    dueError = null
+    dueOpen = true
+  }
+
+  async function writeDue(value: string | null) {
+    if (writesOff || dueSaving) return
+    dueSaving = true
+    dueError = null
+    try {
+      const res = await setDuedate(issueKey, value)
+      written = res.issue
+      dueOpen = false
+      void sync()
+    } catch (err) {
+      dueError = errorMessage(err)
+      refuseWrite(err, true)
+    } finally {
+      dueSaving = false
     }
   }
 
@@ -722,6 +869,23 @@
                 <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
               </svg>
             </button>
+            {#if isEpic && !writesOff}
+              <!-- Only on an epic, and only when writes are on: the same
+                   plus the Issues tab wears, in the title row's own control
+                   dialect. See `isEpic` for why a standard row has none. -->
+              <button
+                class="edit"
+                onclick={() => (childOpen = true)}
+                aria-label={t('write.newChild')}
+                aria-haspopup="dialog"
+                aria-expanded={childOpen}
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M5 12h14" />
+                  <path d="M12 5v14" />
+                </svg>
+              </button>
+            {/if}
           </div>
         {/if}
         <!-- Two rows on purpose (review 2026-09-14): controls on the first
@@ -744,12 +908,22 @@
                 <path d="m6 9 6 6 6-6" />
               </svg>
             </button>
-            {#if lite.duedate}
-              <!-- Data, not a control (GDK-875): the deadline rides the meta
-                   line in the desk's own absolute form — the calendar module's
-                   date kind, which keeps the written day whatever zone this
-                   phone sits in. Label from the shared field catalog. -->
-              <span class="m-item due">{fieldLabel('due')}: {dueDateLabel(lite.duedate)}</span>
+            {#if lite.duedate || !writesOff}
+              <!-- The deadline rides the meta line in the desk's own absolute
+                   form — the calendar module's date kind, which keeps the
+                   written day whatever zone this phone sits in. Since
+                   GDK-1871 it is also the control that changes it, in the
+                   same dialect as priority and assignee beside it; with no
+                   date set it wears the bare label, which is the only
+                   affordance a row without a due date can have. -->
+              <button class="m-btn m-item due" onclick={openDue} disabled={writesOff}>
+                {lite.duedate
+                  ? `${fieldLabel('due')}: ${dueDateLabel(lite.duedate)}`
+                  : fieldLabel('due')}
+                <svg class="m-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
             {/if}
           </p>
           <p class="m-row">
@@ -815,16 +989,27 @@
           <p class="none">{t('detail.noDescription')}</p>
         {/if}
 
-        {#if fields.length > 0}
+        {#if fieldViews.length > 0}
           <h3>{t('detail.fields')}</h3>
           <div data-testid="detail-fields">
-            {#each fields as f (f.alias)}
+            {#each fieldViews as f (f.alias)}
               {#if f.kind === 'key'}
                 <!-- A key is a place to go, so the row is the button and the
                      44pt floor app.css puts on every button applies. -->
                 <button class="field" onclick={() => openIssue(String(f.value))}>
                   <span class="f-label">{f.label}</span>
                   <span class="f-key">{f.value}</span>
+                </button>
+              {:else if f.alias === 'labels' && !writesOff}
+                <!-- The one editable row (GDK-1871). It is a button, so it
+                     takes the 44pt floor like the key rows, but the value
+                     keeps the plain text colour a key's does not: this row
+                     goes nowhere, it opens the set. The chevron is what says
+                     tappable, in the muted register of the label beside it. -->
+                <button class="field" data-testid="field-labels" onclick={openLabels}>
+                  <span class="f-label">{f.label}</span>
+                  <span class="f-value">{Array.isArray(f.value) ? f.value.join(', ') : f.value}</span>
+                  <span class="f-chev" aria-hidden="true">›</span>
                 </button>
               {:else}
                 <div class="field">
@@ -1055,6 +1240,104 @@
     </Sheet>
   {/if}
 
+  {#if labelsOpen}
+    <Sheet title={fieldLabel('labels')} onclose={() => (labelsOpen = false)}>
+      <div class="pick-list">
+        <!-- The rows are the labels this workspace already uses, read off
+             the snapshot the phone is holding (lib/labels.ts) — the serve
+             has no labels catalog to ask for, and the desk's own dialog
+             reads the same source. The free line below adds one that is
+             not there yet; it sits under the rows because it is the
+             exception, not the way in. -->
+        {#each labelChoices as l (l)}
+          {@const on = labelDraft.includes(l)}
+          <button
+            class="t-row"
+            class:current={on}
+            aria-pressed={on}
+            disabled={labelsSaving}
+            onclick={() => toggleLabel(l)}
+          >
+            <span class="t-text"><span class="t-name">{l}</span></span>
+            {#if on}{@render currentTick()}{/if}
+          </button>
+        {/each}
+        {#if labelChoices.length === 0}
+          <p class="none">{t('common.none')}</p>
+        {/if}
+        <div class="sheet-foot">
+        <div class="label-add">
+          <input
+            bind:value={labelInput}
+            placeholder={t('write.addLabelOptional')}
+            aria-label={t('write.addLabelOptional')}
+            enterkeyhint="done"
+            autocapitalize="none"
+            autocorrect="off"
+            spellcheck="false"
+            onkeydown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                addTypedLabel()
+              }
+            }}
+          />
+          <button
+            class="ghost"
+            aria-label={t('write.addLabelOptional')}
+            disabled={splitLabelInput(labelInput).length === 0}
+            onclick={addTypedLabel}>+</button
+          >
+        </div>
+        <div class="sheet-actions">
+          <button
+            class="save"
+            class:armed={labelsArmed && !writesOff}
+            disabled={writesOff || labelsSaving || !labelsArmed}
+            onclick={() => void saveLabels()}
+          >
+            {t('common.save')}
+          </button>
+        </div>
+        {#if labelsError}
+          <p class="field-err">{labelsError}</p>
+        {/if}
+        </div>
+      </div>
+    </Sheet>
+  {/if}
+
+  {#if dueOpen}
+    <Sheet title={fieldLabel('due')} onclose={() => (dueOpen = false)}>
+      <div class="pick-list">
+        <!-- The platform's own date control, not a calendar of our own: it
+             speaks YYYY-MM-DD, which is exactly what the server takes, and
+             on the phone it is the wheel the person already knows. -->
+        <div class="due-edit">
+          <input type="date" bind:value={dueDraft} aria-label={fieldLabel('due')} />
+        </div>
+        <div class="sheet-actions">
+          <button
+            class="save"
+            class:armed={dueArmed && !writesOff}
+            disabled={writesOff || dueSaving || !dueArmed}
+            onclick={() => void writeDue(dueDraft)}
+          >
+            {t('common.save')}
+          </button>
+          {#if currentDue}
+            <button class="ghost" disabled={writesOff || dueSaving} onclick={() => void writeDue(null)}>
+              {t('common.none')}
+            </button>
+          {/if}
+        </div>
+        {#if dueError}
+          <p class="field-err">{dueError}</p>
+        {/if}
+      </div>
+    </Sheet>
+  {/if}
+
   {#if descOpen}
     <Sheet title={t('write.editDescription')} tall onclose={closeDescription}>
       <div class="desc-edit">
@@ -1090,6 +1373,18 @@
         {/if}
       </div>
     </Sheet>
+  {/if}
+
+  {#if childOpen && lite}
+    <!-- The Issues tab's create sheet, told what it is filing under
+         (GDK-1871). It closes itself, syncs, and opens the new child, so
+         this screen owns only the flag — and mounting it inside the `{#if}`
+         is what makes each open restore its own drafts (GDK-692). -->
+    <CreateSheet
+      open={childOpen}
+      onclose={() => (childOpen = false)}
+      parent={{ key: lite.issue_key, projectKey: lite.project_key ?? '', summary: lite.summary }}
+    />
   {/if}
 </div>
 
@@ -1710,9 +2005,70 @@
     font: inherit;
     resize: none;
   }
-  .desc-actions {
+  /* One action row, two sheets that need it: the description editor's and
+     the label/due sheets GDK-1871 added. Same rule, not a second one. */
+  .desc-actions,
+  .sheet-actions {
     display: flex;
     gap: 8px;
     padding-top: 8px;
+  }
+  /* The tappable mark on the labels row. Muted like the row's own label, so
+     the row still reads as text with a way in rather than as a link. */
+  .f-chev {
+    flex: none;
+    color: var(--color-text-muted);
+    font-size: var(--text-body);
+    line-height: 1;
+  }
+  /* The free label line under the picker's rows. Same input dialect as the
+     assignee sheet's search field, with the add beside it. */
+  /* The free line and Save stay in frame while the rows scroll above them:
+     the 2026-09-14 vision pass opened the sheet on a workspace with twelve
+     labels and found the way to add one, and the Save, below the fold.
+     Sticky inside .pick-list's own scroll, on the sheet's panel colour. */
+  .sheet-foot {
+    position: sticky;
+    bottom: 0;
+    background: var(--color-bg-panel);
+    padding-bottom: 8px;
+    border-top: 1px solid var(--color-border-subtle);
+  }
+  /* In a sheet the actions sit on the 16px gutter the inputs above them
+     use (.due-edit / .label-add pad 8 inside .pick-list's 8) — the same
+     vision pass measured the Due sheet's Save box starting 8px left of the
+     date input's edge. The description editor's .desc-actions is not in a
+     .pick-list and keeps its own alignment. */
+  .pick-list .sheet-actions {
+    padding: 8px 8px 0;
+  }
+  .label-add {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 8px 0;
+  }
+  .label-add input {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: var(--spacing-control);
+    padding: 0 12px;
+    background: var(--color-bg-base);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 6px;
+    font-size: var(--text-body);
+  }
+  .due-edit {
+    padding: 8px 8px 0;
+  }
+  .due-edit input {
+    width: 100%;
+    min-height: var(--spacing-control);
+    padding: 0 12px;
+    background: var(--color-bg-base);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 6px;
+    font-size: var(--text-body);
+    color: var(--color-text-primary);
   }
 </style>

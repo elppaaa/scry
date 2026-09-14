@@ -427,7 +427,14 @@ describe('GDK-875 due date on the meta line, recently viewed on the idle plate',
 
   it('renders the due date on the Detail meta line with the shared field label', () => {
     const detail = read('screens/Detail.svelte')
-    expect(detail).toMatch(/\{#if lite\.duedate\}/)
+    // Re-pinned 2026-09-14 (GDK-1871). The guard was `{#if lite.duedate}`
+    // and this line failed as `expected … to match /\{#if lite\.duedate\}/`
+    // once the meta item became the control that sets the date: with writes
+    // on it is drawn even when there is none, wearing the bare label, which
+    // is the only affordance a row without a due date can have. What GDK-875
+    // pinned — the desk's absolute formatter and the shared field label,
+    // never a local Date parse — is asserted unchanged below.
+    expect(detail).toMatch(/\{#if lite\.duedate \|\| !writesOff\}/)
     expect(detail).toMatch(/fieldLabel\('due'\)/)
     expect(detail).toMatch(/dueDateLabel\(lite\.duedate\)/)
     // fieldLabel rides the one i18n seam — the phone does not re-spell labels.
@@ -574,20 +581,39 @@ describe('GDK-1497 A2 — the header is a control surface', () => {
   })
 })
 
-describe('GDK-1497 A2 — the create sheet on the Issues screen', () => {
+describe('GDK-1497 A2 — the create sheet, wherever it is opened from', () => {
+  // Re-pinned 2026-09-14 (GDK-1871): the sheet moved out of Issues.svelte
+  // into ui/CreateSheet.svelte so an epic's detail can open the same one to
+  // file a child. Both tests below failed against the new tree at their old
+  // address — `expected -1 to be greater than -1` for the function name, and
+  // `expected '<script lang="ts">…' to match /creatableProjects\.length > 1/`
+  // for the project question — because the subject had moved, not because
+  // the contract changed. What GDK-1497 A2 pinned is asserted here on the
+  // new owner: the POST goes through the typed wrapper, the screen lands on
+  // the issue that came back, and the project is asked about only when it is
+  // a question.
+  const sheet = read('ui/CreateSheet.svelte')
   const issues = read('screens/Issues.svelte')
 
   it('posts through createIssue and lands on the new issue', () => {
-    const at = issues.indexOf('async function createTheIssue')
+    const at = sheet.indexOf('async function create(')
     expect(at).toBeGreaterThan(-1)
-    const fn = issues.slice(at, issues.indexOf('\n  }', at))
+    const fn = sheet.slice(at, sheet.indexOf('\n  }', at))
     expect(fn).toMatch(/createIssue\(/)
     expect(fn).toMatch(/openIssue\(res\.issue\.issue_key\)/)
   })
 
   it('asks for a project only when the serve offers more than one', () => {
-    expect(issues).toMatch(/creatableProjects\.length > 1/)
-    expect(issues).toMatch(/t\('common\.project'\)/)
+    expect(sheet).toMatch(/creatable\.length > 1/)
+    expect(sheet).toMatch(/t\('common\.project'\)/)
+  })
+
+  it('is still the Issues tab’s own + action, mounted per open', () => {
+    // The mount is inside the `{#if}` on purpose: construction is the
+    // restore point for the sheet's drafts, so no $effect watches `open`
+    // (GDK-692). A component hoisted out of the block would break both.
+    expect(issues).toMatch(/\{#if createOpen\}\s*<CreateSheet/)
+    expect(issues).toMatch(/aria-label=\{t\('write\.newIssue'\)\}/)
   })
 })
 
@@ -903,6 +929,14 @@ describe('GDK-803 — the phone decodes the serve’s own goldens', () => {
     expect(nmb1.fix_versions).toEqual([])
     expect(nmb1.parent_key).toBeNull()
     expect(nmb1.epic_key).toBeNull()
+    // GDK-1871: the tree rank the New child control keys on. The server
+    // writes it on every row with no omitempty, so the golden carries it for
+    // a standard issue as 0 — which is the case that must NOT offer a child
+    // (a standard-type-with-parent is what Jira refuses). An epic is not in
+    // this golden; e2e/parentlabels.spec.ts measures that half on the
+    // fixture. Naming it here is also the annotation pin: before the Pick
+    // was widened this line was a `npm run check` error.
+    expect(nmb1.hierarchy_level).toBe(0)
     // Discovered custom fields ride the same response. The contract fixture
     // configures none, so the phone's fallback — system rows only — is what
     // this golden pins; the filled case is lib/fields.test.ts.

@@ -102,6 +102,12 @@ export type IssueLite = Pick<
   | 'fix_versions'
   | 'parent_key'
   | 'epic_key'
+  // GDK-1871: the tree rank, the one axis that says whether this row may
+  // take a child. The server writes it on every row (internal/store/read.go
+  // :49 — epic 1, standard 0, sub-task −1) and never omits it; the owner
+  // still declares it optional because a row an older phone cached predates
+  // it, so every read coalesces.
+  | 'hierarchy_level'
 >
 
 /**
@@ -317,6 +323,17 @@ export interface CreateIssuePayload {
   issue_type?: string
   summary: string
   description_text?: string
+  /**
+   * GDK-1871. `parent` files the new row under an existing one. The server
+   * resolves the issue TYPE from `issue_type`/the project default
+   * independently of this field, so a parent that is not an epic would ask
+   * Jira for a standard-type-with-parent, which it refuses — the phone
+   * therefore offers this only from a `hierarchy_level === 1` row.
+   */
+  parent?: string
+  labels?: string[]
+  /** `YYYY-MM-DD`; the server rejects any other spelling. */
+  duedate?: string
 }
 
 /** Every PUT/POST write answers with the issue as the origin now holds it. */

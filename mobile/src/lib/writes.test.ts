@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   setAssignee,
+  setDuedate,
+  setLabels,
   setPriority,
   setSummary,
   setDescription,
@@ -43,6 +45,39 @@ describe('setAssignee — PUT <key>/assignee/ {account_id} (write.go:993)', () =
     const { fn, calls } = fakeFetch(200, { issue: { issue_key: 'STD-1' } })
     await setAssignee('STD-1', 'acc-7', { session, fetchFn: fn })
     expect(calls[0].init.body).toBe('{"account_id":"acc-7"}')
+  })
+})
+
+describe('setLabels — PUT <key>/labels/ {labels} (write.go handleLabels)', () => {
+  it('sends the whole set, not a delta — the server replaces the field', async () => {
+    const { fn, calls } = fakeFetch(200, { issue: { issue_key: 'STD-1' } })
+    const res = await setLabels('STD-1', ['papercut', 'regression'], { session, fetchFn: fn })
+    expect(calls[0].init.method).toBe('PUT')
+    expect(calls[0].url).toContain('issues/STD-1/labels/')
+    expect(calls[0].init.body).toBe('{"labels":["papercut","regression"]}')
+    expect(res.issue.issue_key).toBe('STD-1')
+  })
+  it('sends the empty array to clear every label', async () => {
+    // Not null: the handler refuses a body whose `labels` is absent
+    // (invalid_body), so "no labels" has to travel as an empty list.
+    const { fn, calls } = fakeFetch(200, { issue: { issue_key: 'STD-1' } })
+    await setLabels('STD-1', [], { session, fetchFn: fn })
+    expect(calls[0].init.body).toBe('{"labels":[]}')
+  })
+})
+
+describe('setDuedate — PUT <key>/duedate/ {duedate} (write_test.go:2372/2379)', () => {
+  it('sends the date as written, never a parsed timestamp', async () => {
+    const { fn, calls } = fakeFetch(200, { issue: { issue_key: 'STD-1' } })
+    await setDuedate('STD-1', '2026-10-01', { session, fetchFn: fn })
+    expect(calls[0].init.method).toBe('PUT')
+    expect(calls[0].url).toContain('issues/STD-1/duedate/')
+    expect(calls[0].init.body).toBe('{"duedate":"2026-10-01"}')
+  })
+  it('sends null to clear the date', async () => {
+    const { fn, calls } = fakeFetch(200, { issue: { issue_key: 'STD-1' } })
+    await setDuedate('STD-1', null, { session, fetchFn: fn })
+    expect(calls[0].init.body).toBe('{"duedate":null}')
   })
 })
 
@@ -103,6 +138,20 @@ describe('createIssue — POST create/ (write.go:1135)', () => {
     )
     expect(calls[0].init.body).toBe(
       '{"summary":"Filed under NMB","description_text":"With a body","project_key":"NMB"}',
+    )
+  })
+  it('rides the parent key when the child is filed under an epic (GDK-1871)', async () => {
+    // The server resolves the issue TYPE independently of `parent`, which is
+    // why the phone offers this only from a hierarchy_level 1 row — but the
+    // wire field is just the key, and the project rides with it so the child
+    // lands where its parent lives.
+    const { fn, calls } = fakeFetch(200, { issue: { issue_key: 'NMB-900' } })
+    await createIssue(
+      { summary: 'A child', parent: 'NMB-194', project_key: 'NMB' },
+      { session, fetchFn: fn },
+    )
+    expect(calls[0].init.body).toBe(
+      '{"summary":"A child","parent":"NMB-194","project_key":"NMB"}',
     )
   })
 })

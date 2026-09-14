@@ -1,7 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setDemoSession } from './demo'
 import { setActiveHostId } from './hosts'
-import { MAX_DRAFTS, clearDraft, listDrafts, loadDraft, saveDraft } from './drafts'
+import {
+  CREATE_DRAFT_SUBJECT,
+  MAX_DRAFTS,
+  clearDraft,
+  listDrafts,
+  loadDraft,
+  saveDraft,
+} from './drafts'
 
 // The mem-storage convention of hosts.test.ts / host-keys.test.ts. Host ids
 // are real roster shapes — setActiveHostId ignores anything else.
@@ -107,6 +114,45 @@ describe('drafts — the page comment kind (GDK-1873)', () => {
     saveDraft('page-comment', '491848', '  \n ')
     expect(loadDraft('page-comment', '491848')).toBeNull()
     expect(mem.has(KEY_A)).toBe(false)
+  })
+})
+
+describe('drafts — the create sheet’s two kinds (GDK-1871)', () => {
+  it('keeps the epic’s child draft apart from the tab’s own new issue', () => {
+    // The subject of a create draft is not an issue: it is the epic a child
+    // is being filed under, or CREATE_DRAFT_SUBJECT for the tab’s + action.
+    saveDraft('create-summary', 'NMB-194', 'A child of the epic')
+    saveDraft('create-summary', CREATE_DRAFT_SUBJECT, 'Something else entirely')
+    expect(loadDraft('create-summary', 'NMB-194')).toBe('A child of the epic')
+    expect(loadDraft('create-summary', CREATE_DRAFT_SUBJECT)).toBe('Something else entirely')
+  })
+
+  it('the two fields of one sheet are two drafts under one subject', () => {
+    saveDraft('create-summary', CREATE_DRAFT_SUBJECT, 'the title')
+    saveDraft('create-description', CREATE_DRAFT_SUBJECT, 'the body')
+    expect(loadDraft('create-summary', CREATE_DRAFT_SUBJECT)).toBe('the title')
+    expect(loadDraft('create-description', CREATE_DRAFT_SUBJECT)).toBe('the body')
+    clearDraft('create-summary', CREATE_DRAFT_SUBJECT)
+    expect(loadDraft('create-summary', CREATE_DRAFT_SUBJECT)).toBeNull()
+    expect(loadDraft('create-description', CREATE_DRAFT_SUBJECT)).toBe('the body')
+  })
+
+  it('survives the round-trip through storage, so a stored row admits the kinds', () => {
+    // isDraftRow filters every read by the kind list: a kind missing from it
+    // saves and never comes back. This reads the raw document to prove both
+    // new members are in that list, not only in the type.
+    saveDraft('create-summary', 'NMB-194', 'kept')
+    saveDraft('create-description', 'NMB-194', 'also kept')
+    const raw = JSON.parse(mem.get(KEY_A) as string) as { drafts: { kind: string }[] }
+    expect(raw.drafts.map((d) => d.kind).sort()).toEqual(['create-description', 'create-summary'])
+    expect(loadDraft('create-summary', 'NMB-194')).toBe('kept')
+    expect(loadDraft('create-description', 'NMB-194')).toBe('also kept')
+  })
+
+  it('the constant subject is not a key any origin issues', () => {
+    // It shares the drafts namespace with issue keys, so it must not look
+    // like one — ABC-123 is the shape every origin uses.
+    expect(CREATE_DRAFT_SUBJECT).not.toMatch(/^[A-Z][A-Z0-9]*-\d+$/)
   })
 })
 

@@ -93,6 +93,41 @@ export function setDescription(
   )
 }
 
+/**
+ * PUT `<key>/labels/` — the whole set, not a delta: the server replaces the
+ * field with what it is given (write.go handleLabels), trimming and deduping
+ * on the way in. A label with a space in it is a label Jira refuses, so the
+ * caller splits before it gets here (lib/labels.ts).
+ */
+export function setLabels(
+  issueKey: string,
+  labels: string[],
+  opts: WriteOpts = {},
+): Promise<IssueWriteResponse> {
+  return unwrap(
+    request(`issues/${encodeURIComponent(issueKey)}/labels/`, {
+      method: 'PUT',
+      body: { labels },
+      ...opts,
+    }),
+  )
+}
+
+/** PUT `<key>/duedate/` — `YYYY-MM-DD`, or `null` to clear it. */
+export function setDuedate(
+  issueKey: string,
+  duedate: string | null,
+  opts: WriteOpts = {},
+): Promise<IssueWriteResponse> {
+  return unwrap(
+    request(`issues/${encodeURIComponent(issueKey)}/duedate/`, {
+      method: 'PUT',
+      body: { duedate },
+      ...opts,
+    }),
+  )
+}
+
 /** POST `create/` — the server resolves the default issue type; only
  *  summary is required, and the phone sends just what the person filled. */
 export function createIssue(
