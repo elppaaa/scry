@@ -1,16 +1,24 @@
 <script lang="ts">
   import Screen from '../ui/Screen.svelte'
+  import { untrack } from 'svelte'
   import AdfBody from '../ui/AdfBody.svelte'
   import { app, closeIssue, openIssue } from '../lib/store.svelte'
   import { relTime, spaceLabel } from '../lib/domain'
-  import { request, ApiError } from '../lib/api'
+  import { request, errorMessage, ApiError } from '../lib/api'
+  import { keyboardInset } from '../lib/keyboard'
+  import { clearDraft, loadDraft, saveDraft } from '../lib/drafts'
   import { t } from '../lib/i18n'
-  import type { PageDetail as PageDetailDoc, PageLite } from '../lib/types'
+  import type { PageComment, PageDetail as PageDetailDoc, PageLite } from '../lib/types'
 
   // Page detail (GDK-887). Same push layer as issue Detail. A page is read
-  // for its body, so comments follow the body (unlike issues). No write
-  // controls: page writes are a desktop job and this screen must not
-  // suggest them.
+  // for its body, so comments follow the body (unlike issues).
+  //
+  // One write control, and only one (GDK-1873). Editing a page stays on the
+  // desk: the server refuses a plain-text replace with 409 format_loss, and
+  // a phone that offers an edit it cannot finish is the data loss this
+  // round exists to avoid. A comment is one line to say and the whole
+  // composer already exists next door — this screen borrows Detail's slab,
+  // its class names and its draft discipline, and adds nothing else.
 
   let { pageKey }: { pageKey: string } = $props()
 
@@ -33,9 +41,118 @@
     return out
   })
   const hasBody = $derived(!!(detail?.body_adf || (detail?.body_text ?? '').trim()))
-  const comments = $derived(detail?.comments ?? [])
   const refs = $derived(detail?.ref_issue_keys ?? [])
 
+  /* ── The comment composer (GDK-1873) ── */
+
+  // What you were typing here last time. Read once at mount: App.svelte
+  // remounts this screen per key ({#key}), so the initializer is the
+  // per-page reset and no $effect has to assign it (GDK-692).
+  const commentDraft = loadDraft('page-comment', untrack(() => pageKey))
+  let comment = $state(commentDraft ?? '')
+  /** One muted line under the composer, dismissed by the first keystroke. */
+  let commentRestored = $state(commentDraft !== null)
+  let sending = $state(false)
+  let sendError = $state<string | null>(null)
+  /** RAM-only overlay (DESIGN.md §5). Never written to the snapshot cache. */
+  let pending = $state<PageComment | null>(null)
+  /**
+   * Writability, the same verdict with the same two roads Detail uses
+   * (GDK-952): the store's probe of GET credential/, or this screen's own
+   * 409 latch for a credential that disappeared mid-session. The screen
+   * never assigns the verdict — a refusal here only latches.
+   */
+  let refused = $state(false)
+  const writesOff = $derived(app.writes === 'off' || refused)
+  const sendArmed = $derived(!writesOff && (comment.trim() !== '' || sending))
+
+  // The overlay rides under the mirror's comments until the re-fetch brings
+  // the real row back. Pages have no comment ids (types.ts), so there is
+  // nothing to de-duplicate against — the overlay is dropped by hand on
+  // both roads out of send().
+  const comments = $derived.by<PageComment[]>(() => {
+    const rows = detail?.comments ?? []
+    return pending ? [...rows, pending] : rows
+  })
+
+  /*
+   * The draft debounce. Plain lets, not $state: nothing renders them, and
+   * the effect's teardown must read them after the last render. `draftOwed`
+   * is what the timer still owes storage — flushed on teardown (a back-tap
+   * inside the debounce window must not lose a word) and before the POST,
+   * which may fail.
+   */
+  let draftTimer: ReturnType<typeof setTimeout> | null = null
+  let draftOwed: string | null = null
+
+  function queueDraft(key: string, text: string): void {
+    draftOwed = text
+    if (draftTimer) clearTimeout(draftTimer)
+    draftTimer = setTimeout(() => {
+      draftTimer = null
+      draftOwed = null
+      saveDraft('page-comment', key, text)
+    }, 250)
+  }
+
+  /** Writes what the debounce still owes, now. Storage is synchronous, so
+   *  this is safe from an effect teardown and from a send's first line. */
+  function flushDraft(key: string): void {
+    const text = draftOwed
+    if (draftTimer) clearTimeout(draftTimer)
+    draftTimer = null
+    draftOwed = null
+    if (text !== null) saveDraft('page-comment', key, text)
+  }
+
+  function onCommentInput(next: string): void {
+    commentRestored = false
+    queueDraft(pageKey, next)
+  }
+
+  async function send(): Promise<void> {
+    const text = comment.trim()
+    if (writesOff || text === '' || sending) return
+    // The draft goes to storage before the POST, not after: a refused send
+    // must leave it there, and the box is emptied four lines below.
+    flushDraft(pageKey)
+    saveDraft('page-comment', pageKey, text)
+    sending = true
+    sendError = null
+    pending = {
+      author: app.me?.name || app.me?.email || null,
+      created_at: new Date().toISOString(),
+      body_adf: null,
+      body_text: text,
+    }
+    comment = ''
+    commentRestored = false
+    const key = pageKey
+    try {
+      await request(`issues/pages/${encodeURIComponent(key)}/comment/`, {
+        method: 'POST',
+        body: { text },
+      })
+      clearDraft('page-comment', key) // only a landed comment forgets its draft
+      pending = null
+      // The write answers with the refreshed page, but this screen reads the
+      // page the same way it read it on arrival — one shape, one parser.
+      const res = await request<PageDetailDoc>(`issues/pages/${encodeURIComponent(key)}/`)
+      if (key === pageKey) detail = res.body
+    } catch (err) {
+      pending = null
+      if (comment.trim() === '') comment = text
+      sendError = errorMessage(err)
+      if (err instanceof ApiError && err.code === 'credential_required') refused = true
+    } finally {
+      sending = false
+    }
+  }
+
+  // Only `detail` and `detailError` are reset here — the rest of this
+  // screen's state starts clean because App.svelte remounts it per key
+  // ({#key}), and GDK-692 bans $state assigns in effect bodies that a
+  // remount already owns (web/src/lib/effect-assigns-state.test.ts).
   $effect(() => {
     const key = pageKey
     detail = null
@@ -50,6 +167,26 @@
           err instanceof ApiError && err.code === 'not_found' ? t('doc.notFound') : t('doc.loadFailed')
       }
     })()
+    /*
+     * The debounce's owed text, written now. An app switch is not a
+     * teardown — iOS freezes the webview with the screen still mounted, so
+     * a 250 ms debt would die there. pagehide is the one event this webview
+     * is guaranteed before that (and before a reload); visibilitychange
+     * catches the background that never unloads. Both are synchronous and
+     * localStorage is synchronous, so the write completes inside the
+     * handler. Same reasoning, same pair, as Detail.svelte's.
+     */
+    const flush = () => flushDraft(key)
+    const onHidden = () => {
+      if (document.visibilityState === 'hidden') flush()
+    }
+    window.addEventListener('pagehide', flush)
+    document.addEventListener('visibilitychange', onHidden)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      document.removeEventListener('visibilitychange', onHidden)
+      flush()
+    }
   })
 </script>
 
@@ -101,8 +238,14 @@
           <p class="none">{t('doc.noContent')}</p>
         {/if}
 
-        {#if comments.length > 0}
-          <h3>{t('doc.comments')} <span class="h-n">{comments.length}</span></h3>
+        <!-- The heading and the count stay on an empty thread (GDK-1873):
+             the composer below is the first write control this screen has
+             ever had, and an empty body with a bare input under it says
+             nothing about what the input does. -->
+        <h3>{t('doc.comments')} <span class="h-n">{comments.length}</span></h3>
+        {#if comments.length === 0}
+          <p class="none">{t('detail.noComments')}</p>
+        {:else}
           {#each comments as c, i (`${c.created_at}-${i}`)}
             <div class="comment">
               <p class="c-head">
@@ -120,6 +263,44 @@
       {/if}
       <div class="tail" aria-hidden="true"></div>
     </section>
+
+    {#snippet footer()}
+      <div class="composer-slab" use:keyboardInset>
+        {#if writesOff}
+          <!-- Detail carries this sentence on its status chip, which sits in
+               the slab but outside .composer — so the 0.45 a refused
+               composer wears never dims the words that explain it. This
+               screen has no chip, so the line takes the chip's place, with
+               the chip's padding and .status-err's type. -->
+          <p class="slab-err">{t('app.errorNoCredential')}</p>
+        {/if}
+        <div class="composer safe-bottom" class:off={writesOff}>
+          <input
+            bind:value={comment}
+            disabled={writesOff}
+            placeholder={t('doc.commentPlaceholder')}
+            enterkeyhint="send"
+            oninput={(e) => onCommentInput(e.currentTarget.value)}
+            onkeydown={(e) => {
+              if (e.key === 'Enter') void send()
+            }}
+          />
+          <button
+            class="send"
+            class:armed={sendArmed}
+            disabled={writesOff || comment.trim() === '' || sending}
+            onclick={() => void send()}
+          >
+            {sending ? t('write.commentPosting') : t('write.commentButton')}
+          </button>
+          {#if sendError && !writesOff}
+            <p class="send-error">{sendError}</p>
+          {:else if commentRestored && !writesOff}
+            <p class="draft-note">{t('write.draftRestored')}</p>
+          {/if}
+        </div>
+      </div>
+    {/snippet}
   </Screen>
 </div>
 
@@ -235,6 +416,69 @@
   }
   .tail {
     height: 16px;
+  }
+
+  /* The composer slab, copied value for value from Detail.svelte's so the
+     two screens are one control, not two that look alike. The armed fill is
+     app.css's `button.send.armed` (GDK-1525) and is not restated here. */
+  .composer-slab {
+    flex: none;
+    background: var(--color-bg-panel);
+    border-top: 1px solid var(--color-border-subtle);
+  }
+  .slab-err {
+    margin: 0;
+    padding: 8px 16px 0;
+    font-size: var(--text-micro);
+    font-weight: 400;
+    color: var(--color-status-reopen);
+  }
+  .composer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 16px;
+  }
+  .composer.off {
+    opacity: 0.45;
+  }
+  .composer input {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: var(--spacing-control);
+    padding: 0 12px;
+    background: var(--color-bg-base);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 6px;
+  }
+  .composer.off input:disabled {
+    opacity: 1;
+  }
+  .composer input::placeholder {
+    color: var(--color-text-muted);
+  }
+  .send {
+    flex: none;
+    min-height: var(--spacing-control);
+    padding: 0 16px;
+    border-radius: 6px;
+    font-weight: 600;
+    background: var(--color-bg-elevated);
+    color: var(--color-text-muted);
+  }
+  .send-error {
+    flex: 1 0 100%;
+    margin: 0;
+    padding: 0;
+    font-size: var(--text-micro);
+    color: var(--color-status-reopen);
+  }
+  .draft-note {
+    flex: 1 0 100%;
+    margin: 0;
+    padding: 4px 0 0;
+    font-size: var(--text-micro);
+    color: var(--color-text-muted);
   }
 
   .ghost {

@@ -182,16 +182,42 @@ describe('GDK-887 document rows and page detail', () => {
     expect(row).not.toMatch(/status_category/)
   })
 
-  it('puts comments after the page body and has no composer', () => {
+  /*
+   * GDK-1873, 2026-09-14 — re-authored, not loosened.
+   *
+   * The GDK-887 form of this test said the page detail has NO composer, no
+   * input and no POST. That was the whole write ban, and it is the decision
+   * this round retires: a page now takes a comment from the phone. What the
+   * ban was protecting is narrower than it was written, and survives here —
+   * page *edit* stays on the desk, because the server refuses a plain-text
+   * replace with 409 format_loss and a phone that offers an edit it cannot
+   * finish is the data loss the ban existed for. So the successor measures
+   * the boundary instead of the absence: exactly one composer, and the only
+   * write it can make is the comment.
+   *
+   * FAIL-first (this file, unmodified, against the GDK-1873 PageDetail):
+   *   AssertionError: expected '<script lang="ts">\n  import Screen f…'
+   *   not to match /composer/
+   */
+  it('puts comments after the page body, with one composer and no page edit', () => {
     const page = markup('screens/PageDetail.svelte')
     // GDK-1497: the body is AdfBody now (was `paragraphs`).
     const body = page.indexOf('AdfBody')
     const comments = page.indexOf("t('doc.comments')")
     expect(body).toBeGreaterThan(-1)
     expect(comments).toBeGreaterThan(body)
-    expect(page).not.toMatch(/composer/)
-    expect(page).not.toMatch(/<input/)
-    expect(page).not.toMatch(/method:\s*['"]POST/)
+    // One composer, borrowed from Detail — not a second write grammar.
+    // The class attribute, not the selector: the CSS rule beside it is the
+    // copied slab and would count as a second one.
+    expect(page.match(/class="composer-slab"/g) ?? []).toHaveLength(1)
+    // The one write this screen may make.
+    expect(page).toMatch(/issues\/pages\/\$\{encodeURIComponent\(key\)\}\/comment\//)
+    // And the three it may not: edit (PUT), create (POST to the collection),
+    // reply threading.
+    expect(page).not.toMatch(/method:\s*['"]PUT/)
+    expect(page).not.toMatch(/pages\/\$\{[^}]+\}\/edit\//)
+    expect(page).not.toMatch(/pages\/`?,?\s*\{\s*method:\s*['"]POST/)
+    expect(page).not.toMatch(/parent_comment|in_reply_to|reply/)
   })
 
   it('search paints pages in a Documents section below issues', () => {

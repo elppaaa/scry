@@ -77,6 +77,39 @@ describe('drafts — save/load/clear round-trip', () => {
   })
 })
 
+describe('drafts — the page comment kind (GDK-1873)', () => {
+  it('keys on the page id and never collides with an issue draft of the same string', () => {
+    expect(loadDraft('page-comment', '491848')).toBeNull()
+    saveDraft('page-comment', '491848', 'one line on the doc')
+    expect(loadDraft('page-comment', '491848')).toBe('one line on the doc')
+    // The same string as an issue key: different kind, different draft.
+    saveDraft('comment', '491848', 'on the issue')
+    expect(loadDraft('page-comment', '491848')).toBe('one line on the doc')
+    expect(loadDraft('comment', '491848')).toBe('on the issue')
+    expect(listDrafts()).toHaveLength(2)
+
+    clearDraft('page-comment', '491848')
+    expect(loadDraft('page-comment', '491848')).toBeNull()
+    expect(loadDraft('comment', '491848')).toBe('on the issue')
+  })
+
+  it('survives the round-trip through storage, so a read of a stored row admits the kind', () => {
+    saveDraft('page-comment', '524553', 'kept')
+    // isDraftRow filters every read by the kind list: a kind missing from it
+    // saves and never comes back, which this reads through the raw document.
+    const raw = JSON.parse(mem.get(KEY_A) as string) as { drafts: { kind: string }[] }
+    expect(raw.drafts.map((d) => d.kind)).toEqual(['page-comment'])
+    expect(loadDraft('page-comment', '524553')).toBe('kept')
+  })
+
+  it('empty text clears a page draft, same as every other kind', () => {
+    saveDraft('page-comment', '491848', 'something')
+    saveDraft('page-comment', '491848', '  \n ')
+    expect(loadDraft('page-comment', '491848')).toBeNull()
+    expect(mem.has(KEY_A)).toBe(false)
+  })
+})
+
 describe('drafts — host namespacing', () => {
   it('two hosts never see each other’s drafts; the bare key serves a null host', () => {
     saveDraft('comment', 'NMA-1', 'from A')
@@ -112,6 +145,19 @@ describe('drafts — cap and eviction', () => {
     expect(loadDraft('comment', 'NMA-1')).toBeNull()
     expect(loadDraft('comment', 'NMA-0')).toBe('text 0 again')
     expect(loadDraft('comment', 'GDK-new')).toBe('the 51st')
+  })
+
+  it('the cap is one budget across kinds — a page draft evicts the oldest issue draft', () => {
+    for (let i = 0; i < MAX_DRAFTS; i++) {
+      vi.setSystemTime(new Date(Date.UTC(2026, 8, 14, 0, 0, i)))
+      saveDraft('comment', `GDK-${i}`, `text ${i}`)
+    }
+    vi.setSystemTime(new Date(Date.UTC(2026, 8, 14, 0, 2, 0)))
+    saveDraft('page-comment', '491848', 'the page line')
+    expect(listDrafts()).toHaveLength(MAX_DRAFTS)
+    expect(loadDraft('comment', 'GDK-0')).toBeNull() // the oldest went
+    expect(loadDraft('page-comment', '491848')).toBe('the page line')
+    expect(listDrafts()[0]).toMatchObject({ kind: 'page-comment', issueKey: '491848' })
   })
 })
 

@@ -22,10 +22,25 @@ import { isDemoSession } from './demo'
 import { DRAFTS_KEY, hostKey } from './host-keys'
 import { getActiveHostId } from './hosts'
 
+/**
+ * The three composers on the issue detail. This union stays exactly three
+ * wide: Detail.svelte builds `Record<DraftKind, …>` tables over it, and a
+ * fourth member there would be a missing property on that screen, not a
+ * feature. A composer on another screen joins StoredDraftKind instead.
+ */
 export type DraftKind = 'comment' | 'summary' | 'description'
 
+/**
+ * Every composer this module stores. `'page-comment'` (GDK-1873) is the
+ * comment line on a wiki page detail; its key is the page id the server
+ * wants, not an issue key — the same second argument, a different namespace,
+ * so a page and an issue that share a string never share a draft.
+ */
+export type StoredDraftKind = DraftKind | 'page-comment'
+
 export interface DraftRow {
-  kind: DraftKind
+  kind: StoredDraftKind
+  /** The composer's subject: an issue key, or a page id for 'page-comment'. */
   issueKey: string
   text: string
   /** ISO timestamp of the last save; eviction order. */
@@ -42,7 +57,14 @@ interface DraftsDoc {
   drafts: DraftRow[]
 }
 
-const KINDS: readonly DraftKind[] = ['comment', 'summary', 'description']
+/**
+ * The runtime half of StoredDraftKind — `isDraftRow` filters every read
+ * through it, so a kind missing here saves and never comes back. A build
+ * that does not know a kind drops those rows on its next save; the schema
+ * is not bumped for an added kind, because a dropped draft is a lost
+ * convenience and a refused document would be a lost one for every kind.
+ */
+const KINDS: readonly StoredDraftKind[] = ['comment', 'summary', 'description', 'page-comment']
 
 function isDraftRow(value: unknown): value is DraftRow {
   if (typeof value !== 'object' || value === null) return false
@@ -106,7 +128,7 @@ function writeDoc(doc: DraftsDoc): void {
 }
 
 /** The saved text for a composer on an issue, or null when there is none. */
-export function loadDraft(kind: DraftKind, issueKey: string): string | null {
+export function loadDraft(kind: StoredDraftKind, issueKey: string): string | null {
   if (isDemoSession()) return null
   const row = readDoc().drafts.find((d) => d.kind === kind && d.issueKey === issueKey)
   return row ? row.text : null
@@ -118,7 +140,7 @@ export function loadDraft(kind: DraftKind, issueKey: string): string | null {
  * Replaces in place for the same (kind, issueKey); past MAX_DRAFTS the
  * oldest by updatedAt (insertion order breaking ties) is evicted.
  */
-export function saveDraft(kind: DraftKind, issueKey: string, text: string): void {
+export function saveDraft(kind: StoredDraftKind, issueKey: string, text: string): void {
   if (isDemoSession()) return
   if (text.trim() === '') {
     clearDraft(kind, issueKey)
@@ -138,7 +160,7 @@ export function saveDraft(kind: DraftKind, issueKey: string, text: string): void
 }
 
 /** Forgets a composer's draft on an issue. Quiet no-op when there is none. */
-export function clearDraft(kind: DraftKind, issueKey: string): void {
+export function clearDraft(kind: StoredDraftKind, issueKey: string): void {
   if (isDemoSession()) return
   const doc = readDoc()
   const drafts = doc.drafts.filter((d) => !(d.kind === kind && d.issueKey === issueKey))
@@ -147,7 +169,7 @@ export function clearDraft(kind: DraftKind, issueKey: string): void {
 }
 
 /** Every draft under the active host, newest first. */
-export function listDrafts(): { kind: DraftKind; issueKey: string; updatedAt: string }[] {
+export function listDrafts(): { kind: StoredDraftKind; issueKey: string; updatedAt: string }[] {
   if (isDemoSession()) return []
   return readDoc()
     .drafts.map(({ kind, issueKey, updatedAt }) => ({ kind, issueKey, updatedAt }))
