@@ -48,6 +48,14 @@ have one dimmed line on the phone, at the spot where you would look for them,
 saying they are done on the desktop — no more finding out by searching
 ([GDK-1874]).
 
+**A page deleted on Confluence leaves the cache.** Until now a wiki page
+removed at the origin stayed in the local cache for as long as its space did,
+because only a space leaving scope was ever pruned. A full wiki sync now
+compares each space's complete page listing with what the cache holds, and
+the hourly reconcile does the same by page id without reading bodies; a page
+missing from the listing is confirmed against the origin before it goes, and a
+row refreshed in the meantime is left alone ([GDK-1884]; #104, thanks @wafe).
+
 ## v0.22.1 — 2026-09-14
 
 **gadak installs into Claude Desktop as one file.** Every release now carries
@@ -1654,3 +1662,4 @@ priority sorting keyed on `priority_rank`.
 [GDK-1873]: https://gadak.dev/backlog/#/?ks=GDK-1873
 [GDK-1874]: https://gadak.dev/backlog/#/?ks=GDK-1874
 [GDK-1879]: https://gadak.dev/backlog/#/?ks=GDK-1879
+[GDK-1884]: https://gadak.dev/backlog/#/?ks=GDK-1884

@@ -139,7 +139,11 @@ hard-won 목록)와 `AGENTS.md`(기여 계약)·`docs/MIRROR.md`(스키마·SQL 
   serve에 200을 받아 데모 픽스처를 열었고, 있지도 않은 회귀를 40분 추적했다.
   구조적 봉쇄는 GDK-1789). 같은 포트 위의 충돌·낡은 서버 재사용은 여전히 경쟁
   신호이고(스탬프 불일치는 `assertServedArtifact`가 잡는다), 한 스위트
-  안은 `workers: 1`이다.
+  안은 `workers: 1`이다. **포트를 배정하기 전에 `lsof -nP -iTCP:<p> -sTCP:LISTEN`으로
+  비었는지 확인한다** — 다른 세션의 프로세스가 물고 있으면 webServer가 exit 1로
+  죽어 스위트가 실행도 못 한다. **중단(TaskStop)한 Playwright 런의 포트는
+  버린다**: 부모만 죽고 `e2e/.tmp/gadak-<port> serve` 자식은 남아 있어, 같은
+  포트로 다시 띄우면 낡은 serve에 붙어 수백 건이 수백 ms 안에 연쇄 실패한다.
 - **터미널 e2e(`e2e/terminal*.spec.ts`·`e2e/issue-command.spec.ts`)를
   건드렸으면 `npm run test:e2e:wide-prompt`도 게이트다.** 그 스위트는 pane의
   셸을 `e2e/ci-shell.sh`로 바꿔 리눅스 CI 러너의 환경 셋을 재현한다 —
@@ -239,6 +243,11 @@ hard-won 목록)와 `AGENTS.md`(기여 계약)·`docs/MIRROR.md`(스키마·SQL 
   초록인 채 CI e2e만 빨갛다(2026-08-31: schemaV40이 정확히 이 경로로 074c9dcd
   를 적색으로 만들었다 — 로컬에서 스키마 커밋에 Playwright를 건너뛴 것이 원인).
   재생성은 항상 make 타깃으로(스크럽 생략 금지), 재생성 뒤 Playwright 전체.
+- **정적 픽스처(`examples/demo.db`) 위의 날짜·나이 단언은 픽스처 자기 시각에
+  고정한다** — `julianday('now')`·`time.Now()`가 아니라 픽스처의
+  `MAX(updated_at)`(`internal/snapshot/fixture_flow_test.go` `fixtureNow`).
+  벽시계로 재는 단언은 커밋 없이 날짜만으로 CI를 빨갛게 하는 시간폭탄이다
+  (GDK-1859 retro 주 경계, GDK-1881 WIP 나이).
 
 ## 배포·이름
 

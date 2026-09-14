@@ -69,8 +69,9 @@ func RunConfluence(ctx context.Context, cfg *config.Config, db *store.DB, opts O
 	}
 	return runSource(ctx, cfg, db, opts,
 		sourceIdent{ID: ConfluenceSourceID, Kind: KindConfluence},
-		// Space-scope prune is the Confluence reconcile. The flag only suffixes
-		// SyncRun.Kind; prune itself is called from runConfluencePass.
+		// The Confluence reconcile is space-scope prune plus the page-listing
+		// comparison (GDK-1884). The flag only suffixes SyncRun.Kind; both
+		// bodies are called from runConfluencePass.
 		true,
 		"confluence ",
 		func() (string, usageTaker, error) {
