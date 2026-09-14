@@ -1235,12 +1235,15 @@ export const detail = {
   // ALLOWED_BYTE_EQUAL entry in catalog.test.ts).
   'detail.updatedWhen': {
     en: 'updated {when}',
-    ko: '{when} 갱신',
-    ja: '{when} 更新',
+    // relTime hands over "4일" / "4日" (list-age form, no 전/前) and a
+    // calendar date past a week, so the label leads: "4일 갱신" read as a
+    // four-day renewal (opus vision FIX, 2026-09-14 screen review).
+    ko: '갱신: {when}',
+    ja: '更新: {when}',
   },
   'detail.byline': {
     en: 'by {name}',
-    ko: '{name}',
-    ja: '{name}',
+    ko: '작성: {name}',
+    ja: '作成: {name}',
   },
 } as const satisfies Record<string, Message>
