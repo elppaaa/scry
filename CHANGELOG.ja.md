@@ -2,7 +2,7 @@
 
 <sub><a href="CHANGELOG.md">English</a> · <a href="CHANGELOG.ko.md">한국어</a> ·日本語.英語版を訳したもので、英語版と一緒に更新します（最終同期2026-09-09）。</sub>
 
-## Unreleased
+## v0.22.1 — 2026-09-14
 
 **Claude Desktopにはファイル一つで入ります。**リリースごとに
 `gadak-<バージョン>.mcpb`が付くようになりました。そのリリースの実行ファイルを

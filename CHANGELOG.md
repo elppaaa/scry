@@ -2,7 +2,7 @@
 
 <sub>English · <a href="CHANGELOG.ko.md">한국어</a></sub>
 
-## Unreleased
+## v0.22.1 — 2026-09-14
 
 **gadak installs into Claude Desktop as one file.** Every release now carries
 `gadak-<version>.mcpb`, a Claude Desktop extension holding that release's own
