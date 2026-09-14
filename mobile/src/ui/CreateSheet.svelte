@@ -33,10 +33,13 @@
 </script>
 
 <script lang="ts">
-  import { untrack } from 'svelte'
+  import { onDestroy, untrack } from 'svelte'
   import Sheet from './Sheet.svelte'
+  import AttachChips, { type AttachChip } from './AttachChips.svelte'
   import { t, fieldLabel } from '../lib/i18n'
   import { ApiError, errorMessage } from '../lib/api'
+  import { checkUploadable, uploadAttachment } from '../lib/attach'
+  import { attachAll, createReady } from '../lib/create-attach'
   import { createIssue, getCreateMeta } from '../lib/writes'
   import { openIssue, sync } from '../lib/store.svelte'
   import { CREATE_DRAFT_SUBJECT, clearDraft, loadDraft, saveDraft } from '../lib/drafts'
@@ -91,6 +94,80 @@
   let project = $state('')
   let createError = $state<string | null>(null)
   let creating = $state(false)
+
+  /*
+   * A photo on a new issue (GDK-1879). This is the one place in the app where
+   * a pick may NOT upload at once: the comment composer uploads on pick
+   * because the issue already has a key, and here there is nothing to attach
+   * to until the create lands. So the files are held client-side as chips and
+   * the order on tap is create → upload each → open.
+   *
+   * Held in RAM only, and never drafted. `DraftKind` is unchanged on purpose:
+   * storage can promise to restore a line of text, and cannot promise to
+   * restore a photo out of the camera roll — a draft that says a picture is
+   * coming and then files an issue without it is worse than no draft.
+   */
+  interface Picked {
+    id: string
+    file: File
+    /** The object URL behind the 32px preview; revoked on remove and unmount. */
+    thumb?: string
+  }
+  let picked = $state<Picked[]>([])
+  /** Files still crossing the wire, after the create landed. No progress: the
+   *  WebView reports nothing until the response head (lib/attach.ts). */
+  let uploading = $state(0)
+  /** The hidden picker, owned by the 'picker' instance below. */
+  let pickerEl = $state<HTMLInputElement | null>(null)
+  let seq = 0
+
+  const chips = $derived<AttachChip[]>(
+    picked.map((p) => ({
+      id: p.id,
+      name: p.file.name.trim() || t('detail.attachments'),
+      ...(p.thumb ? { thumb: p.thumb } : {}),
+    })),
+  )
+
+  function releasePicked(): void {
+    for (const p of picked) if (p.thumb) URL.revokeObjectURL(p.thumb)
+    picked = []
+  }
+
+  onDestroy(releasePicked)
+
+  /**
+   * A pick. `checkUploadable` runs here rather than after the create, so a
+   * file that cannot be sent is refused before an issue exists to disappoint
+   * — the refusal is the composer's sentence, in the sheet's own error slot.
+   *
+   * The thumbnail comes straight off the File. Nothing is fetched: unlike the
+   * comment composer's chip, these bytes are already in this process.
+   */
+  function handleFiles(files: File[]): void {
+    if (writesOff || creating || uploading > 0 || files.length === 0) return
+    const refused = files.find((f) => !checkUploadable(f).ok)
+    createError = refused ? t('write.attachFailed', { name: refused.name }) : null
+    const next: Picked[] = []
+    for (const file of files) {
+      if (!checkUploadable(file).ok) continue
+      seq += 1
+      next.push({
+        id: `p${seq}`,
+        file,
+        ...(file.type.startsWith('image/') ? { thumb: URL.createObjectURL(file) } : {}),
+      })
+    }
+    picked = [...picked, ...next]
+  }
+
+  /** The × on a chip: nothing has been uploaded yet, so this really does
+   *  drop the file — the one place in the app where it does. */
+  function removePicked(id: string): void {
+    const row = picked.find((p) => p.id === id)
+    if (row?.thumb) URL.revokeObjectURL(row.thumb)
+    picked = picked.filter((p) => p.id !== id)
+  }
 
   /** Projects the sheet may file under — subtask-only projects cannot take
    *  a top-level create, and the phone never asks for an issue type (the
@@ -194,7 +271,7 @@
 
   async function create(): Promise<void> {
     const title = summary.trim()
-    if (title === '' || creating || writesOff) return
+    if (!createReady(summary, uploading) || creating || writesOff) return
     // The drafts go to storage before the POST, not after: a refused create
     // must leave them there, and a landed one clears them below.
     flushDrafts()
@@ -202,6 +279,7 @@
     saveDraft('create-description', subject, desc)
     creating = true
     createError = null
+    let key: string
     try {
       const res = await createIssue({
         summary: title,
@@ -213,13 +291,7 @@
         ...(parent && parent.projectKey !== '' ? { project_key: parent.projectKey } : {}),
         ...(!parent && project !== '' ? { project_key: project } : {}),
       })
-      clearDraft('create-summary', subject)
-      clearDraft('create-description', subject)
-      summary = ''
-      desc = ''
-      onclose()
-      void sync()
-      openIssue(res.issue.issue_key)
+      key = res.issue.issue_key
     } catch (err) {
       if (err instanceof ApiError && err.code === 'credential_required') {
         writesOff = true
@@ -228,9 +300,50 @@
         return
       }
       createError = errorMessage(err)
+      return
     } finally {
       creating = false
     }
+
+    /*
+     * The issue exists from here down, and nothing below may lose it.
+     * lib/create-attach.ts's attachAll cannot throw — that is its contract —
+     * so there is no branch out of this function that forgets the key.
+     */
+    clearDraft('create-summary', subject)
+    clearDraft('create-description', subject)
+    summary = ''
+    desc = ''
+
+    const files = picked.map((p) => p.file)
+    let failed: { name: string }[] = []
+    if (files.length > 0) {
+      uploading = files.length
+      const out = await attachAll(key, files, async (k, file) => {
+        try {
+          return await uploadAttachment(k, file)
+        } finally {
+          uploading -= 1
+        }
+      })
+      failed = out.failed
+    }
+    releasePicked()
+    void sync()
+
+    if (failed.length > 0) {
+      // The issue landed; only the picture did not. The sheet stays open with
+      // the sentence in its error slot (z-index 30, above the detail layer's
+      // 20) and the issue opens underneath, because the person's next move is
+      // to attach it from Detail — where the picker uploads on pick. The
+      // title is already cleared, so the create control is disabled and this
+      // cannot become a second issue.
+      createError = t('write.attachFailed', { name: failed[0].name })
+      openIssue(key)
+      return
+    }
+    onclose()
+    openIssue(key)
   }
 </script>
 
@@ -239,6 +352,10 @@
        one project — one-project serves (and the fixture) file into the
        default without asking, and the type is always the server's default. -->
   <Sheet title={parent ? t('write.newChild') : t('write.newIssue')} {onclose}>
+    <!-- Outside .create for the same reason it sits outside .composer on
+         Detail: `.create input` is how e2e/a2-captures.spec.ts spells "the
+         title field", and a Playwright locator is strict. -->
+    <AttachChips part="picker" bind:picker={pickerEl} onpick={handleFiles} />
     <div class="create">
       {#if parent}
         <!-- Where this is going, in one line and in the catalog's own word
@@ -275,13 +392,29 @@
           {/each}
         </select>
       {/if}
-      <button
-        class="go"
-        disabled={creating || summary.trim() === '' || writesOff}
-        onclick={() => void create()}
-      >
-        {creating ? t('common.creating') : parent ? t('write.newChild') : t('write.newIssue')}
-      </button>
+      <!-- The paperclip beside the create button, and the chips it makes on
+           their own full-width row above the pair — the composer's layout,
+           because it is the composer's dialect (ui/AttachChips.svelte). -->
+      <div class="go-row">
+        <AttachChips
+          part="controls"
+          {chips}
+          picker={pickerEl}
+          testid="create-attachments"
+          disabled={writesOff || creating || uploading > 0}
+          onremove={removePicked}
+        />
+        <button
+          class="go"
+          class:busy={creating || uploading > 0}
+          disabled={!createReady(summary, uploading) || creating || writesOff}
+          onclick={() => void create()}
+        >
+          <!-- State in the pressed control (DESIGN §3.5), the same three-way
+               label the Send button wears while bytes are in flight. -->
+          {#if creating}{t('common.creating')}{:else if uploading > 0}{t('write.uploading', { n: uploading })}{:else}{parent ? t('write.newChild') : t('write.newIssue')}{/if}
+        </button>
+      </div>
       {#if restored}
         <p class="draft-note">{t('write.draftRestored')}</p>
       {/if}
@@ -325,9 +458,19 @@
   .create select:disabled {
     opacity: 0.45;
   }
-  .go {
-    min-height: var(--spacing-control);
+  /* The paperclip, the chip row and the create button share one wrapping
+     flex line — the same shape .composer has on Detail, so .att-row's
+     `flex: 1 0 100%` puts the chips on their own row above them. The 8px
+     that used to be .go's margin-top is the row's now; nothing else moved. */
+  .go-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
     margin-top: 8px;
+  }
+  .go {
+    flex: 1;
+    min-height: var(--spacing-control);
     padding: 0 16px;
     border-radius: 6px;
     font-weight: 600;
@@ -336,6 +479,10 @@
   }
   .go:disabled {
     opacity: 0.45;
+  }
+  /* Waiting is neither idle nor armed, same as .send.busy on Detail. */
+  .go.busy {
+    opacity: 0.6;
   }
   .err {
     margin: 6px 0 0;

@@ -3,6 +3,7 @@
   import { onDestroy, untrack } from 'svelte'
   import Sheet from '../ui/Sheet.svelte'
   import CreateSheet from '../ui/CreateSheet.svelte'
+  import AttachChips, { type AttachChip } from '../ui/AttachChips.svelte'
   import AdfBody from '../ui/AdfBody.svelte'
   import DeskRow from '../ui/DeskRow.svelte'
   import { app, closeIssue, openIssue, sync } from '../lib/store.svelte'
@@ -257,8 +258,10 @@
   /** The same URLs as a plain map, so teardown can revoke them after the
    *  last render (the shape AdfBody's blobUrls uses, and for the reason). */
   const thumbUrls = new Map<string, string>()
-  /** The hidden picker. A plain let: nothing renders it. */
-  let fileInput: HTMLInputElement | null = null
+  /** The hidden picker, owned by AttachChips' 'picker' instance and handed
+   *  to its 'controls' instance so the paperclip can click it. $state, not a
+   *  plain let: the second instance reads it during render. */
+  let fileInput = $state<HTMLInputElement | null>(null)
 
   function releaseThumb(id: string): void {
     const url = thumbUrls.get(id)
@@ -319,12 +322,10 @@
    * pick whose first two files are refused names the first: the line is a
    * report that something was skipped, not a log.
    */
-  async function handleFiles(event: Event): Promise<void> {
-    const input = event.currentTarget as HTMLInputElement
-    const files = [...(input.files ?? [])]
-    // Cleared before anything can await: picking the same photo twice is a
-    // real pick, and a browser fires no change event when value is unchanged.
-    input.value = ''
+  async function handleFiles(files: File[]): Promise<void> {
+    // The input's value is already cleared by AttachChips before this is
+    // called — picking the same photo twice is a real pick, and a browser
+    // fires no change event when value is unchanged.
     if (writesOff || sending || files.length === 0) return
     const usable = files.filter((f) => checkUploadable(f).ok)
     const refusedFile = files.find((f) => !checkUploadable(f).ok)
@@ -349,6 +350,17 @@
       }),
     )
   }
+
+  /** What the chip row paints. The fallback word is the catalog's, because
+   *  attachmentLabel() answers '' for a row carrying neither a filename nor
+   *  a mime subtype — lib/attach.ts owns no copy and so cannot supply it. */
+  const chips = $derived<AttachChip[]>(
+    attachments.map((a) => ({
+      id: a.id,
+      name: attachmentLabel(a) || t('detail.attachments'),
+      ...(a.is_image && thumbs[a.id] ? { thumb: thumbs[a.id] } : {}),
+    })),
+  )
 
   const thread = $derived(overlayComments(detail?.comments ?? [], pending))
 
@@ -1218,62 +1230,26 @@
             {/if}
           </button>
         {/if}
-        <!-- The picker. A web file input inside WKWebView opens the native
-             sheet (Photo Library / Take Photo / Choose File) with no Tauri
-             plugin, which is why there is no picker code in this screen at
-             all — only a button that clicks this.
-
-             It sits beside .composer rather than inside it, and that is not
-             cosmetic: `.composer input` is how three suites already spell
-             "the comment field" (e2e/drafts.spec.ts, e2e/pagecomment.spec.ts,
-             shots/zz-review.spec.ts), and a second input under that selector
-             makes every one of them ambiguous. `hidden`, never a sized
-             transparent box: the viewport gate counts every input that
-             paints, and this one must not be one of them. -->
-        <input
-          bind:this={fileInput}
-          class="file"
-          type="file"
-          accept="image/*"
-          multiple
-          hidden
-          tabindex="-1"
-          onchange={(e) => void handleFiles(e)}
-        />
+        <!-- The picker sits beside .composer rather than inside it, and that
+             is not cosmetic: `.composer input` is how three suites already
+             spell "the comment field" (e2e/drafts.spec.ts,
+             e2e/pagecomment.spec.ts, shots/zz-review.spec.ts), and a second
+             input under that selector makes every one of them ambiguous.
+             ui/AttachChips.svelte owns the markup for both halves; this is
+             why they are two instances and not one (GDK-1879). -->
+        <AttachChips part="picker" bind:picker={fileInput} onpick={(f) => void handleFiles(f)} />
         <div class="composer safe-bottom" class:off={writesOff}>
-          <!-- One chip per uploaded file, on its own full-width row above
-               the field. The × takes the file out of the comment, never off
+          <!-- The chip row and the paperclip, as direct flex children of the
+               composer. The × takes the file out of the comment, never off
                the issue: the upload already attached it there, which is the
                desk's behaviour too. -->
-          {#if attachments.length > 0}
-            <div class="att-row" data-testid="composer-attachments">
-              {#each attachments as a (a.id)}
-                <span class="att">
-                  {#if a.is_image && thumbs[a.id]}
-                    <img class="att-thumb" src={thumbs[a.id]} alt="" />
-                  {/if}
-                  <span class="att-name">{attachmentLabel(a) || t('detail.attachments')}</span>
-                  <button
-                    type="button"
-                    class="att-x"
-                    aria-label={t('write.removeAttachment')}
-                    onclick={() => removeAttachment(a.id)}>×</button
-                  >
-                </span>
-              {/each}
-            </div>
-          {/if}
-          <button
-            type="button"
-            class="attach"
-            aria-label={t('write.attachFile')}
+          <AttachChips
+            part="controls"
+            {chips}
+            picker={fileInput}
             disabled={writesOff || sending}
-            onclick={() => fileInput?.click()}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
-            </svg>
-          </button>
+            onremove={removeAttachment}
+          />
           <input
             bind:value={comment}
             disabled={writesOff}
@@ -2143,82 +2119,14 @@
   .composer input::placeholder {
     color: var(--color-text-muted);
   }
-  /* The picker's control: the 44pt icon dialect the title row already uses
-     (.edit), sat at the head of the composer. Hidden input beside it paints
-     nothing — `hidden` and not a sized transparent box, so the viewport
-     gate's input census does not see a field that is not there. */
-  .attach {
-    flex: none;
-    width: var(--spacing-control);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--color-text-muted);
-  }
-  .attach svg {
-    width: 20px;
-    height: 20px;
-  }
-  .attach:disabled {
-    opacity: 0.45;
-  }
-  /* One row of chips above the field. Full-width first child of the wrapping
-     .composer, so the slab grows by exactly one row and only while something
-     is attached. Existing tokens only — this is the .summary-edit field's
-     fill and border at the micro size. */
-  .att-row {
-    flex: 1 0 100%;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    min-width: 0;
-  }
-  .att {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    max-width: 100%;
-    min-width: 0;
-    padding-left: 6px;
-    background: var(--color-bg-base);
-    border: 1px solid var(--color-border-subtle);
-    border-radius: 6px;
-    font-size: var(--text-micro);
-  }
-  .att-thumb {
-    flex: none;
-    width: 32px;
-    height: 32px;
-    border-radius: 4px;
-    object-fit: cover;
-    /* A hairline so a pale photo still reads as an object on the pale chip. */
-    border: 1px solid var(--color-border-subtle);
-  }
-  /* Waiting is neither idle nor armed: the label changes and the control
+  /* The picker's control, the chip row and the chips moved to
+     ui/AttachChips.svelte (GDK-1879) — values unchanged, one owner for the
+     dialect the composer and the create sheet both speak.
+
+     Waiting is neither idle nor armed: the label changes and the control
      recedes a step (DESIGN §3.5 — state in the pressed control, no spinner). */
   .send.busy {
     opacity: 0.6;
-  }
-  .att-name {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  /* The same dismiss the resume card wears, at the same touch size. */
-  .att-x {
-    display: flex;
-    flex: none;
-    width: var(--spacing-control);
-    align-items: center;
-    justify-content: center;
-    border-radius: 6px;
-    color: var(--color-text-muted);
-    font-size: var(--text-body);
-    line-height: 1;
-  }
-  .att-x:active {
-    background: var(--color-bg-hover);
   }
   .send {
     flex: none;

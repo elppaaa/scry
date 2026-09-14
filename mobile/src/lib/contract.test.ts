@@ -596,12 +596,21 @@ describe('GDK-1497 A2 — the create sheet, wherever it is opened from', () => {
   const sheet = read('ui/CreateSheet.svelte')
   const issues = read('screens/Issues.svelte')
 
+  // Re-pinned 2026-09-15 (GDK-1879): the create's second half now uploads
+  // the photos picked before there was a key, so `res.issue.issue_key` is
+  // read into a local and the landing happens after the uploads instead of
+  // inside the try. FAIL-first, measured against HEAD 8c33a842's
+  // CreateSheet.svelte before the edit: /key = res\.issue\.issue_key/ false,
+  // /openIssue\(key\)/ false, /createIssue\(/ true. What GDK-1497 A2 pinned is
+  // unchanged — the POST goes through the typed wrapper and the screen lands
+  // on the issue that came back — so this is the same contract, respelled.
   it('posts through createIssue and lands on the new issue', () => {
     const at = sheet.indexOf('async function create(')
     expect(at).toBeGreaterThan(-1)
     const fn = sheet.slice(at, sheet.indexOf('\n  }', at))
     expect(fn).toMatch(/createIssue\(/)
-    expect(fn).toMatch(/openIssue\(res\.issue\.issue_key\)/)
+    expect(fn).toMatch(/key = res\.issue\.issue_key/)
+    expect(fn).toMatch(/openIssue\(key\)/)
   })
 
   it('asks for a project only when the serve offers more than one', () => {
