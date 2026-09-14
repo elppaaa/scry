@@ -211,6 +211,76 @@ test.describe('comment visibility (GDK-528)', () => {
     expect(errors, `console errors:\n${errors.join('\n')}`).toEqual([])
   })
 
+  /*
+   * GDK-1877. The composer used to arm Submit on attachments alone
+   * (`text.trim().length > 0 || attachments.length > 0`), and the server
+   * refuses a text-less comment before it reads attachment_ids
+   * (internal/server/write.go:615, 400 `text_required`) — so a picture-only
+   * comment on the desk was a control whose only outcome was a failure
+   * toast, with the files already attached to the issue. Text is required
+   * now, exactly as the phone has always had it.
+   *
+   * The upload is browser-fulfilled like every other write in this file:
+   * nothing reaches the serve, so this stays out of the mutating census.
+   */
+  test('attachments alone never arm the submit — text is required (GDK-1877)', async ({ page }) => {
+    const errors = attachConsoleErrors(page)
+    const issue = await captureIssue(page)
+    const { panel } = await openComposer(page)
+    const getPosted = await stubCommentPost(page, issue, {})
+
+    let uploads = 0
+    await page.route(`**/api/v1/issues/${KEY}/attachments/`, async (route) => {
+      if (route.request().method() !== 'POST') return route.continue()
+      uploads++
+      // is_image false on purpose: an <img> with a stubbed src would fail to
+      // decode and put a console error in a test that asserts there are none.
+      await fulfillJSON(route, {
+        attachments: [
+          {
+            id: 'cv-e2e-att-1',
+            filename: 'desk-shot.bin',
+            mime_type: 'application/octet-stream',
+            size: 4,
+            media_id: 'cv-e2e-media-1',
+            is_image: false,
+            is_video: false,
+            content_url: '',
+          },
+        ],
+      })
+    })
+
+    const composer = panel.getByTestId('comment-composer')
+    const button = panel.getByRole('button', { name: 'Comment', exact: true })
+    await expect(composer).toHaveValue('')
+    await expect(button).toBeDisabled()
+
+    // The hidden input is the composer's own; the paperclip button opens it.
+    await panel.locator('input[type="file"]').setInputFiles({
+      name: 'desk-shot.bin',
+      mimeType: 'application/octet-stream',
+      buffer: Buffer.from('desk'),
+    })
+    // The chip is the proof the upload finished (uploading back to 0) — the
+    // disabled assertion below would otherwise pass on the in-flight half.
+    await expect(panel.getByText('desk-shot.bin')).toBeVisible()
+    expect(uploads, 'the composer must have uploaded the file').toBe(1)
+
+    // Both seats: the greyed button, and ⌘↵ which does not consult it.
+    await expect(button).toBeDisabled()
+    await composer.press('Meta+Enter')
+    // A negative needs a real window; poll().toBeNull() passes on tick one.
+    await page.waitForTimeout(1200)
+    expect(getPosted(), 'an attachment-only comment may not leave the desk').toBeNull()
+
+    // One character is the whole difference.
+    await composer.fill('x')
+    await expect(button).toBeEnabled()
+
+    expect(errors, `console errors:\n${errors.join('\n')}`).toEqual([])
+  })
+
   test('badges arrive from the detail response too, not only the echo', async ({ page }) => {
     const errors = attachConsoleErrors(page)
     const issue = await captureIssue(page)

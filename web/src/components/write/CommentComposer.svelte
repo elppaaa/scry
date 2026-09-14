@@ -18,6 +18,7 @@
   import { config, isHostedDemo, originWritable } from '../../lib/config'
   import { isJiraFamily } from '../../lib/workspace'
   import { commentDraftKey } from '../../lib/storage'
+  import { commentReady } from '../../lib/comment-ready'
   import { DETAIL_TESTID } from '../../lib/commands'
   import { asKeyTarget } from '../../lib/key-targets'
   import Icon from '../ui/Icon.svelte'
@@ -260,7 +261,7 @@
 
   async function submit() {
     const body = text.trim()
-    if ((!body && attachments.length === 0) || busy || uploading > 0) return
+    if (!canSubmit || busy) return
     if (restrictionIncomplete) return
     busy = true
     const prev = { text, mentions, attachments }
@@ -354,7 +355,12 @@
     })
   })
 
-  const canSubmit = $derived((text.trim().length > 0 || attachments.length > 0) && uploading === 0)
+  /* GDK-1877: one owner for "may this comment be submitted". Both seats read
+   * it — the footer button's disabled= and submit()'s early return — because
+   * a greyed-out button does not stop ⌘/Ctrl+Enter. Text is required: the
+   * server refuses a blank body before it reads attachment_ids, so arming on
+   * attachments alone offered a control whose only outcome was a toast. */
+  const canSubmit = $derived(commentReady(text, attachments.length, uploading))
 
   // A capture claim (draft tier, the lowest) so an unfocused non-empty draft
   // spends Esc before the shell keymap (registered on bubble at App mount)

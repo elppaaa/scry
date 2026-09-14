@@ -60,6 +60,25 @@ describe('CommentComposer restriction (GDK-528)', () => {
     expect(submitBody.includes('visibilityKind =')).toBe(false)
   })
 
+  /*
+   * GDK-1877: the composer used to arm Submit on attachments alone, and the
+   * server refuses a text-less comment before it reads attachment_ids. The
+   * predicate moved out to lib/comment-ready.ts (its own suite owns the
+   * truth table); what this file owns is that BOTH seats read that one
+   * answer — a disabled button alone never stopped ⌘↵.
+   */
+  test('one predicate owns "may this be submitted", and both seats read it', () => {
+    expect(SRC).toContain("import { commentReady } from '../../lib/comment-ready'")
+    expect(SRC).toContain('const canSubmit = $derived(commentReady(text, attachments.length, uploading))')
+    // Seat 1: the footer button.
+    expect(SRC).toContain('!canSubmit || restrictionIncomplete')
+    // Seat 2: submit()'s early return. It used to re-derive the rule by
+    // hand — `(!body && attachments.length === 0) || busy || uploading > 0` —
+    // which is exactly how the two answers drifted apart.
+    expect(SRC).toContain('if (!canSubmit || busy) return')
+    expect(SRC).not.toContain('attachments.length === 0')
+  })
+
   test('submit hands the opts to the store', () => {
     expect(SRC).toMatch(/write\.submitComment\(issueKey, body, used, prev\.attachments, opts\)/)
   })
