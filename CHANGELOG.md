@@ -36,7 +36,9 @@ phone writes: from an epic, a **+** in the title row files a child under
 it; the Labels row opens the workspace's own labels to toggle, with a line
 to type a new one; the due date in the header opens the phone's date
 wheel. Each is one write, and a refused one keeps what you chose
-([GDK-1871]).
+([GDK-1871]). And a photo goes with the comment: the paperclip in the
+composer opens the phone's own camera or library, the picture uploads as you
+pick it, and it lands inside the comment ([GDK-1872]).
 
 ## v0.22.1 — 2026-09-14
 
@@ -1640,4 +1642,5 @@ priority sorting keyed on `priority_rank`.
 [GDK-1869]: https://gadak.dev/backlog/#/?ks=GDK-1869
 [GDK-1870]: https://gadak.dev/backlog/#/?ks=GDK-1870
 [GDK-1871]: https://gadak.dev/backlog/#/?ks=GDK-1871
+[GDK-1872]: https://gadak.dev/backlog/#/?ks=GDK-1872
 [GDK-1873]: https://gadak.dev/backlog/#/?ks=GDK-1873
