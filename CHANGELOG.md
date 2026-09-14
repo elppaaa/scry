@@ -26,7 +26,8 @@ the toast said a Jira link had been copied ([GDK-1858]). A workspace on the
 built-in tracker has no origin page and keeps copying the app links: there,
 they are the address.
 
-**The Korean and the Japanese read like they were written that way.** The retro
+**What a reader sees is what is true.** The Korean and the Japanese read
+like they were written that way. The retro
 screen's Korean carried a sentence whose subject could not do its verb, a
 lagging-and-leading framing the English line never made, and two names for one
 number; the Japanese hint ended two sentences on the same predicate
@@ -41,6 +42,12 @@ says, the spaces are gone and gated (`tools/ja-spacing.py`, doc-checks #60), a
 source line break between Japanese characters stopped rendering as a space on
 `/ja/changelog/`, and the system Latin faces now sit in front of the Japanese
 ones — the order the product's own stylesheet already used.
+
+The retro's density strip drew the week it was asked about, except on the
+first day of one: a bucket still running ends hours after it begins, the
+strip truncated that end to its own date, and the day count came back zero —
+so the section vanished on the morning it had the least to say, which is
+also the morning someone opens a retro to find out ([GDK-1859]).
 
 ## v0.22.0 — 2026-09-13
 
@@ -1585,3 +1592,4 @@ priority sorting keyed on `priority_rank`.
 [GDK-1853]: https://gadak.dev/backlog/#/?ks=GDK-1853
 [GDK-1854]: https://gadak.dev/backlog/#/?ks=GDK-1854
 [GDK-1858]: https://gadak.dev/backlog/#/?ks=GDK-1858
+[GDK-1859]: https://gadak.dev/backlog/#/?ks=GDK-1859

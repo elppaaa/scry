@@ -116,6 +116,22 @@ describe('densityStrip', () => {
     expect(s.every((d) => d.total === 0)).toBe(true)
   })
 
+  // GDK-1859, FAIL-first: the running bucket's `to` is the moment the report
+  // was read, so on the first day of a week it lands a few hours after `from`.
+  // Truncating that `to` to its own date made end == start and the strip came
+  // back empty — the whole section vanished every Monday, and the day it
+  // vanished on was the day the server had the least to say about.
+  it('draws the day a bucket that ends mid-day is standing in', () => {
+    const s = densityStrip(
+      [{ at: '2026-03-09T02:00:00Z', key: 'A-1', kind: 'started' }],
+      '2026-03-09T00:00:00Z',
+      '2026-03-09T09:11:19Z',
+      new Date('2026-03-09T09:11:19Z'),
+    )
+    expect(s.map((d) => d.day)).toEqual(['2026-03-09'])
+    expect(s[0].total).toBe(1)
+  })
+
   it('has nothing to draw for an inverted window', () => {
     expect(densityStrip([], '2026-03-09T00:00:00Z', '2026-03-02T00:00:00Z', now)).toEqual([])
   })

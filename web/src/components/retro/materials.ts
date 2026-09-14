@@ -111,7 +111,15 @@ export function densityStrip(
   // `now + 24h` would let tomorrow's half-column in whenever the report is
   // read in the afternoon.
   const tomorrow = Date.parse(now.toISOString().slice(0, 10) + 'T00:00:00Z') + 86_400_000
-  const end = Math.min(Date.parse(to.slice(0, 10) + 'T00:00:00Z'), tomorrow)
+  // `to` is exclusive, so a bucket that ends part-way through a day is still
+  // standing in that day: round its end up to the next midnight rather than
+  // truncating it away (GDK-1859 — a running bucket read on the first day of
+  // its week ended hours after it began, end came back equal to start, and
+  // the strip drew nothing at all). An end already on a midnight keeps it.
+  const toDay = Date.parse(to.slice(0, 10) + 'T00:00:00Z')
+  const toMs = Date.parse(to)
+  const toEnd = Number.isFinite(toMs) && toMs > toDay ? toDay + 86_400_000 : toDay
+  const end = Math.min(toEnd, tomorrow)
   if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return []
   const days: DensityDay[] = []
   const index = new Map<string, DensityDay>()

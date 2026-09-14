@@ -201,11 +201,23 @@ test.describe('retro materials', () => {
     await expect(page.locator('[data-testid="retro-section"][data-section="aging"]')).toBeVisible()
     await expect(page.getByTestId('retro-aging-row').first()).toBeVisible()
 
+    // A count is a door when there is something behind it, and inert when
+    // there is not — the sentence renders a <button> only for a value that
+    // carries keys (RetroSentence.svelte). Both shapes are real: read on the
+    // first day of a bucket, the running column is hours old and has closed
+    // nothing, and this test used to demand a door there and fail every time
+    // the week turned over (GDK-1859).
     const value = page.locator('[data-testid="retro-sentence-value"][data-slot="closed"]')
     await expect(value).toBeVisible()
-    await value.click()
-    await expect(page.getByTestId('retro-view')).toBeHidden()
-    await expect.poll(() => page.url()).toContain('ks=')
+    if ((await value.evaluate((el) => el.tagName)) === 'BUTTON') {
+      await value.click()
+      await expect(page.getByTestId('retro-view')).toBeHidden()
+      await expect.poll(() => page.url()).toContain('ks=')
+    } else {
+      await expect(value).toHaveText('0')
+      await value.click()
+      await expect(page.getByTestId('retro-view')).toBeVisible()
+    }
 
     expect(errors.filter((e) => !e.includes('409') && !e.includes('502'))).toEqual([])
   })
