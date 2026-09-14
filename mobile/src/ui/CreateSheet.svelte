@@ -312,8 +312,11 @@
      */
     clearDraft('create-summary', subject)
     clearDraft('create-description', subject)
-    summary = ''
-    desc = ''
+    // The title and description stay on screen while the photos cross the
+    // wire — a sheet showing only a chip and "Uploading… (1)" read as a
+    // half-reset form in the vision pass. They clear once the uploads have
+    // answered, below; createReady is false while uploading > 0, so the
+    // still-visible title cannot arm a second create meanwhile.
 
     const files = picked.map((p) => p.file)
     let failed: { name: string }[] = []
@@ -329,6 +332,8 @@
       failed = out.failed
     }
     releasePicked()
+    summary = ''
+    desc = ''
     void sync()
 
     if (failed.length > 0) {
@@ -475,7 +480,10 @@
     border-radius: 6px;
     font-weight: 600;
     background: var(--color-accent);
-    color: var(--color-bg-base);
+    /* The shared on-accent ink, not bg-base: in dark, bg-base is near-black
+       on the mid-blue accent (armed 2.75:1, busy 1.74:1 in the 2026-09-14
+       GDK-1879 vision pass) — the same fix GDK-1872 gave Send and Save. */
+    color: var(--color-on-accent);
   }
   .go:disabled {
     opacity: 0.45;
