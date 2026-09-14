@@ -38,7 +38,10 @@ to type a new one; the due date in the header opens the phone's date
 wheel. Each is one write, and a refused one keeps what you chose
 ([GDK-1871]). And a photo goes with the comment: the paperclip in the
 composer opens the phone's own camera or library, the picture uploads as you
-pick it, and it lands inside the comment ([GDK-1872]). And what stays on the
+pick it, and it lands inside the comment ([GDK-1872]) — and on a new issue too:
+the create sheet takes the picture before the issue has a key, files the
+issue, then uploads, and a refused upload never loses the issue it was for
+([GDK-1879]). And what stays on the
 desk says so where you look for it: editing a page, editing a custom field,
 authoring a view, laying out a dashboard and moving cards on the board each
 have one dimmed line on the phone, at the spot where you would look for them,
@@ -1650,3 +1653,4 @@ priority sorting keyed on `priority_rank`.
 [GDK-1872]: https://gadak.dev/backlog/#/?ks=GDK-1872
 [GDK-1873]: https://gadak.dev/backlog/#/?ks=GDK-1873
 [GDK-1874]: https://gadak.dev/backlog/#/?ks=GDK-1874
+[GDK-1879]: https://gadak.dev/backlog/#/?ks=GDK-1879
