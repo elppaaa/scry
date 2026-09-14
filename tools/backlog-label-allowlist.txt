@@ -65,6 +65,7 @@ decision
 deferred
 demo
 design
+desk
 desktop
 diagnostics
 distribution
