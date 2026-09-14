@@ -329,8 +329,20 @@ describe('GDK-1525 the armed fill is one grammar, owned once', () => {
     const owner = read('app.css').match(/button\.save\.armed,\s*button\.send\.armed\s*\{[^}]+\}/)?.[0]
     expect(owner).toBeTruthy()
     expect(owner).toMatch(/background:\s*var\(--color-accent\)/)
-    expect(owner).toMatch(/color:\s*var\(--color-bg-base\)/)
+    // Re-pinned 2026-09-14 (GDK-1873 vision pass): the ink was
+    // --color-bg-base, which on the dark accent (#3a5b80) measured 2.76:1.
+    // The ink is now a theme token, --color-on-accent: the page colour in
+    // light, the text colour in dark. FAIL-first: with the rule already on
+    // the new token this line read "expected … to match
+    // /color:\s*var\(--color-bg-base\)/".
+    expect(owner).toMatch(/color:\s*var\(--color-on-accent\)/)
     expect(owner).not.toMatch(/--color-status-/)
+    const css = read('app.css')
+    // The token has both halves: a light definition on the page colour and
+    // a dark one on the text colour, in the media block and the data-theme
+    // block alike (the same pair the spine token uses).
+    expect(css).toMatch(/--color-on-accent:\s*var\(--color-bg-base\)/)
+    expect(css.match(/--color-on-accent:\s*var\(--color-text-primary\)/g) ?? []).toHaveLength(2)
   })
 
   it('keeps no local armed fill and no disabled dim on either button', () => {

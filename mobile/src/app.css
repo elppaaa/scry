@@ -102,16 +102,23 @@ body {
     better on ink).
   */
   --color-spine-new: var(--color-accent);
+  /* Ink on an accent fill (armed Send/Save). Light accent is deep 쪽빛, so
+     the page colour reads on it; dark accent is a mid blue (#3a5b80) where
+     the page colour measured 2.76:1 in the 2026-09-14 page-comment vision
+     pass — there the ink is the theme's text colour (≈5.6:1). */
+  --color-on-accent: var(--color-bg-base);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme='light']) {
     --color-spine-new: var(--color-status-new);
+    --color-on-accent: var(--color-text-primary);
   }
 }
 :root[data-theme='dark'],
 :root[data-theme='ink'],
 :root[data-theme='ember'] {
   --color-spine-new: var(--color-status-new);
+  --color-on-accent: var(--color-text-primary);
 }
 .safe-top {
   padding-top: var(--safe-top);
@@ -132,7 +139,10 @@ body {
   from the composer; this rule covers the class until that lands.
 */
 .composer.safe-bottom:focus-within {
-  padding-bottom: 0;
+  /* Not 0: the button then sits on the keyboard's edge (2026-09-14 vision
+     pass read it as the layout having slipped). The slab's own top padding
+     is the floor it keeps at the bottom. */
+  padding-bottom: 8px;
 }
 
 button,
@@ -171,7 +181,7 @@ button {
 button.save.armed,
 button.send.armed {
   background: var(--color-accent);
-  color: var(--color-bg-base);
+  color: var(--color-on-accent);
 }
 
 @media (prefers-reduced-motion: reduce) {
