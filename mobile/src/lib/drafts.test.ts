@@ -136,14 +136,14 @@ describe('drafts — cap and eviction', () => {
       saveDraft('comment', `NMB-${i}`, `text ${i}`)
     }
     expect(listDrafts()).toHaveLength(MAX_DRAFTS)
-    // Touch NMA-0 so it is no longer the oldest — NMA-1 must go instead.
+    // Touch NMB-0 so it is no longer the oldest — NMB-1 must go instead.
     vi.setSystemTime(new Date(Date.UTC(2026, 8, 14, 0, 1, 0)))
-    saveDraft('comment', 'NMA-0', 'text 0 again')
+    saveDraft('comment', 'NMB-0', 'text 0 again')
     vi.setSystemTime(new Date(Date.UTC(2026, 8, 14, 0, 1, 1)))
     saveDraft('comment', 'NMB-new', 'the 51st')
     expect(listDrafts()).toHaveLength(MAX_DRAFTS)
-    expect(loadDraft('comment', 'NMA-1')).toBeNull()
-    expect(loadDraft('comment', 'NMA-0')).toBe('text 0 again')
+    expect(loadDraft('comment', 'NMB-1')).toBeNull()
+    expect(loadDraft('comment', 'NMB-0')).toBe('text 0 again')
     expect(loadDraft('comment', 'NMB-new')).toBe('the 51st')
   })
 
