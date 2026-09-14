@@ -22,6 +22,13 @@ the header is data rather than a second button, the activity strip says which
 field moved instead of "Field change", and the pairing tab names the host
 once ([GDK-1869]).
 
+**Whatever the cache holds, the phone shows.** The issue detail now has a
+Fields section listing labels, components, fix versions, parent and epic, and
+every custom field the site configured, under the site's own field names — the
+same rows the desk shows, which the phone had been receiving since 0.1 and
+never drawing. Empty fields draw no row; the parent and epic rows open that
+issue ([GDK-1870]).
+
 ## v0.22.1 — 2026-09-14
 
 **gadak installs into Claude Desktop as one file.** Every release now carries
@@ -1622,3 +1629,4 @@ priority sorting keyed on `priority_rank`.
 [GDK-1863]: https://gadak.dev/backlog/#/?ks=GDK-1863
 [GDK-1867]: https://gadak.dev/backlog/#/?ks=GDK-1867
 [GDK-1869]: https://gadak.dev/backlog/#/?ks=GDK-1869
+[GDK-1870]: https://gadak.dev/backlog/#/?ks=GDK-1870
