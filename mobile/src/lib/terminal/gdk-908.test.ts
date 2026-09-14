@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { stripComments } from '../source-scan'
 import { en } from '../../../../web/src/lib/i18n/catalog'
 
 /*
@@ -24,10 +25,8 @@ function read(rel: string): string {
 }
 
 function markup(rel: string): string {
-  return read(rel)
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '')
+  // lib/source-scan.ts owns the three replaces (GDK-1872 part 2).
+  return stripComments(read(rel))
 }
 
 const shell = markup('screens/Shell.svelte')
@@ -207,7 +206,7 @@ describe('GDK-908 the attach effect must not depend on status', () => {
   })()
 
   it('reads status only inside untrack', () => {
-    const body = activate.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    const body = stripComments(activate)
     const untracked = body.match(/untrack\(\(\) => \{[\s\S]*?\n {4}\}\)/)
     expect(untracked, 'an untrack() block in activate()').toBeTruthy()
     const outside = body.replace(untracked![0], '')

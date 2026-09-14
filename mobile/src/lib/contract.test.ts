@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { stripComments } from './source-scan'
 
 // GDK-803: the five REST goldens the Go suite emits from its real handlers
 // (internal/server/contract_golden_test.go — regenerate with
@@ -33,10 +34,10 @@ function read(rel: string): string {
 
 /** Markup only — comments that name a ban are not the ban. */
 function markup(rel: string): string {
-  return read(rel)
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '')
+  // The three replaces moved to lib/source-scan.ts (GDK-1872 part 2): the
+  // local copy read `accept="image/*"` as a comment opener and handed these
+  // pins 34 KB less of Detail.svelte than the file holds.
+  return stripComments(read(rel))
 }
 
 describe('GDK-870 Detail contracts', () => {

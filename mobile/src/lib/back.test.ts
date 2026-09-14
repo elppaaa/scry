@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
+import { stripComments } from './source-scan'
 import {
   createBackStack,
   peekBack,
@@ -212,10 +213,8 @@ describe('recurrence — the owner stays the owner', () => {
     for (const path of shippedFiles()) {
       const rel = relative(srcDir, path)
       if (rel === 'lib/back.ts') continue
-      const text = readFileSync(path, 'utf8')
-        .replace(/<!--[\s\S]*?-->/g, '')
-        .replace(/\/\*[\s\S]*?\*\//g, '')
-        .replace(/^\s*\/\/.*$/gm, '')
+      // lib/source-scan.ts owns the three replaces (GDK-1872 part 2).
+      const text = stripComments(readFileSync(path, 'utf8'))
       if (/\baddEventListener\(\s*['"]popstate['"]|\.pushState\s*\(/.test(text)) hits.push(rel)
     }
     expect(hits).toEqual([])

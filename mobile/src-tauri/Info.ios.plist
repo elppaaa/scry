@@ -3,11 +3,15 @@
 <!-- Source-managed iOS plist additions — tauri merges this into the
      generated gen/apple Info.plist at bundle time, so the keys survive
      project regeneration. The camera string is required before any QR scan
-     (tauri-plugin-barcode-scanner, PairGate/PairingTab). -->
+     (tauri-plugin-barcode-scanner, PairGate/PairingTab) and, since
+     GDK-1872, before Take Photo in the composer's picker — one key covers
+     both uses, and iOS shows this one sentence for either. The photo LIBRARY
+     needs no string of its own: the file input opens PHPicker, which hands
+     over the one chosen image without granting the app the library. -->
 <plist version="1.0">
 <dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Scans the gadak pairing code shown on your computer.</string>
+	<string>Scans the gadak pairing code shown on your computer, and takes a photo to attach to an issue.</string>
 	<!-- Export compliance. The app carries no cryptography of its own: it
 	     talks to a paired `gadak serve` over HTTPS/WSS and nothing else
 	     (grep for crypto/hmac/aes under mobile/src and src-tauri/src comes

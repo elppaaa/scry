@@ -1,6 +1,6 @@
 <script lang="ts">
   import Screen from '../ui/Screen.svelte'
-  import { untrack } from 'svelte'
+  import { onDestroy, untrack } from 'svelte'
   import Sheet from '../ui/Sheet.svelte'
   import CreateSheet from '../ui/CreateSheet.svelte'
   import AdfBody from '../ui/AdfBody.svelte'
@@ -15,7 +15,14 @@
     resumeSince,
     spineToken,
   } from '../lib/domain'
-  import { request, errorMessage, ApiError } from '../lib/api'
+  import { request, requestBlob, errorMessage, ApiError } from '../lib/api'
+  import {
+    attachmentLabel,
+    attachmentPath,
+    checkUploadable,
+    uploadAttachment,
+  } from '../lib/attach'
+  import { commentBody, sendReady } from '../lib/composer-attach'
   import {
     setDescription,
     setAssignee,
@@ -39,6 +46,7 @@
     IssueLite,
     PriorityDoc,
     TransitionDoc,
+    UploadedAttachment,
     UserDoc,
   } from '../lib/types'
 
@@ -213,6 +221,118 @@
   /** RAM-only overlay (DESIGN.md §5). Never written to the snapshot cache. */
   let pending = $state<DetailComment | null>(null)
 
+  /*
+   * A photo goes with the comment (GDK-1872). lib/attach.ts owns the
+   * transport and lib/composer-attach.ts the two decisions; what lives here
+   * is the picker, the chips and the object URLs behind their thumbnails.
+   *
+   * The rows are NOT drafted. A pick uploads at once, the way the desk's
+   * composer does (web/src/components/write/CommentComposer.svelte ~204), so
+   * by the time a chip exists the file is already attached to the issue —
+   * server state, not something storage should promise to restore. A restored
+   * text draft is unchanged by any of this.
+   */
+  let attachments = $state<UploadedAttachment[]>([])
+  /** Files still crossing the wire. Send reads it; there is no progress. */
+  let uploading = $state(0)
+  /** id → object URL for the chip thumbnails, the half the screen paints. */
+  let thumbs = $state<Record<string, string>>({})
+  /** The same URLs as a plain map, so teardown can revoke them after the
+   *  last render (the shape AdfBody's blobUrls uses, and for the reason). */
+  const thumbUrls = new Map<string, string>()
+  /** The hidden picker. A plain let: nothing renders it. */
+  let fileInput: HTMLInputElement | null = null
+
+  function releaseThumb(id: string): void {
+    const url = thumbUrls.get(id)
+    if (url === undefined) return
+    URL.revokeObjectURL(url)
+    thumbUrls.delete(id)
+  }
+
+  /** Every object URL this sitting made. Called on a landed comment and on
+   *  teardown — a revoke under a painted <img> would leave a broken frame,
+   *  so both callers drop the chips in the same breath. */
+  function releaseThumbs(): void {
+    for (const url of thumbUrls.values()) URL.revokeObjectURL(url)
+    thumbUrls.clear()
+  }
+
+  onDestroy(releaseThumbs)
+
+  /**
+   * The chip's 32px preview, fetched through the same bearer road AdfBody's
+   * inline images take. A failure is silent on purpose: the chip keeps its
+   * name, and the file is on the issue either way — a second error line for
+   * a thumbnail would say nothing the person can act on.
+   */
+  async function loadThumb(a: UploadedAttachment): Promise<void> {
+    const path = attachmentPath(a.content_url)
+    if (path === null) return
+    try {
+      const blob = await requestBlob(path)
+      const url = URL.createObjectURL(blob)
+      thumbUrls.set(a.id, url)
+      thumbs = { ...thumbs, [a.id]: url }
+    } catch {
+      // Name-only chip. Nothing to retry: the upload already landed.
+    }
+  }
+
+  /**
+   * The × on a chip takes the file out of the COMMENT, not off the issue —
+   * the upload attached it there and there is no un-attach in this screen's
+   * vocabulary. The desk's composer does exactly the same (CommentComposer
+   * ~239 drops the row and never calls a delete).
+   */
+  function removeAttachment(id: string): void {
+    attachments = attachments.filter((a) => a.id !== id)
+    releaseThumb(id)
+    const next = { ...thumbs }
+    delete next[id]
+    thumbs = next
+  }
+
+  /**
+   * A pick. Every file is pre-flighted before a byte is spent
+   * (checkUploadable), then the survivors upload in parallel — one request
+   * each, which is the endpoint's shape.
+   *
+   * Only one refusal sentence can be on screen at a time, so a multi-file
+   * pick whose first two files are refused names the first: the line is a
+   * report that something was skipped, not a log.
+   */
+  async function handleFiles(event: Event): Promise<void> {
+    const input = event.currentTarget as HTMLInputElement
+    const files = [...(input.files ?? [])]
+    // Cleared before anything can await: picking the same photo twice is a
+    // real pick, and a browser fires no change event when value is unchanged.
+    input.value = ''
+    if (writesOff || sending || files.length === 0) return
+    const usable = files.filter((f) => checkUploadable(f).ok)
+    const refusedFile = files.find((f) => !checkUploadable(f).ok)
+    sendError = refusedFile ? t('write.attachFailed', { name: refusedFile.name }) : null
+    await Promise.all(
+      usable.map(async (file) => {
+        uploading += 1
+        try {
+          const res = await uploadAttachment(issueKey, file)
+          attachments = [...attachments, ...res.attachments]
+          for (const a of res.attachments) if (a.is_image) void loadThumb(a)
+        } catch (err) {
+          // The 409 takes the same latch send() takes: one refusal road for
+          // the whole screen, and the sentence goes to the status row (the
+          // GDK-933 rule that .send-error hides once writes are off).
+          if (!refuseWrite(err)) {
+            sendError = t('write.attachFailed', { name: file.name })
+          }
+        } finally {
+          uploading -= 1
+        }
+      }),
+    )
+  }
+
   const thread = $derived(overlayComments(detail?.comments ?? [], pending))
 
   /*
@@ -311,8 +431,11 @@
       ? resumeLine(resumeDelta, relTime(resumeSinceAt, app.now))
       : '',
   )
-  /** Accent fill only when this control can send (GDK-934). Empty or writes-off recedes. */
-  const sendArmed = $derived(!writesOff && (comment.trim() !== '' || sending))
+  /** Accent fill only when this control can send (GDK-934). Empty, writes-off
+   *  or an upload still in flight recedes (GDK-1872: sendReady owns the rule). */
+  const sendArmed = $derived(
+    !writesOff && (sendReady(comment, attachments, uploading) || sending),
+  )
 
   /** The clearing rows are "current" only when the issue really carries no
    *  value — an empty id is the mirror's "unknown", not "none" (types.ts:39
@@ -479,27 +602,42 @@
 
   async function send() {
     const text = comment.trim()
-    if (writesOff || text === '' || sending) return
+    if (writesOff || sending || !sendReady(comment, attachments, uploading)) return
     // The draft goes to storage before the POST, not after: a refused send
     // must leave it there, and the box is emptied two lines below.
     flushDraft('comment', issueKey)
     saveDraft('comment', issueKey, text)
     sending = true
     sendError = null
+    // Text-only, on purpose: the overlay is a bubble in the thread, and the
+    // picture it would have to paint is the one the server is about to embed
+    // for real. The chips stay where they are until the answer comes back.
     const overlay = pendingComment(text, app.me, new Date())
     pending = overlay
+    const sent = attachments
     comment = ''
     commentRestored = false
     try {
-      await request(`issues/${issueKey}/comment/`, { method: 'POST', body: { text } })
+      await request(`issues/${issueKey}/comment/`, {
+        method: 'POST',
+        body: commentBody(text, sent),
+      })
       clearDraft('comment', issueKey) // only a landed comment forgets its draft
       pending = null
+      attachments = []
+      releaseThumbs()
+      thumbs = {}
       const res = await request<DetailResponse>(`issues/${issueKey}/detail/`)
       detail = res.body
       void sync()
     } catch (err) {
       pending = null
       if (comment.trim() === '') comment = text
+      // The chips are NOT dropped: those files are already on the issue, and
+      // a retry must embed the same ones rather than ask for the photo again.
+      // That includes 502 write_applied_mirror_stale, where the comment
+      // itself landed too — this screen offers no retry for that, only the
+      // sentence (GDK-1872: attaching the picture twice is the worse answer).
       sendError = errorMessage(err)
       if (isCredentialRequired(err)) {
         refused = true
@@ -1058,7 +1196,62 @@
             {/if}
           </button>
         {/if}
+        <!-- The picker. A web file input inside WKWebView opens the native
+             sheet (Photo Library / Take Photo / Choose File) with no Tauri
+             plugin, which is why there is no picker code in this screen at
+             all — only a button that clicks this.
+
+             It sits beside .composer rather than inside it, and that is not
+             cosmetic: `.composer input` is how three suites already spell
+             "the comment field" (e2e/drafts.spec.ts, e2e/pagecomment.spec.ts,
+             shots/zz-review.spec.ts), and a second input under that selector
+             makes every one of them ambiguous. `hidden`, never a sized
+             transparent box: the viewport gate counts every input that
+             paints, and this one must not be one of them. -->
+        <input
+          bind:this={fileInput}
+          class="file"
+          type="file"
+          accept="image/*"
+          multiple
+          hidden
+          tabindex="-1"
+          onchange={(e) => void handleFiles(e)}
+        />
         <div class="composer safe-bottom" class:off={writesOff}>
+          <!-- One chip per uploaded file, on its own full-width row above
+               the field. The × takes the file out of the comment, never off
+               the issue: the upload already attached it there, which is the
+               desk's behaviour too. -->
+          {#if attachments.length > 0}
+            <div class="att-row" data-testid="composer-attachments">
+              {#each attachments as a (a.id)}
+                <span class="att">
+                  {#if a.is_image && thumbs[a.id]}
+                    <img class="att-thumb" src={thumbs[a.id]} alt="" />
+                  {/if}
+                  <span class="att-name">{attachmentLabel(a) || t('detail.attachments')}</span>
+                  <button
+                    type="button"
+                    class="att-x"
+                    aria-label={t('write.removeAttachment')}
+                    onclick={() => removeAttachment(a.id)}>×</button
+                  >
+                </span>
+              {/each}
+            </div>
+          {/if}
+          <button
+            type="button"
+            class="attach"
+            aria-label={t('write.attachFile')}
+            disabled={writesOff || sending}
+            onclick={() => fileInput?.click()}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+            </svg>
+          </button>
           <input
             bind:value={comment}
             disabled={writesOff}
@@ -1072,10 +1265,14 @@
           <button
             class="send"
             class:armed={sendArmed}
-            disabled={writesOff || comment.trim() === '' || sending}
+            class:busy={sending || uploading > 0}
+            disabled={writesOff || !sendReady(comment, attachments, uploading) || sending}
             onclick={() => void send()}
           >
-            {sending ? t('write.commentPosting') : t('write.commentButton')}
+            <!-- State in the pressed control, not a spinner (DESIGN.md §3.5).
+                 There is no percentage to show: plugin-http reports nothing
+                 until the response head comes back (lib/attach.ts UploadOpts). -->
+            {#if sending}{t('write.commentPosting')}{:else if uploading > 0}{t('write.uploading', { n: uploading })}{:else}{t('write.commentButton')}{/if}
           </button>
           {#if sendError && !writesOff}
             <p class="send-error">{sendError}</p>
@@ -1885,7 +2082,11 @@
     opacity: 0.45;
   }
   .composer input {
-    flex: 1 1 auto;
+    /* Basis 0, not auto: the field yields width to a longer Send label
+       ("Uploading… (1)") instead of pushing the button onto a second line —
+       the 2026-09-14 vision pass caught the button wrapped under the field
+       while an upload was in flight. */
+    flex: 1 1 0;
     min-width: 0;
     min-height: var(--spacing-control);
     padding: 0 12px;
@@ -1899,8 +2100,86 @@
   .composer input::placeholder {
     color: var(--color-text-muted);
   }
+  /* The picker's control: the 44pt icon dialect the title row already uses
+     (.edit), sat at the head of the composer. Hidden input beside it paints
+     nothing — `hidden` and not a sized transparent box, so the viewport
+     gate's input census does not see a field that is not there. */
+  .attach {
+    flex: none;
+    width: var(--spacing-control);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-muted);
+  }
+  .attach svg {
+    width: 20px;
+    height: 20px;
+  }
+  .attach:disabled {
+    opacity: 0.45;
+  }
+  /* One row of chips above the field. Full-width first child of the wrapping
+     .composer, so the slab grows by exactly one row and only while something
+     is attached. Existing tokens only — this is the .summary-edit field's
+     fill and border at the micro size. */
+  .att-row {
+    flex: 1 0 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+  }
+  .att {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    min-width: 0;
+    padding-left: 6px;
+    background: var(--color-bg-base);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: 6px;
+    font-size: var(--text-micro);
+  }
+  .att-thumb {
+    flex: none;
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    object-fit: cover;
+    /* A hairline so a pale photo still reads as an object on the pale chip. */
+    border: 1px solid var(--color-border-subtle);
+  }
+  /* Waiting is neither idle nor armed: the label changes and the control
+     recedes a step (DESIGN §3.5 — state in the pressed control, no spinner). */
+  .send.busy {
+    opacity: 0.6;
+  }
+  .att-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* The same dismiss the resume card wears, at the same touch size. */
+  .att-x {
+    display: flex;
+    flex: none;
+    width: var(--spacing-control);
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    color: var(--color-text-muted);
+    font-size: var(--text-body);
+    line-height: 1;
+  }
+  .att-x:active {
+    background: var(--color-bg-hover);
+  }
   .send {
     flex: none;
+    white-space: nowrap;
     min-height: var(--spacing-control);
     padding: 0 16px;
     border-radius: 6px;

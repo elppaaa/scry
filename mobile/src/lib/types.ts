@@ -47,6 +47,8 @@ import type {
   SearchResponse as WebSearchResponse,
   SourceView as WebSourceView,
   JiraCredential as WebJiraCredential,
+  UploadedAttachment as WebUploadedAttachment,
+  AttachmentUploadResponse as WebAttachmentUploadResponse,
 } from '../../../web/src/lib/types'
 export type { AdfNode, DetailAttachment, FlowSummary, HistoryEntry }
 
@@ -341,4 +343,29 @@ export interface IssueWriteResponse {
   issue: IssueLite
   /** Preserved nodes the save dropped (the phone does not warn yet). */
   dropped?: string[]
+}
+
+/**
+ * One row of the POST `<key>/attachments/` answer (internal/server/write.go
+ * :713-722), and the envelope it arrives in (write.go:725). Folded here from
+ * lib/attach.ts, which declared them locally while this file belonged to the
+ * GDK-1871 round; attach.ts re-exports them so its own callers are unchanged.
+ *
+ * The row is the desk's own shape, aliased rather than re-typed (GDK-1132) —
+ * a rename on the desk breaks `npm run check` here instead of drifting. Two
+ * fields carry a phone-side rule the alias cannot state:
+ *  - `media_id` is always '' from this server. It is in the shape for the
+ *    desk's Jira-media embeds, and nothing on the phone may key on it.
+ *  - `content_url` is a path under API_V1; attachmentPath() in lib/attach.ts
+ *    is the one place that turns it into something requestBlob can dial.
+ */
+export type UploadedAttachment = WebUploadedAttachment
+
+/**
+ * `origin` is the write-origin label the serve logs alongside the upload.
+ * The desk's twin omits it because the desk never reads it, so this is an
+ * extension of the owner rather than a second declaration of it.
+ */
+export interface AttachmentUploadResponse extends WebAttachmentUploadResponse {
+  origin: string
 }

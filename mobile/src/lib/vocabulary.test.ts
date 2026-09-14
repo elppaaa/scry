@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
+import { stripComments } from './source-scan'
 
 /*
  * Recurrence layer for GDK-884: "the phone invents a word" must fail here,
@@ -32,12 +33,11 @@ function sourceFiles(): string[] {
   return out.filter((p) => !p.endsWith('.test.ts'))
 }
 
-/** Strips // and /* *​/ comments and <!-- --> so prose about the ban is not the ban. */
+/** Strips // and /* *​/ comments and <!-- --> so prose about the ban is not
+ *  the ban. One owner since GDK-1872 part 2 — the local copy silently ate
+ *  everything after `accept="image/*"`, and this gate stayed green on it. */
 function code(path: string): string {
-  return readFileSync(path, 'utf8')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '')
+  return stripComments(readFileSync(path, 'utf8'))
 }
 
 describe('GDK-884 the phone does not invent nouns', () => {

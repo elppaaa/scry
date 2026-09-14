@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { stripComments } from './source-scan'
 
 /*
  * Recurrence layer for GDK-1150: "the phone ships an English string no
@@ -62,12 +63,11 @@ function svelteFiles(): string[] {
   return out
 }
 
-/** Same stripper as vocabulary.test.ts: prose about the ban is not the ban. */
+/** Same stripper as vocabulary.test.ts — literally the same one since
+ *  GDK-1872 part 2 (lib/source-scan.ts): prose about the ban is not the ban,
+ *  and an `accept="image/*"` attribute is not a comment opener. */
 function code(path: string): string {
-  return readFileSync(path, 'utf8')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/^\s*\/\/.*$/gm, '')
+  return stripComments(readFileSync(path, 'utf8'))
 }
 
 /** The template: after the last </script>, without <style> blocks. */

@@ -8,7 +8,16 @@
 // and a stale mirror all read here exactly as they read on a transition or a
 // comment. There is no second refusal grammar for pictures.
 
-import { ApiError, request, type ApiSession, type FetchLike } from './api'
+import { API_V1, ApiError, request, type ApiSession, type FetchLike } from './api'
+import type { AttachmentUploadResponse, UploadedAttachment } from './types'
+
+/**
+ * The two wire shapes now live in types.ts beside every other one (the
+ * GDK-1872 part-2 fold-in; part 1 declared them here only because types.ts
+ * belonged to a parallel round). Re-exported so this module stays the one
+ * import line for everything about an attachment.
+ */
+export type { AttachmentUploadResponse, UploadedAttachment }
 
 /**
  * The server's cap, mirrored so a file can be refused before it is spent
@@ -23,39 +32,6 @@ import { ApiError, request, type ApiSession, type FetchLike } from './api'
  * decision for the composer, not one transport may make quietly.
  */
 export const MAX_UPLOAD_BYTES = 64 * 1024 * 1024
-
-/**
- * One row of the POST `<key>/attachments/` answer (write.go:713-722).
- *
- * `media_id` is always the empty string from this server — it is in the shape
- * for the desk's Jira-media embeds, and nothing on the phone may key on it.
- * `content_url` is a path under API_V1, which absoluteApiUrl() turns back into
- * something that survives being copied out of the app.
- */
-export type UploadedAttachment = {
-  id: string
-  filename: string
-  mime_type: string
-  size: number
-  media_id: string
-  is_image: boolean
-  is_video: boolean
-  content_url: string
-}
-
-/**
- * The envelope body of POST `<key>/attachments/` (write.go:725). `origin` is
- * the write-origin label the serve logs alongside it; the desk's twin type
- * (web/src/lib/types.ts AttachmentUploadResponse) omits it because the desk
- * never reads it.
- *
- * Declared here rather than in types.ts on purpose this round — that file
- * belongs to the parallel round (GDK-1871); the lead folds this in on landing.
- */
-export type AttachmentUploadResponse = {
-  attachments: UploadedAttachment[]
-  origin: string
-}
 
 /** Why a file cannot be sent. Both answers are knowable without dialing. */
 export type UploadRefusal = 'too_large' | 'empty'
@@ -143,4 +119,20 @@ export function attachmentLabel(a: UploadedAttachment): string {
   const type = a.mime_type.trim()
   const subtype = type.includes('/') ? type.slice(type.indexOf('/') + 1).trim() : ''
   return subtype !== '' ? subtype : type
+}
+
+/**
+ * `content_url` → the path requestBlob() dials, or null when the row points
+ * somewhere this app cannot reach.
+ *
+ * One owner for that slice (GDK-1872 part 2). It was AdfBody's private
+ * function, which was fine while the rendered body was the only place bytes
+ * were fetched; the composer's chip thumbnail is a second, and two copies of
+ * "strip API_V1" is how the renderer and the composer would come to disagree
+ * about which URLs are dialable. AdfBody now calls this with its row's
+ * content_url and keeps its own DetailAttachment-shaped wrappers.
+ */
+export function attachmentPath(contentUrl: string): string | null {
+  if (!contentUrl.startsWith(API_V1)) return null
+  return contentUrl.slice(API_V1.length)
 }

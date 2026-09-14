@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest'
 import {
   MAX_UPLOAD_BYTES,
   attachmentLabel,
+  attachmentPath,
   checkUploadable,
   uploadAttachment,
   type UploadedAttachment,
@@ -157,5 +158,19 @@ describe('attachmentLabel', () => {
     expect(attachmentLabel(row({ filename: '', mime_type: 'binary' }))).toBe('binary')
     // '' is the composer's cue to use a catalog word: this module owns no copy.
     expect(attachmentLabel(row({ filename: '', mime_type: '' }))).toBe('')
+  })
+})
+
+describe('GDK-1872 attachmentPath is the one owner of the API_V1 slice', () => {
+  it('strips the prefix the way AdfBody used to inline', () => {
+    expect(attachmentPath('/api/v1/issues/NMB-1/attachments/9/content/')).toBe(
+      'issues/NMB-1/attachments/9/content/',
+    )
+  })
+
+  it('refuses a URL this app cannot dial', () => {
+    expect(attachmentPath('https://example.invalid/x.png')).toBeNull()
+    expect(attachmentPath('/api/v2/issues/NMB-1/')).toBeNull()
+    expect(attachmentPath('')).toBeNull()
   })
 })

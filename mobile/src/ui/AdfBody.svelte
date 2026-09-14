@@ -14,6 +14,7 @@
   import { onDestroy } from 'svelte'
   import { renderAdf } from '../../../web/src/lib/adf'
   import { API_V1, absoluteApiUrl, requestBlob } from '../lib/api'
+  import { attachmentPath as attachmentPathOf } from '../lib/attach'
   import { classifyAdfTarget, formatAttachmentSize } from '../lib/adf-links'
   import { openIssue } from '../lib/store.svelte'
   import { bodyParagraphs } from '../lib/domain'
@@ -90,10 +91,14 @@
   /**
    * The one URL join for attachments. `content_url` is what the server put
    * in the row; everything the phone does with an attachment starts here.
+   *
+   * The slice itself moved to lib/attach.ts (GDK-1872 part 2) so the
+   * composer's chip thumbnail dials by the same rule this renderer does;
+   * what stays here is the DetailAttachment-shaped wrapper the calls below
+   * already read.
    */
   function attachmentPath(attachment: DetailAttachment): string | null {
-    if (!attachment.content_url.startsWith(API_V1)) return null
-    return attachment.content_url.slice(API_V1.length)
+    return attachmentPathOf(attachment.content_url)
   }
 
   /** The same attachment as a URL that still resolves once pasted elsewhere. */
