@@ -2,6 +2,20 @@
 
 <sub>English · <a href="CHANGELOG.ko.md">한국어</a></sub>
 
+## Unreleased
+
+**The phone keeps what you typed and says where the sprint stands.** A
+comment, a title or a description you were typing in the phone app now
+survives leaving the issue, switching apps, a token refresh and a relaunch:
+the draft is saved on the device as you type, restored into the same composer
+with a one-line note, and forgotten only once the write has landed
+([GDK-1863]). Under the Issues heading, an origin with an active sprint now
+shows one line — the sprint's name, done over total with the percentage, and
+the days left, with the goal beneath — and tapping it scopes the list to that
+sprint, grouped new → in progress → done. There is no board to drag; the phone
+reads the sprint, the desk runs it ([GDK-1867]). The bundled sample workspace
+was regenerated so it carries the fields the phone has read since 0.21.
+
 ## v0.22.1 — 2026-09-14
 
 **gadak installs into Claude Desktop as one file.** Every release now carries
@@ -1599,3 +1613,5 @@ priority sorting keyed on `priority_rank`.
 [GDK-1858]: https://gadak.dev/backlog/#/?ks=GDK-1858
 [GDK-1859]: https://gadak.dev/backlog/#/?ks=GDK-1859
 [GDK-1860]: https://gadak.dev/backlog/#/?ks=GDK-1860
+[GDK-1863]: https://gadak.dev/backlog/#/?ks=GDK-1863
+[GDK-1867]: https://gadak.dev/backlog/#/?ks=GDK-1867
