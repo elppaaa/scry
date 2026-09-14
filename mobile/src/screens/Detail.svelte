@@ -2019,20 +2019,23 @@
     border-bottom: 1px solid var(--color-border-subtle);
     min-width: 0;
   }
-  /* The desk row carries the sheet's own 8px inset, and this section is
-     already inside .body's 16 — so pull back 8 and its label lands on the
-     same column the field rows above it use. */
+  /* The desk row is the field list's last row (GDK-1874), so it wears the
+     list's grammar and not the scope sheet's: the row's own 8px inset and
+     6px radius go, so its label sits on .body's 16px column like every row
+     above; the label takes the rows' micro size; and the hairline is drawn
+     by this wrapper, outside the row's 50% dimming, so it is the same line
+     the rows above draw (2026-09-14 vision passes, axis F: first the
+     body-size label read as the LINKED heading; then the row's own dimmed,
+     wider, rounded border read as a container edge). Scoped here, not in
+     DeskRow — in the scope sheet the same row sits among body-size live rows
+     and the sheet's inset and radius are right there. */
   .desk {
-    margin: 0 -8px;
-  }
-  /* Inside the field list the desk row is the list's last row, not a heading
-     for the section below: its label takes the field rows' micro size and it
-     closes with the same hairline every row above it wears. Scoped here and
-     not in DeskRow — in the scope sheet the same row sits among body-size
-     live rows and that size is right there (2026-09-14 vision pass, axis F:
-     the body-size label read as the LINKED heading). */
-  .desk :global(.desk-row) {
     border-bottom: 1px solid var(--color-border-subtle);
+  }
+  .desk :global(.desk-row) {
+    padding-left: 0;
+    padding-right: 0;
+    border-radius: 0;
   }
   .desk :global(.desk-row .name) {
     font-size: var(--text-micro);
