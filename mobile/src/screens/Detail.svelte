@@ -5,6 +5,7 @@
   import CreateSheet from '../ui/CreateSheet.svelte'
   import AttachChips, { type AttachChip } from '../ui/AttachChips.svelte'
   import AdfBody from '../ui/AdfBody.svelte'
+  import AttachmentGrid from '../ui/AttachmentGrid.svelte'
   import DeskRow from '../ui/DeskRow.svelte'
   import { app, closeIssue, openIssue, sync } from '../lib/store.svelte'
   import {
@@ -1191,6 +1192,20 @@
               </div>
             {/if}
           </div>
+        {/if}
+
+        <!-- Attachments (GDK-1882). A sibling of the Fields block, never
+             inside it: an issue can carry a photo and no extra field, and
+             nesting would have hidden the picture behind an unrelated
+             emptiness. The heading lives here rather than in the component
+             because `h3` and `.h-n` are this file's scoped styles — the
+             count is the same mono folio the comments heading wears. -->
+        {#if detail.attachments.length > 0}
+          <h3>
+            {t('detail.attachments')}
+            <span class="h-n" data-testid="detail-attachments-count">{detail.attachments.length}</span>
+          </h3>
+          <AttachmentGrid attachments={detail.attachments} />
         {/if}
 
         {#if detail.linked_issues.length > 0}
