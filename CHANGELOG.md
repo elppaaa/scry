@@ -9,8 +9,8 @@
 binary — a universal one on macOS, the x64 exe on Windows — so the tools arrive
 without editing `claude_desktop_config.json`, and the extension asks which
 workspace to read and nothing else. gadak is in the official MCP Registry under
-`io.github.midagedev/gadak`, and a tag now builds both from its own published
-archives ([GDK-1822]).
+`io.github.midagedev/gadak`, and a tag now builds the extension from its own published
+archives and publishes the registry entry that points at it ([GDK-1822]).
 
 **gadak takes its own name and its own address off surfaces they do not
 belong on.** It stopped answering to its old name: the `SCRY_*` environment

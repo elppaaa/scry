@@ -10,7 +10,7 @@ Desktop 확장이고, macOS는 한 파일로 두 칩을 다 덮고 Windows는 x6
 `claude_desktop_config.json`을 열지 않아도 도구가 붙고, 확장이 묻는 것은 어느
 워크스페이스를 읽을지 하나뿐입니다. 공식 MCP Registry에도
 `io.github.midagedev/gadak`으로 올라가 있고, 태그를 달면 릴리스가 게시한
-아카이브에서 둘 다 만들어집니다 ([GDK-1822]).
+아카이브로 확장을 만들고, 그 파일을 가리키는 Registry 항목까지 게시합니다 ([GDK-1822]).
 
 **gadak이 제 이름과 제 주소를 남의 자리에서 거둡니다.** 옛 이름에 더는
 반응하지 않습니다. `SCRY_*` 환경 변수를 읽지 않고, `~/.scry` 홈과 `scry.db`를

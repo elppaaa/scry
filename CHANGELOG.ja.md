@@ -9,8 +9,8 @@
 収めたClaude Desktop拡張で、macOSは一つのファイルで両方のチップを、Windowsは
 x64のexeを載せています。`claude_desktop_config.json`を開かなくてもツールが
 つながり、拡張が尋ねるのはどのワークスペースを読むかだけです。公式のMCP
-Registryにも`io.github.midagedev/gadak`として載っており、タグを打てばリリースが
-公開したアーカイブから両方が組まれます([GDK-1822])。
+Registryにも`io.github.midagedev/gadak`として載っており、タグを打てば、リリースが
+公開したアーカイブから拡張を組み、そのファイルを指すRegistryの項目まで公開します([GDK-1822])。
 
 **gadakが自分の名前と自分のアドレスを、あるべきでない場所から引き上げます。**
 旧名には反応しなくなりました。`SCRY_*`環境変数は読まず、初回起動時に`~/.scry`
