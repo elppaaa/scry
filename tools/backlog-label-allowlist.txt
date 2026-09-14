@@ -185,6 +185,7 @@ ux
 ux-audit
 v0.15
 viral
+voices
 web
 web-ui
 website
