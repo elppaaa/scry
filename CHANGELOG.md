@@ -4,7 +4,18 @@
 
 ## Unreleased
 
-**The phone keeps what you typed and says where the sprint stands.** A
+**The phone drops its tab bar; the column has one owner.** The bottom bar —
+Issues, Search, Terminal, Pairing — is gone, and the rows it covered are
+back. The list heading is where the owner changes: tap it and the palette
+opens in place of the list — recent issues, the built-in views, your saved
+views, Jira filters, spaces, and the terminal once one is paired — and typing
+in it searches issues and pages, so Search is no longer a screen of its own.
+Settings sits behind a gear in the heading, with the offline mark on it; the
+shell takes the whole screen and leaves by its own back control. Everything
+the cache has — every view, filter, space, shell — is one tap from the
+heading, the same model the desk uses ([GDK-902]).
+
+The phone also keeps what you typed and says where the sprint stands. A
 comment, a title or a description you were typing in the phone app now
 survives leaving the issue, switching apps, a token refresh and a relaunch:
 the draft is saved on the device as you type, restored into the same composer
@@ -1473,6 +1484,7 @@ priority sorting keyed on `priority_rank`.
 [GDK-892]: https://gadak.dev/backlog/#/?ks=GDK-892
 [GDK-895]: https://gadak.dev/backlog/#/?ks=GDK-895
 [GDK-899]: https://gadak.dev/backlog/#/?ks=GDK-899
+[GDK-902]: https://gadak.dev/backlog/#/?ks=GDK-902
 [GDK-905]: https://gadak.dev/backlog/#/?ks=GDK-905
 [GDK-906]: https://gadak.dev/backlog/#/?ks=GDK-906
 [GDK-907]: https://gadak.dev/backlog/#/?ks=GDK-907
