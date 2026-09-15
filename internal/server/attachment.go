@@ -35,14 +35,27 @@ var proxyClient = &http.Client{
 // a page's. Both are the same handler over the same cache and the same origin
 // fallback — only the membership, origin and fetch lookups are kind-aware
 // (GDK-1541) — so a second copy of the route body is what serveAttachment
-// exists to prevent.
+// exists to prevent. handleArtifact/handlePageArtifact are the artifact
+// siblings: same bytes, same cache, different response policy.
 func (s *server) handleAttachment(w http.ResponseWriter, r *http.Request) {
-	s.serveAttachment(w, r, r.PathValue("key"), r.PathValue("id"), false)
+	s.serveAttachment(w, r, r.PathValue("key"), r.PathValue("id"), false, false)
 }
 
 // handlePageAttachment is the pages/{key}/attachments/{id}/content/ route.
 func (s *server) handlePageAttachment(w http.ResponseWriter, r *http.Request) {
-	s.serveAttachment(w, r, r.PathValue("key"), r.PathValue("id"), true)
+	s.serveAttachment(w, r, r.PathValue("key"), r.PathValue("id"), true, false)
+}
+
+// handleArtifact is the {key}/attachments/{id}/artifact/ route:
+// an HTML attachment served as a document, under the policy that makes it
+// opaque-origin wherever it is opened.
+func (s *server) handleArtifact(w http.ResponseWriter, r *http.Request) {
+	s.serveAttachment(w, r, r.PathValue("key"), r.PathValue("id"), false, true)
+}
+
+// handlePageArtifact is the pages/{key}/attachments/{id}/artifact/ route.
+func (s *server) handlePageArtifact(w http.ResponseWriter, r *http.Request) {
+	s.serveAttachment(w, r, r.PathValue("key"), r.PathValue("id"), true, true)
 }
 
 // serveAttachment serves attachment bytes from the on-disk cache, falling back
@@ -51,11 +64,23 @@ func (s *server) handlePageAttachment(w http.ResponseWriter, r *http.Request) {
 // upstream, so a hit is served with a long-lived validator and a cached
 // attachment keeps working with no credential at all — which is how the bundled
 // demo snapshot shows real images offline.
-func (s *server) serveAttachment(w http.ResponseWriter, r *http.Request, key, id string, page bool) {
+//
+// artifact selects the response policy, never the byte path: the
+// same cache, the same origin fetch, Range included — only the headers
+// differ, and the route is gated on the mirror's mime row before any byte
+// moves.
+func (s *server) serveAttachment(w http.ResponseWriter, r *http.Request, key, id string, page, artifact bool) {
 	// Membership first: a cached id must not be readable under another item's
 	// key, and a site switch cannot serve leftover bytes for an item the new
-	// mirror does not own.
-	if !s.attachmentBelongsTo(r.Context(), key, id, page) {
+	// mirror does not own. The artifact route's mime read runs the same join,
+	// so it answers membership too — one query where the byte route needs
+	// only the boolean.
+	if artifact {
+		if !s.attachmentIsHTML(r.Context(), key, id, page) {
+			fail(w, http.StatusNotFound, "not_found")
+			return
+		}
+	} else if !s.attachmentBelongsTo(r.Context(), key, id, page) {
 		fail(w, http.StatusNotFound, "not_found")
 		return
 	}
@@ -65,7 +90,7 @@ func (s *server) serveAttachment(w http.ResponseWriter, r *http.Request, key, id
 	}
 	ck := s.attachmentCacheKey(owner, id)
 	if s.cache != nil {
-		if served := s.serveCached(w, r, ck); served {
+		if served := s.serveCached(w, r, ck, artifact); served {
 			return
 		}
 	}
@@ -144,7 +169,7 @@ func (s *server) serveAttachment(w http.ResponseWriter, r *http.Request, key, id
 			// On disk now: every later view is local, and a Range — this
 			// request's included — is answered by http.ServeContent off the
 			// file rather than by the origin.
-			if s.serveCached(w, r, ck) {
+			if s.serveCached(w, r, ck, artifact) {
 				return
 			}
 			// The bytes were written and then could not be read back. This
@@ -170,7 +195,13 @@ func (s *server) serveAttachment(w http.ResponseWriter, r *http.Request, key, id
 			if ct == "" {
 				ct = "application/octet-stream"
 			}
-			w.Header().Set("Content-Type", ct)
+			if artifact {
+				setArtifactGuards(w, r)
+			} else {
+				w.Header().Set("Content-Type", ct)
+				w.Header().Set("Cache-Control", "private, max-age=300")
+				setAttachmentGuards(w, ct)
+			}
 			// The origin's own validator and range advertisement, so the
 			// browser's next request can seek and revalidate.
 			for _, h := range []string{"Accept-Ranges", "ETag"} {
@@ -181,8 +212,6 @@ func (s *server) serveAttachment(w http.ResponseWriter, r *http.Request, key, id
 			if meta.Size > 0 {
 				w.Header().Set("Content-Length", strconv.FormatInt(meta.Size, 10))
 			}
-			w.Header().Set("Cache-Control", "private, max-age=300")
-			setAttachmentGuards(w, ct)
 			if _, err := io.Copy(w, body); err != nil {
 				log.Printf("server: attachment stream: %v", err)
 			}
@@ -234,19 +263,27 @@ func (s *server) serveAttachment(w http.ResponseWriter, r *http.Request, key, id
 		if et := res.Header.Get("ETag"); et != "" {
 			w.Header().Set("ETag", et)
 		}
-		w.Header().Set("Cache-Control", "private, max-age=300")
+		if artifact {
+			artifactPolicy(w, r)
+		} else {
+			w.Header().Set("Cache-Control", "private, max-age=300")
+		}
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
 	ct := contentTypeOf(res)
-	w.Header().Set("Content-Type", ct)
+	if artifact {
+		setArtifactGuards(w, r)
+	} else {
+		w.Header().Set("Content-Type", ct)
+		w.Header().Set("Cache-Control", "private, max-age=300")
+		setAttachmentGuards(w, ct)
+	}
 	for _, h := range []string{"Content-Length", "Content-Range", "Accept-Ranges", "ETag"} {
 		if v := res.Header.Get(h); v != "" {
 			w.Header().Set(h, v)
 		}
 	}
-	w.Header().Set("Cache-Control", "private, max-age=300")
-	setAttachmentGuards(w, ct)
 	if res.StatusCode != http.StatusOK {
 		w.WriteHeader(res.StatusCode)
 	}
@@ -270,13 +307,23 @@ func rangeHeaders(r *http.Request) http.Header {
 	return out
 }
 
-// serveCached answers from disk. Reports whether it wrote a response.
-func (s *server) serveCached(w http.ResponseWriter, r *http.Request, id string) bool {
+// serveCached answers from disk. Reports whether it wrote a response. In
+// artifact mode the response policy is setArtifactGuards's, and the long-lived
+// validator has no place there: the route is no-store by contract, so an ETag
+// would be an instruction the same headers forbid following.
+func (s *server) serveCached(w http.ResponseWriter, r *http.Request, id string, artifact bool) bool {
 	f, meta, err := s.cache.Get(id)
 	if err != nil {
 		return false
 	}
 	defer f.Close()
+	if artifact {
+		// Content-Type is forced; meta's claim about the bytes is not
+		// consulted — the mirror's mime row is what gated the route.
+		setArtifactGuards(w, r)
+		http.ServeContent(w, r, "", time.Time{}, f)
+		return true
+	}
 	w.Header().Set("Content-Type", meta.ContentType)
 	// The bytes behind an attachment id never change, so the browser may keep
 	// them for as long as it likes. This is what makes a second view instant.
@@ -333,6 +380,24 @@ func (s *server) attachmentSizeOf(ctx context.Context, key, id string, page bool
 		return size, err
 	}
 	return s.db.AttachmentSize(ctx, key, id)
+}
+
+// attachmentIsHTML is the artifact route's gate: the mirror's mime
+// row for (key, id) must name text/html — the page join when page is set.
+// The query runs the same join attachmentBelongsTo does, so "no row" (a
+// foreign key, a site switch, an unknown id) fails exactly like a non-html
+// mime, and no byte or credential is spent finding that out.
+func (s *server) attachmentIsHTML(ctx context.Context, key, id string, page bool) bool {
+	var (
+		mimeType string
+		err      error
+	)
+	if page {
+		mimeType, err = s.db.PageAttachmentMime(ctx, key, id)
+	} else {
+		mimeType, err = s.db.AttachmentMime(ctx, key, id)
+	}
+	return err == nil && isHTMLMediaType(mimeType)
 }
 
 // warmAttachments pre-downloads the inline-renderable attachments of an item the
@@ -630,6 +695,53 @@ func inlineSafe(contentType string) bool {
 	}
 	return strings.HasPrefix(mime, "image/") || strings.HasPrefix(mime, "video/") ||
 		strings.HasPrefix(mime, "audio/") || mime == "application/pdf"
+}
+
+// isHTMLMediaType reports whether a mirror mime_type names HTML — the one
+// value the artifact route serves, and the detail's is_artifact flag. Media
+// type only, lowercased, parameters ignored: `text/html; charset=utf-8` is
+// HTML, `text/htmlish` is not. The route and the flag share this so they can
+// never disagree about which attachments are artifacts.
+func isHTMLMediaType(mimeType string) bool {
+	media := strings.ToLower(strings.TrimSpace(strings.SplitN(mimeType, ";", 2)[0]))
+	return media == "text/html"
+}
+
+// artifactCSP is the artifact route's whole policy: the frame
+// contract's CSP — dashboardCSP with no libs widening, so inline-only
+// script/style and data: images, exactly what an agent-authored page needs —
+// plus the sandbox directive. In a response header (unlike the iframe
+// attribute the dashboard frame carries) sandbox is what makes the document
+// opaque-origin *even opened top-level*: a pasted artifact URL would
+// otherwise run same-origin on the gadak origin, where it could read
+// localStorage. The grants mirror the frame attribute — allow-scripts,
+// allow-popups, allow-popups-to-escape-sandbox — so the document behaves the
+// same wherever it is opened. dashboardCSP itself stays untouched: the
+// dashboard route's exposure is another round's, and its pins are byte-exact.
+func artifactCSP(vendorSrc string) string {
+	return dashboardCSP(vendorSrc, "") + "; sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox"
+}
+
+// artifactPolicy sets the artifact response's invariant headers — everything
+// except Content-Type, which a 304 must not carry (RFC 9110). Split out of
+// setArtifactGuards so the not-modified path can hold the same policy without
+// the body headers.
+func artifactPolicy(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Security-Policy", artifactCSP(vendorCSPSource(r.Host, r.TLS != nil)))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Cache-Control", "no-store")
+}
+
+// setArtifactGuards is setAttachmentGuards' artifact-route counterpart:
+// no Content-Disposition (inline is the point), no storage-side
+// caching, no referrer, and the CSP that keeps the document opaque-origin.
+// Content-Type is forced to html — the mirror's mime row gated the route, and
+// the header must not disagree with it whatever the cache metadata or the
+// upstream claimed about the bytes.
+func setArtifactGuards(w http.ResponseWriter, r *http.Request) {
+	artifactPolicy(w, r)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 }
 
 // fetchServerAttachment streams a Jira Server attachment from the URL the

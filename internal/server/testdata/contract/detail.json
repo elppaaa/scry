@@ -1,11 +1,13 @@
 {
   "attachments": [
     {
+      "artifact_url": "",
       "cache_status": "pending",
       "content_url": "/api/v1/issues/NMB-1/attachments/10021/content/",
       "created_at": "2026-07-02T00:00:00.000Z",
       "filename": "trace.png",
       "id": "10021",
+      "is_artifact": false,
       "is_image": true,
       "is_video": false,
       "media_collection": "",

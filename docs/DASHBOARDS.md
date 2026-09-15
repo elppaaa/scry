@@ -124,6 +124,20 @@ itself is capped at 8 MiB. A failed datasource does not blank the wall — it
 pushes `columns: [], rows: []` with `warning: 'datasource failed: <code>'`,
 so a broken card reads as a broken card, not a missing one.
 
+## Artifacts on issues
+
+An agent that writes an HTML page can attach it to an issue instead of
+saving a dashboard: an attachment whose mirror mime is `text/html` is served
+at `…/attachments/{id}/artifact/` under this frame contract's CSP **plus the
+`sandbox` directive in the response header** — `allow-scripts allow-popups
+allow-popups-to-escape-sandbox`, no `allow-same-origin` — so the document is
+opaque-origin even opened directly as a pasted URL, not only in a frame. The
+response also carries `no-store`, `no-referrer` and `nosniff`, and never a
+`Content-Disposition`; the plain content route still downloads the same
+file. The issue detail flags each attachment with `is_artifact` and its
+`artifact_url`. Serving these inline in the issue view, with a data push, is
+the next round — no UI reads the field yet.
+
 ## Writing queries
 
 SQL datasources run against the mirror's `issues_full` view with **arbitrary

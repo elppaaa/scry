@@ -1,8 +1,11 @@
 package server
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +17,7 @@ import (
 
 	"github.com/midagedev/gadak/internal/attachcache"
 	"github.com/midagedev/gadak/internal/config"
+	"github.com/midagedev/gadak/internal/origin"
 	"github.com/midagedev/gadak/internal/store"
 )
 
@@ -590,4 +594,431 @@ func TestCachedAttachmentETagCarriesNoSiteOrWorkspace(t *testing.T) {
 	if attachcache.Tag(key) != tag {
 		t.Error("the tag is not stable across calls, so a browser can never revalidate")
 	}
+}
+
+/* ── GDK-1897: the artifact route — an HTML attachment served inline ── */
+
+// artifactHTML is the document the artifact tests upload and serve. It
+// carries a script tag on purpose: the route exists to make exactly this
+// safe, and a document with no script would not distinguish the policies.
+const artifactHTML = `<!doctype html><html><body><h1>artifact</h1><script>document.title = "ok"</script></body></html>`
+
+// assertArtifactHeaders pins the artifact route's whole response contract in
+// one place, so the cached path, the no-cache stream and the oversize stream
+// are all measured against the same list (GDK-1897). testRequest sets Host
+// 127.0.0.1, which is what the CSP's vendor source is composed from.
+func assertArtifactHeaders(t *testing.T, rec *httptest.ResponseRecorder) {
+	t.Helper()
+	if got := rec.Header().Get("Content-Type"); got != "text/html; charset=utf-8" {
+		t.Errorf("Content-Type = %q, want the forced text/html; charset=utf-8", got)
+	}
+	csp := rec.Header().Get("Content-Security-Policy")
+	if want := artifactCSP(vendorCSPSource("127.0.0.1", false)); csp != want {
+		t.Errorf("Content-Security-Policy = %q, want %q", csp, want)
+	}
+	if !strings.Contains(csp, "sandbox allow-scripts") {
+		t.Errorf("CSP lost the sandbox directive: %q", csp)
+	}
+	if got := rec.Header().Get("Referrer-Policy"); got != "no-referrer" {
+		t.Errorf("Referrer-Policy = %q, want no-referrer", got)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("Cache-Control = %q, want no-store", got)
+	}
+	if got := rec.Header().Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Errorf("X-Content-Type-Options = %q, want nosniff", got)
+	}
+	if got := rec.Header().Get("Content-Disposition"); got != "" {
+		t.Errorf("Content-Disposition = %q, want none — inline is the point of the route", got)
+	}
+}
+
+// artifactFixture seeds NMB-77 with one html attachment (3001) and one png
+// (3002) over a fake Jira that serves each id's bytes. The html bytes are
+// deliberately labeled application/octet-stream upstream: the contract is
+// that the mirror's mime row gates the route and the header is forced, so a
+// passthrough implementation fails both the gate and the header assertion.
+func artifactFixture(t *testing.T) (http.Handler, *attachcache.Cache, *atomic.Int64) {
+	t.Helper()
+	db, cfg := fixture(t)
+	if _, err := db.UpsertIssues(context.Background(), store.Batch{
+		Records: []store.IssueRecord{{
+			Item: store.Item{
+				ID: "jira:3000", SourceID: "jira", ExternalID: "3000", Key: "NMB-77",
+				Title: "artifact probe", CreatedAt: "2026-09-01T00:00:00.000Z", UpdatedAt: "2026-09-01T00:00:00.000Z",
+			},
+			Issue: store.Issue{ProjectKey: "NMB", IssueType: "Bug", StatusCategory: "new"},
+			Attachments: []store.Attachment{
+				{ID: "jira:a-3001", ExternalID: "3001", Filename: "report.html", MimeType: "text/html",
+					Size: int64(len(artifactHTML)), CreatedAt: "2026-09-01T00:00:00.000Z"},
+				{ID: "jira:a-3002", ExternalID: "3002", Filename: "shot.png", MimeType: "image/png",
+					Size: 9, CreatedAt: "2026-09-01T00:00:00.000Z"},
+			},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var hits atomic.Int64
+	jira := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/attachment/content/3001"):
+			hits.Add(1)
+			w.Header().Set("Content-Type", "application/octet-stream")
+			_, _ = w.Write([]byte(artifactHTML))
+		case strings.HasSuffix(r.URL.Path, "/attachment/content/3002"):
+			w.Header().Set("Content-Type", "image/png")
+			_, _ = w.Write([]byte("PNG-BYTES"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(jira.Close)
+	cfg.Site, cfg.Email, cfg.Token = jira.URL, "dana@example.com", "token"
+	cache, err := attachcache.New(t.TempDir(), 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return NewWithCache(db, cfg, cache), cache, &hits
+}
+
+// The artifact route serves an html attachment as a document: forced
+// Content-Type, the frame contract's CSP plus the sandbox directive (which
+// is what makes it opaque-origin even opened top-level), and no
+// Content-Disposition. First view fills the cache (upstream labeled the
+// bytes octet-stream — the mirror's mime row decided, the header is forced),
+// second view is pure cache; both carry the identical header set and the
+// origin is paid once.
+func TestArtifactRouteServesHTMLUnderSandboxCSP(t *testing.T) {
+	h, _, hits := artifactFixture(t)
+	path := apiBase + "NMB-77/attachments/3001/artifact/"
+
+	first := get(t, h, path, nil)
+	if first.Code != http.StatusOK {
+		t.Fatalf("first view → %d %s", first.Code, first.Body.String())
+	}
+	if first.Body.String() != artifactHTML {
+		t.Fatalf("body = %q, want the uploaded document", first.Body.String())
+	}
+	assertArtifactHeaders(t, first)
+
+	second := get(t, h, path, nil)
+	if second.Code != http.StatusOK || second.Body.String() != artifactHTML {
+		t.Fatalf("cached view → %d %q", second.Code, second.Body.String())
+	}
+	assertArtifactHeaders(t, second)
+	if n := hits.Load(); n != 1 {
+		t.Fatalf("upstream hit %d times for two views — the second must be local", n)
+	}
+}
+
+// The no-cache stream (a serve without an attachment cache, or any path the
+// cache cannot take) carries the same policy: this is the header site that
+// would drift if the artifact branch lived only in serveCached.
+func TestArtifactStreamsSamePolicyWithoutCache(t *testing.T) {
+	h, hits := noCacheArtifactServer(t)
+	rec := get(t, h, apiBase+"NMB-77/attachments/3001/artifact/", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("streamed view → %d %s", rec.Code, rec.Body.String())
+	}
+	if rec.Body.String() != artifactHTML {
+		t.Fatalf("body = %q, want the document", rec.Body.String())
+	}
+	assertArtifactHeaders(t, rec)
+	if n := hits.Load(); n != 1 {
+		t.Fatalf("upstream hit %d times", n)
+	}
+}
+
+// The oversize stream (a file the cache refuses for its per-entry cap) is
+// the third header site — same list, byte for byte.
+func TestArtifactStreamsSamePolicyWhenTooLargeForCache(t *testing.T) {
+	h, hits := tinyCacheArtifactServer(t)
+	rec := get(t, h, apiBase+"NMB-77/attachments/3001/artifact/", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("oversize stream → %d %s", rec.Code, rec.Body.String())
+	}
+	if rec.Body.String() != artifactHTML {
+		t.Fatalf("body = %q, want the document", rec.Body.String())
+	}
+	assertArtifactHeaders(t, rec)
+	if n := hits.Load(); n != 1 {
+		t.Fatalf("upstream hit %d times", n)
+	}
+}
+
+// noCacheArtifactServer is artifactFixture's byte path with no cache at all:
+// every view is the bottom streaming branch.
+func noCacheArtifactServer(t *testing.T) (http.Handler, *atomic.Int64) {
+	db, cfg := seedArtifactIssue(t)
+	hits := serveArtifactBytes(t, cfg)
+	return New(db, cfg), hits
+}
+
+// tinyCacheArtifactServer caps one cache entry at 8 bytes, so the document
+// (larger) is streamed past the cache on its only fetch.
+func tinyCacheArtifactServer(t *testing.T) (http.Handler, *atomic.Int64) {
+	db, cfg := seedArtifactIssue(t)
+	hits := serveArtifactBytes(t, cfg)
+	cache, err := attachcache.New(t.TempDir(), 0, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return NewWithCache(db, cfg, cache), hits
+}
+
+// seedArtifactIssue is artifactFixture's mirror half, split out so the
+// cache-shape variants can share it.
+func seedArtifactIssue(t *testing.T) (*store.DB, *config.Config) {
+	t.Helper()
+	db, cfg := fixture(t)
+	if _, err := db.UpsertIssues(context.Background(), store.Batch{
+		Records: []store.IssueRecord{{
+			Item: store.Item{
+				ID: "jira:3000", SourceID: "jira", ExternalID: "3000", Key: "NMB-77",
+				Title: "artifact probe", CreatedAt: "2026-09-01T00:00:00.000Z", UpdatedAt: "2026-09-01T00:00:00.000Z",
+			},
+			Issue: store.Issue{ProjectKey: "NMB", IssueType: "Bug", StatusCategory: "new"},
+			Attachments: []store.Attachment{{
+				ID: "jira:a-3001", ExternalID: "3001", Filename: "report.html", MimeType: "text/html",
+				Size: int64(len(artifactHTML)), CreatedAt: "2026-09-01T00:00:00.000Z",
+			}},
+		}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	return db, cfg
+}
+
+// serveArtifactBytes points cfg at a fake Jira serving the document (mislabeled
+// octet-stream, as artifactFixture does) and returns the hit counter.
+func serveArtifactBytes(t *testing.T, cfg *config.Config) *atomic.Int64 {
+	t.Helper()
+	var hits atomic.Int64
+	jira := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/attachment/content/3001") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		hits.Add(1)
+		w.Header().Set("Content-Type", "application/octet-stream")
+		_, _ = w.Write([]byte(artifactHTML))
+	}))
+	t.Cleanup(jira.Close)
+	cfg.Site, cfg.Email, cfg.Token = jira.URL, "dana@example.com", "token"
+	return &hits
+}
+
+// The gate: only the mirror's mime row opens this route. A png id is a 404,
+// an html id under a foreign key is a 404 (the membership the byte route
+// keeps), and an unknown id is a 404 — all before any byte or credential is
+// spent, which is what the no-credential config here proves.
+func TestArtifactRouteRefusesNonHTMLAndForeignKeys(t *testing.T) {
+	db, cfg := seedArtifactIssue(t)
+	serveArtifactBytes(t, cfg)
+	h := New(db, &config.Config{}) // no credential: a fetch would 409, so a 200 here could only come from the gate failing
+	for _, tc := range []struct{ name, path string }{
+		{"png id", apiBase + "NMB-77/attachments/3002/artifact/"},
+		{"html id under a foreign key", apiBase + "NMB-1/attachments/3001/artifact/"},
+		{"unknown id", apiBase + "NMB-77/attachments/9999/artifact/"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := get(t, h, tc.path, nil)
+			if rec.Code != http.StatusNotFound {
+				t.Fatalf("→ %d %s, want 404", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+// The content route did not move: the same html attachment that renders on
+// the artifact route still answers as a download there — html is not in
+// inlineSafe's set, and this pins that the new mode did not leak into the
+// old route.
+func TestContentRouteStillDownloadsHTML(t *testing.T) {
+	h, _, _ := artifactFixture(t)
+	rec := get(t, h, apiBase+"NMB-77/attachments/3001/content/", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("content view → %d %s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Header().Get("Content-Disposition"); got != "attachment" {
+		t.Fatalf("Content-Disposition = %q, want attachment", got)
+	}
+	if cc := rec.Header().Get("Cache-Control"); !strings.Contains(cc, "immutable") {
+		t.Fatalf("Cache-Control = %q, want the byte route's long-lived policy", cc)
+	}
+}
+
+// The detail tells the client which attachments are artifacts: the html row
+// is flagged with its artifact route, the png row is not, and both keep
+// content_url exactly as before.
+func TestDetailFlagsHTMLAttachmentsAsArtifacts(t *testing.T) {
+	h, _, _ := artifactFixture(t)
+	detail := decode[struct {
+		Attachments []struct {
+			ID          string `json:"id"`
+			IsArtifact  bool   `json:"is_artifact"`
+			ArtifactURL string `json:"artifact_url"`
+			ContentURL  string `json:"content_url"`
+		} `json:"attachments"`
+	}](t, get(t, h, apiBase+"NMB-77/detail/", nil))
+	byID := map[string]int{}
+	for i, a := range detail.Attachments {
+		byID[a.ID] = i
+	}
+	html, png := byID["3001"], byID["3002"]
+	if _, ok := byID["3001"]; !ok {
+		t.Fatalf("detail attachments %+v — no 3001", detail.Attachments)
+	}
+	a := detail.Attachments[html]
+	if !a.IsArtifact {
+		t.Error("html attachment is_artifact = false")
+	}
+	if want := apiBase + "NMB-77/attachments/3001/artifact/"; a.ArtifactURL != want {
+		t.Errorf("artifact_url = %q, want %q", a.ArtifactURL, want)
+	}
+	if want := apiBase + "NMB-77/attachments/3001/content/"; a.ContentURL != want {
+		t.Errorf("content_url = %q, want %q (unchanged)", a.ContentURL, want)
+	}
+	p := detail.Attachments[png]
+	if p.IsArtifact {
+		t.Error("png attachment is_artifact = true")
+	}
+	if p.ArtifactURL != "" {
+		t.Errorf("png artifact_url = %q, want empty", p.ArtifactURL)
+	}
+}
+
+// The page route is the same serving core with the pages/ owner: an html
+// page attachment served from the cache carries the artifact policy, and a
+// png page attachment is refused by the same mime gate. The bytes come from
+// an imported manifest (the offline-demo path) so no wiki origin is needed —
+// the cache is a legitimate byte source for this route, exactly as for the
+// byte route.
+func TestPageArtifactRouteServesFromCacheAndRefusesNonHTML(t *testing.T) {
+	db, cfg := fixturePages(t)
+	adf := json.RawMessage(`{"type":"doc","version":1,"content":[]}`)
+	if _, err := db.UpsertPages(context.Background(), []store.PageRecord{{
+		Item: store.Item{
+			ID: "confluence:100", SourceID: "confluence", Kind: "page", ExternalID: "100",
+			Key: "100", Title: "빌링 품질 회의록", BodyText: "빌링 품질 논의",
+			Author: "Dana", AuthorID: "acc-dana", URL: "https://x/wiki/spaces/PROD/pages/100",
+			CreatedAt: "2026-07-01T00:00:00.000Z", UpdatedAt: "2026-08-01T00:00:00.000Z",
+		},
+		Page: store.Page{SpaceKey: "PROD", Version: 3, Status: "current", BodyADF: adf},
+		Attachments: []store.Attachment{
+			{ID: "confluence:a-9", ExternalID: "att-9", Filename: "notes.html", MimeType: "text/html",
+				Size: int64(len(artifactHTML)), CreatedAt: "2026-09-01T00:00:00.000Z"},
+			{ID: "confluence:a-8", ExternalID: "att-8", Filename: "diagram.png", MimeType: "image/png",
+				Size: 777, CreatedAt: "2026-09-01T00:00:00.000Z"},
+		},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	cache, err := attachcache.New(t.TempDir(), 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := writeManifestDir(t, "att-9", "notes.html", "application/octet-stream", artifactHTML)
+	if _, err := cache.ImportManifest(dir, cfg.Site, config.Profile(), ownerOf("pages/100", "att-9")); err != nil {
+		t.Fatal(err)
+	}
+	h := NewWithCache(db, cfg, cache)
+
+	rec := get(t, h, apiBase+"pages/100/attachments/att-9/artifact/", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("page artifact → %d %s", rec.Code, rec.Body.String())
+	}
+	if rec.Body.String() != artifactHTML {
+		t.Fatalf("body = %q, want the imported document", rec.Body.String())
+	}
+	assertArtifactHeaders(t, rec)
+
+	if rec := get(t, h, apiBase+"pages/100/attachments/att-8/artifact/", nil); rec.Code != http.StatusNotFound {
+		t.Fatalf("png page artifact → %d, want 404", rec.Code)
+	}
+}
+
+// GDK-1897's measured premise: an .html upload through the real upload
+// handler on a built-in origin. The origin's own upload declares the part's
+// Content-Type from the filename (attachmentPartHeader, GDK-1617), and
+// issuetap keeps what it is told — so the mirror row the re-read writes
+// must name text/html, or every artifact uploaded to a built-in workspace
+// would 404 on the route that exists for it. Measured 2026-09-15: the row
+// comes back "text/html; charset=utf-8" — the TypeByExtension branch, no
+// fallback needed in gadak's handler.
+func TestBuiltInUploadHTMLAttachmentMirrorsTextHTML(t *testing.T) {
+	h, cfg, db := builtInServerDB(t)
+	ctx := context.Background()
+	c, err := origin.Client(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := c.CreateIssue(ctx, map[string]any{
+		"project":   map[string]any{"key": origin.DefaultProjectKey},
+		"summary":   "artifact upload probe",
+		"issuetype": map[string]any{"name": "Task"},
+	})
+	if err != nil {
+		t.Fatalf("create on the built-in origin: %v", err)
+	}
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	part, _ := mw.CreateFormFile("file", "report.html")
+	_, _ = part.Write([]byte(artifactHTML))
+	_ = mw.Close()
+	req := testRequest(http.MethodPost, apiBase+key+"/attachments/", &buf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("upload → %d: %s", rec.Code, rec.Body.String())
+	}
+	up := decode[struct {
+		Attachments []struct {
+			ID          string `json:"id"`
+			MimeType    string `json:"mime_type"`
+			IsArtifact  bool   `json:"is_artifact"`
+			ArtifactURL string `json:"artifact_url"`
+		} `json:"attachments"`
+	}](t, rec)
+	if len(up.Attachments) != 1 || up.Attachments[0].ID == "" {
+		t.Fatalf("attachments %+v", up.Attachments)
+	}
+	id := up.Attachments[0].ID
+	// The origin's echo and the detail must agree with the mirror row below;
+	// an echo that could not see a mime is allowed to say so (empty).
+	if m := up.Attachments[0].MimeType; m != "" && !isHTMLMediaType(m) {
+		t.Errorf("upload echo mime_type = %q", m)
+	}
+	if m := up.Attachments[0].MimeType; m != "" && !up.Attachments[0].IsArtifact {
+		t.Errorf("echo says is_artifact=false for mime %q", m)
+	}
+
+	// The measurement itself: the mirror row the write-through re-read left.
+	ro, err := db.ReadOnly()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ro.Close()
+	var mirrored string
+	if err := ro.QueryRow(`
+		SELECT COALESCE(a.mime_type, '') FROM attachments a
+		WHERE COALESCE(NULLIF(a.external_id, ''), a.id) = ?`, id).Scan(&mirrored); err != nil {
+		t.Fatalf("mirror row for %s: %v", id, err)
+	}
+	t.Logf("measured mirror mime_type for the uploaded .html: %q", mirrored)
+	if !isHTMLMediaType(mirrored) {
+		t.Fatalf("mirror mime_type = %q — the artifact route would 404 every .html upload on a built-in origin", mirrored)
+	}
+
+	// End to end: what was just uploaded renders on the artifact route.
+	got := get(t, h, apiBase+key+"/attachments/"+id+"/artifact/", nil)
+	if got.Code != http.StatusOK {
+		t.Fatalf("artifact route after upload → %d %s", got.Code, got.Body.String())
+	}
+	if got.Body.String() != artifactHTML {
+		t.Fatalf("body = %q, want the uploaded document", got.Body.String())
+	}
+	assertArtifactHeaders(t, got)
 }

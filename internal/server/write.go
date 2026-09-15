@@ -712,12 +712,20 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]map[string]any, 0, len(uploaded))
 	for _, a := range uploaded {
+		// The same artifact verdict the detail will carry, so the
+		// just-uploaded HTML page can render before any re-read.
+		artifactURLFor := ""
+		if isHTMLMediaType(a.MimeType) {
+			artifactURLFor = artifactURL(key, a.ID)
+		}
 		out = append(out, map[string]any{
 			"id": a.ID, "filename": a.Filename, "mime_type": a.MimeType, "size": a.Size,
-			"media_id":    "",
-			"is_image":    strings.HasPrefix(a.MimeType, "image/"),
-			"is_video":    strings.HasPrefix(a.MimeType, "video/"),
-			"content_url": attachmentURL(key, a.ID),
+			"media_id":     "",
+			"is_image":     strings.HasPrefix(a.MimeType, "image/"),
+			"is_video":     strings.HasPrefix(a.MimeType, "video/"),
+			"is_artifact":  isHTMLMediaType(a.MimeType),
+			"content_url":  attachmentURL(key, a.ID),
+			"artifact_url": artifactURLFor,
 		})
 	}
 	label := writeOriginLabel(src)

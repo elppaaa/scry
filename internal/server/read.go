@@ -416,13 +416,19 @@ type detailAttachment struct {
 	Size     int64  `json:"size"`
 	// MediaID is the ADF media node id, which the mirror does not carry. Empty
 	// makes the client's ADF renderer fall back to matching on filename.
-	MediaID         string  `json:"media_id"`
-	MediaCollection string  `json:"media_collection"`
-	IsImage         bool    `json:"is_image"`
-	IsVideo         bool    `json:"is_video"`
-	CacheStatus     string  `json:"cache_status"`
-	CreatedAt       *string `json:"created_at"`
-	ContentURL      string  `json:"content_url"`
+	MediaID         string `json:"media_id"`
+	MediaCollection string `json:"media_collection"`
+	IsImage         bool   `json:"is_image"`
+	IsVideo         bool   `json:"is_video"`
+	// IsArtifact marks an HTML attachment the artifact route serves inline,
+	// sandboxed — the same isHTMLMediaType the route gates on, so
+	// the flag can never name an id the route would 404. ArtifactURL is its
+	// route, empty when not an artifact.
+	IsArtifact  bool    `json:"is_artifact"`
+	CacheStatus string  `json:"cache_status"`
+	CreatedAt   *string `json:"created_at"`
+	ContentURL  string  `json:"content_url"`
+	ArtifactURL string  `json:"artifact_url"`
 }
 
 type historyEntry struct {
@@ -810,6 +816,11 @@ func (s *server) wireAttachments(owner string, atts []store.DetailAttachment) []
 		if id == "" {
 			id = a.ID
 		}
+		isArtifact := isHTMLMediaType(a.MimeType)
+		var artifactURLFor string
+		if isArtifact {
+			artifactURLFor = artifactURL(owner, id)
+		}
 		out = append(out, detailAttachment{
 			ID:          id,
 			Filename:    a.Filename,
@@ -817,9 +828,11 @@ func (s *server) wireAttachments(owner string, atts []store.DetailAttachment) []
 			Size:        a.Size,
 			IsImage:     strings.HasPrefix(a.MimeType, "image/"),
 			IsVideo:     strings.HasPrefix(a.MimeType, "video/"),
+			IsArtifact:  isArtifact,
 			CacheStatus: s.cacheStatus(owner, id),
 			CreatedAt:   nilIfEmpty(a.CreatedAt),
 			ContentURL:  attachmentURL(owner, id),
+			ArtifactURL: artifactURLFor,
 		})
 	}
 	return out
@@ -831,6 +844,13 @@ func (s *server) wireAttachments(owner string, atts []store.DetailAttachment) []
 // inline image (web/src/lib/adf.ts, safeMediaUrl).
 func attachmentURL(owner, id string) string {
 	return apiBase + owner + "/attachments/" + id + "/content/"
+}
+
+// artifactURL is attachmentURL's artifact-route sibling: same
+// owner/id shape, the route that serves an HTML attachment as a sandboxed
+// document instead of a download.
+func artifactURL(owner, id string) string {
+	return apiBase + owner + "/attachments/" + id + "/artifact/"
 }
 
 /* ── search ── */

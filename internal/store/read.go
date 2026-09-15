@@ -798,6 +798,31 @@ func (db *DB) AttachmentSize(ctx context.Context, issueKey, attachmentID string)
 	return size.Int64, nil
 }
 
+// AttachmentMime is the mirror's recorded media type for one issue
+// attachment: the artifact route's gate reads it to decide
+// whether the id may be served as a sandboxed HTML document — the mirror
+// row, not the bytes or an upstream claim, is the authority. Same join and
+// id rule as AttachmentBelongs, so ErrNotFound here is also that route's
+// membership answer. An empty string (no error) means the row carries no
+// mime, which the caller treats as not-an-artifact.
+func (db *DB) AttachmentMime(ctx context.Context, issueKey, attachmentID string) (string, error) {
+	if issueKey == "" || attachmentID == "" {
+		return "", ErrNotFound
+	}
+	var mimeType string
+	err := db.sql.QueryRowContext(ctx, `
+		SELECT COALESCE(a.mime_type, '')
+		FROM attachments a
+		JOIN issues i ON i.item_id = a.item_id
+		WHERE i.key = ?
+		  AND COALESCE(NULLIF(a.external_id, ''), a.id) = ?
+		LIMIT 1`, issueKey, attachmentID).Scan(&mimeType)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return mimeType, err
+}
+
 // PageAttachment is the byte route's one lookup for a page attachment
 // (GDK-1541): the source that owns it, the stored origin content URL, and the
 // origin's size claim — AttachmentBelongs + AttachmentOrigin +
@@ -828,6 +853,28 @@ func (db *DB) PageAttachment(ctx context.Context, pageKey, attachmentID string) 
 		size = sizeN.Int64
 	}
 	return sourceID, contentURL, size, nil
+}
+
+// PageAttachmentMime is AttachmentMime's page half: the mirror's
+// mime row for one page attachment, reached through the items/kind='page'
+// join the page routes take. ErrNotFound is the membership answer, exactly
+// as PageAttachment's.
+func (db *DB) PageAttachmentMime(ctx context.Context, pageKey, attachmentID string) (string, error) {
+	if pageKey == "" || attachmentID == "" {
+		return "", ErrNotFound
+	}
+	var mimeType string
+	err := db.sql.QueryRowContext(ctx, `
+		SELECT COALESCE(a.mime_type, '')
+		FROM attachments a
+		JOIN items it ON it.id = a.item_id AND it.kind = 'page'
+		WHERE it.key = ?
+		  AND COALESCE(NULLIF(a.external_id, ''), a.id) = ?
+		LIMIT 1`, pageKey, attachmentID).Scan(&mimeType)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return mimeType, err
 }
 
 // RemoteLinks reads one issue's mirrored remote links (GDK-1032). An issue
