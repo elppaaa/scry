@@ -11,7 +11,9 @@ opens in place of the list — recent issues, the built-in views, your saved
 views, Jira filters, spaces, and the terminal once one is paired — and typing
 in it searches issues and pages, so Search is no longer a screen of its own.
 Settings sits behind a gear in the heading, with the offline mark on it; the
-shell takes the whole screen and leaves by its own back control. Everything
+shell takes the whole screen and leaves by its own back control, and its
+font size is the first terminal option in Settings — four sizes, kept on
+the phone ([GDK-901]). Everything
 the cache has — every view, filter, space, shell — is one tap from the
 heading, the same model the desk uses ([GDK-902]).
 
@@ -1484,6 +1486,7 @@ priority sorting keyed on `priority_rank`.
 [GDK-892]: https://gadak.dev/backlog/#/?ks=GDK-892
 [GDK-895]: https://gadak.dev/backlog/#/?ks=GDK-895
 [GDK-899]: https://gadak.dev/backlog/#/?ks=GDK-899
+[GDK-901]: https://gadak.dev/backlog/#/?ks=GDK-901
 [GDK-902]: https://gadak.dev/backlog/#/?ks=GDK-902
 [GDK-905]: https://gadak.dev/backlog/#/?ks=GDK-905
 [GDK-906]: https://gadak.dev/backlog/#/?ks=GDK-906

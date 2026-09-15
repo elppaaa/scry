@@ -10,7 +10,8 @@
 저장한 뷰, Jira 필터, 스페이스, 페어링해 둔 터미널 — 거기에 글자를 치면 이슈와
 페이지를 찾으니 검색은 더 이상 별도 화면이 아닙니다. 설정은 머리의 톱니바퀴 뒤에
 있고 오프라인 표시도 거기 붙습니다. 셸은 화면 전체를 차지하고 자기 뒤로 가기로
-나갑니다. 캐시가 가진 것 전부 — 뷰·필터·스페이스·셸 — 가 머리에서 한 번에 닿습니다.
+나갑니다. 셸 글자 크기가 설정의 첫 터미널 옵션입니다 — 네 단계, 폰에 저장됩니다
+([GDK-901]). 캐시가 가진 것 전부 — 뷰·필터·스페이스·셸 — 가 머리에서 한 번에 닿습니다.
 데스크톱과 같은 모델입니다 ([GDK-902]).
 
 폰은 쓰던 글도 잃지 않고, 스프린트가 어디까지 왔는지 한 줄로 말합니다. 폰
@@ -1396,6 +1397,7 @@ FlagSet에서 생성되어 어긋날 수 없습니다. 즐겨찾기가 미러에
 [GDK-892]: https://gadak.dev/backlog/#/?ks=GDK-892
 [GDK-895]: https://gadak.dev/backlog/#/?ks=GDK-895
 [GDK-899]: https://gadak.dev/backlog/#/?ks=GDK-899
+[GDK-901]: https://gadak.dev/backlog/#/?ks=GDK-901
 [GDK-902]: https://gadak.dev/backlog/#/?ks=GDK-902
 [GDK-905]: https://gadak.dev/backlog/#/?ks=GDK-905
 [GDK-906]: https://gadak.dev/backlog/#/?ks=GDK-906
