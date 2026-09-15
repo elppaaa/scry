@@ -592,10 +592,12 @@ export const write = {
     ko: 'gadak 설정하기',
     ja: 'gadak をセットアップ',
   },
+  // GDK-1896: the first sentence names both doors. The old one opened on
+  // "your tracker", which told a person with no Jira that gadak needs one.
   'onboarding.intro': {
-    en: 'gadak keeps a local copy of your tracker, so reading is instant and works offline. Setup happens here, no terminal needed; the last step is optional.',
-    ko: 'gadak은 트래커의 로컬 사본을 들고 있어 읽기가 즉시, 오프라인에서도 됩니다. 설정은 여기서 끝나고 터미널은 필요 없습니다. 마지막 단계는 선택입니다.',
-    ja: 'gadak はトラッカーのローカルコピーを持つので、読み取りは即時でオフラインでも動きます。セットアップはここで完了し、ターミナルは不要です。最後のステップは任意です。',
+    en: 'Connect Jira and gadak keeps a cache you can read instantly, even offline. Without Jira, gadak is the tracker. Setup happens here, no terminal needed; the last step is optional.',
+    ko: 'Jira를 연결하면 오프라인에서도 바로 읽히는 캐시가 되고, Jira가 없으면 gadak이 곧 트래커가 됩니다. 설정은 여기서 끝나고 터미널은 필요 없습니다. 마지막 단계는 선택입니다.',
+    ja: 'Jira をつなぐと、オフラインでもすぐ読めるキャッシュになります。Jira がなければ gadak がトラッカーです。セットアップはここで完了し、ターミナルは不要です。最後のステップは任意です。',
   },
   'onboarding.stepOf': {
     en: 'Step {n} of 4',
@@ -952,9 +954,9 @@ export const write = {
     ja: '組み込みトラッカー',
   },
   'onboarding.sourceBuiltinAux': {
-    en: 'no account, starts here',
-    ko: '계정 없이 여기서 시작',
-    ja: 'アカウント不要、ここから始める',
+    en: 'gadak keeps the issues',
+    ko: 'gadak이 이슈를 직접 보관',
+    ja: 'gadak が課題を保管',
   },
   'onboarding.sourcePaired': {
     en: 'Paired',
