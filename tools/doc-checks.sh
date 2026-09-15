@@ -3281,6 +3281,13 @@ ok "the release footer makes no update-check claim"
 #   ② a line number past the cited file's end → FAIL
 #   ③ a cited line that is empty or nothing but a closing brace → warn
 #     (exactly the shape both FACT_LEDGER drifts had: `config.go:382` `}`)
+#   ④ a cited line that is nothing but a comment → warn
+#     (2026-09-15, F11 round: two anchors the 2026-09-15 rewrite left behind
+#     pointed mid-comment in internal/sync/confluence.go — comments move with
+#     refactors yet read like sentences, and a comment by definition carries
+#     no claim, so it is never the code that makes a footnote true. Catches
+#     `//`-only lines in go/ts/js/mjs/svelte/rs and `#`-only lines in py/sh;
+#     still blind to an unrelated *code* line — that stays review's job.)
 # Resolution: repo root, then the doc's own directory, then — for a bare
 # filename — the unique census file with that basename; `issuetap/...` cites
 # resolve against the sibling checkout (../issuetap) when present and are
@@ -3378,9 +3385,16 @@ for doc in sorted(Path("docs").rglob("*.md")):
                 fails.append(f"{dstr}:{ln} {m.group(0)} — {where} has {n} lines")
                 continue
             first = where.read_text(errors="replace").splitlines()[lo - 1].strip()
+            # ④ (2026-09-15): a comment-only line never carries the claim.
+            cmt = (first.startswith("//") and where.suffix in
+                   (".go", ".ts", ".js", ".mjs", ".svelte", ".rs")) or \
+                  (first.startswith("#") and where.suffix in (".py", ".sh"))
             if not first or first.strip("}()") == "":
                 warns.append(f"{dstr}:{ln} {m.group(0)} — cited line is "
                              f"{first!r} (anchor drift smell)")
+            elif cmt:
+                warns.append(f"{dstr}:{ln} {m.group(0)} — cited line is a "
+                             f"comment, not code: {first[:60]!r}")
 
 for doc, cites in KNOWN_STALE.items():
     for cite in cites - {c for d, c in stale_hit}:

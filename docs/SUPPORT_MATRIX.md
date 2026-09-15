@@ -96,15 +96,15 @@ Markers:
 | **Surface** · in-process origin (no network to the tracker) | —[^101] | —[^101] | —[^101] | ✅[^102] |
 | **Surface** · config.json `capabilities` — the origin's statement of its own abilities (GDK-1152) | ✅[^152] | ✅[^153] | ✅[^154] | ✅[^155] |
 
-[^1]: Atlassian Cloud REST (`internal/jira/client.go:165`), mirrored by the
-    Jira-family sync pass (`internal/sync/run.go:50`, `internal/sync/sync.go:153`).
+[^1]: Atlassian Cloud REST (`internal/jira/client.go:116`), mirrored by the
+    Jira-family sync pass (`internal/sync/run.go:50`, `internal/sync/sync.go:156`).
 
 [^2]: Read-only GraphQL at `api.linear.app` (`internal/linear/client.go`),
     mirrored by the Linear pass (`internal/sync/run.go:62`,
     `internal/sync/linear.go`).
 
 [^3]: The same Jira-family pass, answered in-process by the origin
-    (`internal/origin/transport.go:102`) or by a paired serve (`:108`).
+    (`internal/origin/transport.go:40`) or by a paired serve (`:194`).
 
 [^4]: Runs on the mirror — SQLite FTS over `issues_full`, origin-agnostic
     (`cmd/gadak/agent_search.go:66`).
@@ -114,7 +114,7 @@ Markers:
 
 [^6]: Same schema, but columns Linear does not map (issue type, components,
     fix versions, custom fields) read empty/NULL
-    (`internal/sync/linear.go:218`, `internal/linear/MAPPING.md`). The sprint
+    (`internal/sync/linear.go:360`, `internal/linear/MAPPING.md`). The sprint
     columns are mapped from Cycle (footnote 33); `epic_key` is the parent
     chain only — Linear Projects stay unmapped.
 
@@ -125,10 +125,10 @@ Markers:
 [^8]: Same in-memory evaluation; a clause over a column Linear does not
     populate matches nothing rather than erroring.
 
-[^9]: Comments mirror with the issue (`internal/sync/sync.go:843`).
+[^9]: Comments mirror with the issue (`internal/sync/sync.go:1185`).
 
 [^10]: Fetched as follow-up passes after the issue list — comments, labels,
-    attachments each round-trip once (`internal/sync/linear.go:90`); comment
+    attachments each round-trip once (`internal/sync/linear.go:110`); comment
     bodies are Linear markdown.
 
 [^11]: Serve proxies `cfg.Site + /rest/api/3/attachment/content/{id}`
@@ -162,14 +162,14 @@ Markers:
 
 [^15]: Linear's read path carries no state history — `status_changed_at`,
     `reopen_count` and `reopened_at` stay NULL
-    (`internal/sync/linear.go:46`). Every Linear batch says so
-    (`Batch.NoHistory`, `internal/sync/linear.go:144`, `:430`), which is what
+    (`internal/sync/linear.go:49`). Every Linear batch says so
+    (`Batch.NoHistory`, `internal/sync/linear.go:170`, `:586`), which is what
     stops the born-in-progress rule from guessing a start off an empty
     changelog. The flow columns do fill: the issue's own `startedAt` /
     `completedAt` / `canceledAt` stamps ride the batch as Derive hints
-    (`internal/sync/linear.go:287`), and the NoHistory hint rule fills
+    (`internal/sync/linear.go:419`), and the NoHistory hint rule fills
     `started_at` / `resolved_at` / `cycle_hours` from them
-    (`internal/store/derive.go:153`). A stamp is not a timeline — no
+    (`internal/store/derive.go:262`). A stamp is not a timeline — no
     synthetic changelog comes from it. An existing mirror row fills when its
     Linear `updated_at` next moves; a full sync re-reads but does not
     rewrite unchanged rows (`Batch.Force` is write-through only).
@@ -178,7 +178,7 @@ Markers:
     (`issuetap/docs/COMPATIBILITY.md:66`); the same columns derive from it.
 
 [^17]: `issuelinks` in the issue payload plus the link-type catalog
-    (`internal/jira/write.go:235`, `:215`).
+    (`internal/jira/write.go:238`, `:215`).
 
 [^18]: The write half refuses with `ErrNoIssueLinks`
     (`internal/origin/writer.go:114`); reading relations is [^106].
@@ -197,7 +197,7 @@ Markers:
     workspace the rows update when `ref`/`link` writes, not on sync
     (`internal/origin/writer.go:216`). A remote link whose URL is a GitHub
     pull request also feeds the issue's `linked_prs`, on the CLI and in the
-    app (`internal/server/read.go:511`).
+    app (`internal/server/read.go:562`).
 
 [^22]: Opt-in: `dev_status` in config gates the fetch and the panel
     (`internal/sync/sync.go:1298`).
@@ -209,38 +209,38 @@ Markers:
     `dev link|deploy|build` writes pass through (`cmd/gadak/dev.go:55`,
     `issuetap/docs/COMPATIBILITY.md:78`).
 
-[^25]: Mirrored with the issue row (`internal/sync/sync.go:843`).
+[^25]: Mirrored with the issue row (`internal/sync/sync.go:1185`).
 
-[^26]: Labels arrive as a follow-up fetch (`internal/sync/linear.go:93`).
+[^26]: Labels arrive as a follow-up fetch (`internal/sync/linear.go:113`).
 
 [^27]: Not a Linear concept in gadak's mapping — the columns stay empty
-    (`internal/sync/linear.go:218`).
+    (`internal/sync/linear.go:360`).
 
 [^28]: A per-project catalog derived from the project's issues
     (`issuetap/docs/COMPATIBILITY.md:62`).
 
 [^29]: `GET /project/{key}/versions` (`internal/jira/write.go:186`).
 
-[^30]: `ErrNoVersionCatalog` (`internal/origin/writer.go:100`); the columns
-    stay empty (`internal/sync/linear.go:218`).
+[^30]: `ErrNoVersionCatalog` (`internal/origin/writer.go:113`); the columns
+    stay empty (`internal/sync/linear.go:360`).
 
 [^31]: The catalog is derived from the project's issues, and this is the one
     origin where a write may mint a version by name (GDK-678,
-    `internal/origin/writer.go:51`).
+    `internal/origin/writer.go:57`).
 
 [^32]: The sprint columns come from the Jira Software sprint field, discovered
-    per site (`internal/sync/sprint.go:18`, `:75`); a site without it syncs
+    per site (`internal/sync/sprint.go:19`, `:90`); a site without it syncs
     empty. Cloud sends an object array, Server the Java `toString` of its own
     bean — both are read, and the state is lowercased so `active` means the
-    same thing on either (`internal/sync/sprint.go:191`, GDK-1650). The
+    same thing on either (`internal/sync/sprint.go:196`, GDK-1650). The
     state on an issue row is re-derived from the `sprints` table on every
-    tick (`internal/store/write.go:1730`, GDK-1661): a sprint closing moves
+    tick (`internal/store/write.go:1920`, GDK-1661): a sprint closing moves
     no `updated` on the done issues that stay in it, so the projection
     alone went stale.
 
 [^33]: Linear's Cycle is the sprint, and it maps whole (GDK-1667).
     `Issue.cycle { id number name startsAt endsAt completedAt }` fills the
-    three columns (`internal/sync/linear.go:267`); the state is derived from
+    three columns (`internal/sync/linear.go:406`); the state is derived from
     the dates rather than stored — `completedAt` set or `endsAt` past is
     `closed`, a window containing now is `active`, a future `startsAt` is
     `future` (`internal/linear/client.go:603`). Cycle UUIDs become the
@@ -253,17 +253,17 @@ Markers:
 
 [^135]: `/rest/agile/1.0/board` and `/board/{id}/sprint`, which answer the same
     shape on Cloud and Server — measured on Jira Software 11.3.11 DC
-    (`internal/jira/agile.go:14`, `internal/sync/agile.go:16`, GDK-1654). A
+    (`internal/jira/agile.go:17`, `internal/sync/agile.go:23`, GDK-1654). A
     site without Jira Software has no Agile API and syncs no boards; that is
     silent, not an error.
 
-[^136]: `gadak sprint` (`cmd/gadak/sprint.go:32`) over
+[^136]: `gadak sprint` (`cmd/gadak/sprint.go:42`) over
     `POST /rest/agile/1.0/sprint/{id}/issue`, `/backlog/issue`, `/sprint` and
     `/sprint/{id}` (`internal/jira/agile.go:191`, GDK-1655). Every state
     change re-reads the sprint listing and the issues that were in it, so the
     mirror states what the origin holds rather than what gadak sent.
 
-[^35]: `GET /field` catalog (`internal/jira/client.go:311`); editable kinds
+[^35]: `GET /field` catalog (`internal/jira/client.go:439`); editable kinds
     `text`, `number`, `date`, `option`, `user`, `multi_option` /
     `version_array`, gated by the issue's editmeta and the configured field
     allowlist. Cascading selects and textarea custom fields have no editor.
@@ -271,7 +271,7 @@ Markers:
     option by id or by display label (case- and whitespace-insensitive);
     an unknown label is refused with the valid set and an ambiguous one
     with the matching `label (id)` candidates, never resolved to the first
-    hit (`cmd/gadak/edit.go:1122`). A multi-valued field takes the flag
+    hit (`cmd/gadak/edit.go:1129`). A multi-valued field takes the flag
     repeated; repeating a single-valued one is refused
     (`cmd/gadak/edit.go:1075`).
 
@@ -281,18 +281,18 @@ Markers:
     field-creation route (`issuetap/docs/COMPATIBILITY.md:73` — "fixture
     custom fields").
 
-[^38]: From create/edit metadata (`internal/jira/write.go:379`, `:322`).
+[^38]: From create/edit metadata (`internal/jira/write.go:384`, `:358`).
 
 [^39]: `issue_type` maps from nothing (`internal/linear/MAPPING.md:82`).
 
 [^40]: Editable set with allowed values (`issuetap/docs/COMPATIBILITY.md:73`).
 
 [^41]: `parent_key` mirrors the direct parent; `epic_key` (nearest
-    hierarchy-level-1 ancestor) is derived at sync (`internal/sync/sync.go:843`).
+    hierarchy-level-1 ancestor) is derived at sync (`internal/sync/sync.go:1266`).
 
 [^42]: `parent_key` is a true mapping from `Issue.parent`; `epic_key` stays
     NULL — "epic" is a Jira-ism that would lie whenever a team nests
-    sub-issues (`internal/linear/MAPPING.md:137`).
+    sub-issues (`internal/linear/MAPPING.md:173`).
 
 [^43]: A parent must exist and sit exactly one hierarchy level above the child
     (`issuetap/docs/COMPATIBILITY.md:76`).
@@ -311,11 +311,11 @@ Markers:
     fallback across them (GDK-1308): Jira is `cfg.Site + /browse/KEY`
     (`web/src/lib/issue-origin.ts:29`, `cmd/gadak/agent_issue.go:477`); the
     header key anchor and the copy-link paste lead with it
-    (`web/src/components/detail/DetailHeader.svelte:126`).
+    (`web/src/components/detail/DetailHeader.svelte:108`).
 
 [^48]: Linear has no site; the page Linear itself minted is stored on the
     row (`items.url`) by sync, and `gadak open`, the key anchor, copy-link
-    and the palette all open that (`web/src/lib/issue-origin.ts:32`,
+    and the palette all open that (`web/src/lib/issue-origin.ts:34`,
     `cmd/gadak/agent_issue.go:468`; GDK-1149). A row without a stored url is a
     missing link, never a Jira URL.
 
@@ -324,7 +324,7 @@ Markers:
     (`cmd/gadak/agent_issue.go:489`); the web has no origin link and copy-link
     pastes app links only.
 
-[^50]: `POST /issue` (`internal/jira/write.go:331`). A CLI (agent) create
+[^50]: `POST /issue` (`internal/jira/write.go:374`). A CLI (agent) create
     ends the description with the actor trailer `— via gadak · <actor>`
     (`internal/origin/trailer.go:50`, off with `actor.trailer false`); the web
     create does not (`internal/server/write.go:217`).
@@ -338,12 +338,12 @@ Markers:
     rule.
 
 [^53]: ADF body with optional visibility and internal flag
-    (`internal/jira/write.go:256`). A CLI (agent) comment carries the actor
-    trailer as its last paragraph (`internal/origin/trailer.go:107`); the web
+    (`internal/jira/write.go:260`). A CLI (agent) comment carries the actor
+    trailer as its last paragraph (`internal/origin/trailer.go:115`); the web
     comment does not — the person is the author.
 
-[^54]: Neither visibility nor internal (`internal/origin/linearwriter.go:84`);
-    the body is serialized back to markdown (`:95`, `adf.Markdown` — the
+[^54]: Neither visibility nor internal (`internal/origin/linearwriter.go:95`);
+    the body is serialized back to markdown (`:107`, `adf.Markdown` — the
     identity on the markdown subset, GDK-1386); mentions and inline media
     degrade to their text.
 
@@ -351,12 +351,12 @@ Markers:
     (`issuetap/docs/COMPATIBILITY.md:76`).
 
 [^56]: `POST /issue/{key}/transitions` with fields and comment
-    (`internal/jira/write.go:116`). A transition comment from the CLI carries
-    the actor trailer (`internal/origin/trailer.go:111`); a transition without
+    (`internal/jira/write.go:119`). A transition comment from the CLI carries
+    the actor trailer (`internal/origin/trailer.go:119`); a transition without
     a comment gains none.
 
 [^57]: Linear transitions carry no screen fields
-    (`internal/origin/linearwriter.go:73`).
+    (`internal/origin/linearwriter.go:85`).
 
 [^58]: `fields.resolution` and `update.comment` are honored, screen-checked
     (`issuetap/docs/COMPATIBILITY.md:71`). The seeded workflow puts an optional
@@ -367,16 +367,16 @@ Markers:
 [^59]: `PUT /issue/{key}/assignee` (`internal/jira/write.go:311`).
 
 [^60]: The fields path carries assign and unassign
-    (`internal/origin/linearwriter.go:178`); refused only at create time
-    (`:297`).
+    (`internal/origin/linearwriter.go:218`); refused only at create time
+    (`:335`).
 
 [^61]: `POST /issue/{key}/assignee` (`issuetap/docs/COMPATIBILITY.md:76`).
 
 [^62]: The two-part edit — `fields` replaces, `update` carries add/remove
-    operations (`internal/jira/write.go:293`).
+    operations (`internal/jira/write.go:326`).
 
-[^63]: The `update` half is refused outright (`internal/origin/linearwriter.go:203`)
-    and any field outside the editable set is refused (`:190`); labels are
+[^63]: The `update` half is refused outright (`internal/origin/linearwriter.go:243`)
+    and any field outside the editable set is refused (`:230`); labels are
     deliberately absent from Linear edit metadata.
 
 [^64]: Editable set (`issuetap/docs/COMPATIBILITY.md:73`).
@@ -385,21 +385,21 @@ Markers:
     name (`issuetap/docs/COMPATIBILITY.md:76`).
 
 [^66]: Linear's 0-4 scale; clearing a priority maps to 0, "No priority"
-    (`internal/origin/linearwriter.go:160`, `:32`).
+    (`internal/origin/linearwriter.go:200`, `:275`).
 
-[^67]: `edit --due YYYY-MM-DD` → `fields.duedate` (`cmd/gadak/edit.go:355`);
-    Linear takes the date as-is (`internal/origin/linearwriter.go:169`).
+[^67]: `edit --due YYYY-MM-DD` → `fields.duedate` (`cmd/gadak/edit.go:368`);
+    Linear takes the date as-is (`internal/origin/linearwriter.go:217`).
 
-[^68]: `edit --due none` → `fields.duedate = nil` (`cmd/gadak/edit.go:353`).
+[^68]: `edit --due none` → `fields.duedate = nil` (`cmd/gadak/edit.go:366`).
 
 [^69]: "clearing a due date is not supported yet"
     (`internal/origin/linearwriter.go:211`).
 
-[^70]: `fields.summary` / `fields.description` (`cmd/gadak/edit.go:305`,
-    `internal/jira/write.go:286`).
+[^70]: `fields.summary` / `fields.description` (`cmd/gadak/edit.go:297`,
+    `internal/jira/write.go:326`).
 
 [^71]: The description is serialized back to markdown on write
-    (`internal/origin/linearwriter.go:157`, create `:324`) — headings,
+    (`internal/origin/linearwriter.go:196`, create `:363`) — headings,
     lists, tables and marks survive; panels, media and mentions degrade to
     text (GDK-1386). On Jira and Built-in, a body's nodes markdown cannot
     carry stand as placeholders in the editing source and `edit -m` puts
@@ -411,12 +411,12 @@ Markers:
     markdown on the way in.
 
 [^72]: Any field outside Linear's editable set is refused
-    (`internal/origin/linearwriter.go:190`).
+    (`internal/origin/linearwriter.go:230`).
 
 [^73]: `edit --type` → `fields.issuetype` (`cmd/gadak/edit.go:355`).
 
 [^74]: `ErrNoIssueTypes` — Linear has no issue types
-    (`internal/origin/writer.go:133`).
+    (`internal/origin/writer.go:150`).
 
 [^75]: `issuetype` with allowed values (`issuetap/docs/COMPATIBILITY.md:73`).
 
@@ -446,22 +446,22 @@ Markers:
     (GDK-1617).
 
 [^80]: URL-first: reserve storage, PUT the bytes, confirm
-    (`internal/origin/linearwriter.go:366`).
+    (`internal/origin/linearwriter.go:415`).
 
 [^81]: `POST /issueLink`, `DELETE /issueLink/{id}`, catalog via
-    `GET /issueLinkType` (`internal/jira/write.go:222`, `:246`, `:212`).
+    `GET /issueLinkType` (`internal/jira/write.go:226`, `:250`, `:215`).
 
 [^82]: Same routes (`issuetap/docs/COMPATIBILITY.md:59`, `:76`).
 
 [^83]: `gadak page create|edit|comment` → Confluence REST through the wiki
-    client (`cmd/gadak/page.go:217`, `:444`, `:357`;
-    `internal/origin/origin.go:408`).
+    client (`cmd/gadak/page.go:217`, `:448`, `:360`;
+    `internal/origin/origin.go:474`).
 
 [^84]: `POST /wiki/rest/api/content`, `PUT …/{id}` with a version check
     (`issuetap/docs/COMPATIBILITY.md:84`).
 
 [^85]: No atomic claim route on Cloud — the fallback runs assignee +
-    transition as two calls and says so (`internal/claim/claim.go:9`,
+    transition as two calls and says so (`internal/claim/claim.go:136`,
     `cmd/gadak/agent_write.go:1235`).
 
 [^86]: Refused before any call: claim is a Jira-workflow verb and the Linear
@@ -471,10 +471,10 @@ Markers:
     (`issuetap/docs/COMPATIBILITY.md:72`).
 
 [^88]: The `api` verb passes any Jira REST route through the origin client
-    (`cmd/gadak/api.go:140`).
+    (`cmd/gadak/api.go:135`).
 
 [^89]: The `api` verb needs a Jira-family credential; a Linear-only workspace
-    is refused (`internal/origin/origin.go:139`).
+    is refused (`internal/origin/origin.go:154`).
 
 [^90]: Unknown Jira routes get the honest 501 `unsupported_endpoint`
     (`issuetap/internal/api/jira.go:92`).
@@ -484,11 +484,11 @@ Markers:
 
 [^92]: Linear attachment URLs are not byte-fetchable the way Jira's are — a
     workspace with attachments refuses without `--skip-attachments`
-    (`cmd/gadak/migrate.go:89`).
+    (`cmd/gadak/migrate.go:134`).
 
 [^93]: The export's byte fetch uses the same passthrough route
-    (`cmd/gadak/migrate.go:105`). Bodies leave as the origin's ADF beside
-    their text (`internal/migrate/migrate.go:83`), so headings, lists and
+    (`cmd/gadak/migrate.go:147`). Bodies leave as the origin's ADF beside
+    their text (`internal/migrate/migrate.go:87`), so headings, lists and
     paragraph breaks arrive as written (GDK-1382).
 
 [^94]: `--to linear --team KEY` sends a mirror's issues into a Linear team
@@ -522,13 +522,13 @@ Markers:
     (`issuetap/internal/store/store.go`, `fixtureBody`; GDK-1382).
 
 [^96]: All three surfaces run against the mirror; the MCP tools expose no
-    write verb on any origin (`internal/mcp/tools.go:24`) — `gadak_ui_set`
+    write verb on any origin (`internal/mcp/tools.go:25`) — `gadak_ui_set`
     writes local design tokens to `config.json` and never reaches an origin
-    (`internal/mcp/tools_uitokens.go:36`) — and `gadak_status` reports which
+    (`internal/mcp/tools_uitokens.go:37`) — and `gadak_status` reports which
     origin the workspace has.
 
 [^97]: The board is the same filtered list laid out as columns, saved per view
-    (`web/src/lib/view-config.ts:141`); a status-axis drag is a real
+    (`web/src/lib/view-config.ts:133`); a status-axis drag is a real
     transition where transitions exist.
 
 [^98]: Mirror-side contract — reads saved views and emits keys; no origin call
@@ -544,24 +544,24 @@ Markers:
 [^101]: The origin is a remote host — `https://<site>.atlassian.net` for Jira,
     `https://api.linear.app` for Linear (`internal/linear/client.go`).
 
-[^102]: Embedded in the same process (`internal/origin/transport.go:102`), or
-    one hop to a paired serve (`:108`).
+[^102]: Embedded in the same process (`internal/origin/transport.go:40`), or
+    one hop to a paired serve (`:194`).
 
 [^117]: Server keeps REST v2 only (a v3 route answers 401, not 404) and the
     classic `POST /search` paged by `startAt`/`total`
-    (`internal/jira/client.go:228`, GDK-1636); `expand` is a list there, a
-    string on Cloud (`internal/jira/client.go:249`). Users key by `name`,
+    (`internal/jira/client.go:252`, GDK-1636); `expand` is a list there, a
+    string on Cloud (`internal/jira/client.go:273`). Users key by `name`,
     not `accountId` (GDK-1638); the credential is a PAT Bearer, because
     basic auth is off by default on 11.x (GDK-1640). Measured: 409 issues in
     one 3 s full sync, then quiet incremental ticks. Data Center states its
     rate-limit budget on every response (`X-RateLimit-*`); the Server client
     spaces requests from it before a 429 (`internal/httppolicy/ratebudget.go`,
-    `internal/jira/client.go:147`, GDK-1646) — Cloud publishes no such headers
+    `internal/jira/client.go:149`, GDK-1646) — Cloud publishes no such headers
     and its path is untouched.
 
 [^118]: v2 comment bodies are wiki-markup strings and land in `body_text`
     as-is; the visibility block is read into `comments.visibility_type` /
-    `visibility_value` (`internal/sync/sync.go:1189`). Measured: a comment
+    `visibility_value` (`internal/sync/sync.go:1318`). Measured: a comment
     restricted to the Administrators role mirrors as `role` /
     `Administrators`.
 
@@ -569,7 +569,7 @@ Markers:
     Server, not `/rest/api/3/attachment/content` (`internal/jira/types.go:110`);
     `gadak attach get` streamed a 50-byte seed file back byte for byte.
     Uploads carry `X-Atlassian-Token: no-check` or Server answers 403
-    (`internal/jira/write.go:613`).
+    (`internal/jira/write.go:614`).
 
 [^120]: The changelog arrives through the v2 `expand` list and feeds the same
     derivations. Measured: an issue moved To Do → In Progress → Done → To Do
@@ -604,8 +604,8 @@ Markers:
     through.
 
 [^125]: Server publishes no `hierarchyLevel` on issue types; sub-tasks come
-    from the `subtask` flag (`internal/sync/sync.go:1152`) and epics are
-    derived from who has a standard child (`internal/store/write.go:1754`,
+    from the `subtask` flag (`internal/sync/sync.go:1282`) and epics are
+    derived from who has a standard child (`internal/store/write.go:171`,
     GDK-1658). A standard issue's epic is the Epic Link custom field, read
     into `parent_key` / `epic_key` (GDK-1651). Measured: epic → story →
     sub-task reads levels 1 / 0 / −1 with both keys filled.
@@ -617,8 +617,8 @@ Markers:
     GDK-1663).
 
 [^127]: `gadak create` through the per-project createmeta route
-    (`internal/jira/write.go:444`, GDK-1636); the description goes out as
-    wiki markup and comes back byte for byte (`internal/jira/write.go:279`,
+    (`internal/jira/write.go:445`, GDK-1636); the description goes out as
+    wiki markup and comes back byte for byte (`internal/origin/body.go:29`,
     GDK-1637). An Epic needs Epic Name (`gh-epic-label`) or Server answers
     400 — the lab seed sets it. Measured: a Bug with priority, label and a
     formatted body created and re-read.
@@ -646,7 +646,7 @@ Markers:
 
 [^132]: Same routes as Cloud; Server answers the link POST with 201 and an
     empty `text/html` body, which the page guard refused until GDK-1662
-    (`internal/atlhttp/transport.go:299`). Measured after the fix: link,
+    (`internal/atlhttp/transport.go:298`). Measured after the fix: link,
     `links` rows on both issues, unlink.
 
 [^133]: Same two-call fallback as Cloud (footnote 85) and the same warning
@@ -672,7 +672,7 @@ Markers:
     shows it — which is what the two refusal cells mean today.
 [^141]: One `boards` row per in-scope team (`type = 'cycles'`, `project_key`
     = the team key) and every one of that team's cycles as a `sprints` row,
-    walked each tick (`internal/sync/linear.go:279`, `importLinearCycles`). A
+    walked each tick (`internal/sync/linear.go:282`, `importLinearCycles`). A
     cycle the listing does not carry — another team's cycle on an in-scope
     issue — keeps its issue-side projection and gets no `sprints` row.
 
@@ -717,52 +717,52 @@ README that stopped linking — is caught by `tools/doc-checks.sh` check
 **#39**; whether a cell still tells the truth is review's job. Generating
 this table from the code instead of maintaining it by hand is GDK-1301.
 [^103]: The issue navigator with this view's JQL (`<site>/issues/?jql=…`,
-    `web/src/lib/view-link.ts:52`) leads the paste, then `gadak://view?<hash>`
+    `web/src/lib/view-link.ts:56`) leads the paste, then `gadak://view?<hash>`
     and the http link (GDK-1343). The JQL comes from the server's `jql/emit/`;
     clauses it cannot carry are named in the toast.
 [^104]: Linear has no public URL parameter that carries a filter, so the paste is
-    the app lines alone (`web/src/lib/view-link.ts:49`) — the same branch the
+    the app lines alone (`web/src/lib/view-link.ts:53`) — the same branch the
     issue copy-link takes on the Built-in origin. No stand-in.
 [^105]: The Built-in tracker's page is this app: app lines only
-    (`web/src/lib/view-link.ts:49`).
+    (`web/src/lib/view-link.ts:53`).
 
 [^106]: `Issue.relations` / `inverseRelations` in the issue query
-    (`internal/linear/queries.go:197`) land as outward / inward `links` rows
+    (`internal/linear/queries.go:235`) land as outward / inward `links` rows
     named like the Jira ones — Blocks, Duplicate, Relates
-    (`internal/sync/linear.go:328`); GDK-1299.
+    (`internal/sync/linear.go:428`); GDK-1299.
 
 [^107]: The link-type catalog is fetched once per sync run
-    (`internal/sync/sync.go:244`) and cached into `link_types`; `open_blockers`
+    (`internal/sync/sync.go:210`) and cached into `link_types`; `open_blockers`
     resolves which types block from that catalog, never a hardcoded name
-    (`internal/store/flow.go:81`, `:156`), and `gadak ready` reads the column
+    (`internal/store/flow.go:125`, `:158`), and `gadak ready` reads the column
     (`cmd/gadak/list.go:119`). "Ready" means no *recorded* open blocker —
     block links are typed far less consistently than epic links.
 
 [^108]: Linear has one blocking relation and no site catalog to fetch; a fixed
-    one-row catalog rides every Linear batch (`internal/sync/linear.go:349`),
+    one-row catalog rides every Linear batch (`internal/sync/linear.go:169`),
     so the same column and verb work over the relations GDK-1299 mirrored as
     `links` ([^106]).
 
 [^109]: The origin serves a link-type catalog
     (`issuetap/docs/COMPATIBILITY.md:59`); the column and the verb are the
-    Jira path (`internal/store/flow.go:156`).
+    Jira path (`internal/store/flow.go:158`).
 
 [^110]: `gadak attach get` resolves the name or id in the mirror, then reads
     `GET /rest/api/3/attachment/content/{id}` through `origin.Client`
-    (`cmd/gadak/attach_get.go:159`). Membership is the mirror query, so an id
+    (`cmd/gadak/attach_get.go:179`). Membership is the mirror query, so an id
     belonging to another issue is not found rather than fetched
-    (`cmd/gadak/attach_get.go:96`).
+    (`cmd/gadak/attach_get.go:99`).
 
 [^111]: The Linear branch fetches the stored `uploads.linear.app` URL with the
     workspace's API key (`cmd/gadak/attach_get.go:149` →
     `internal/linear/download.go:50`). A stored URL on any other host is
     refused before the request leaves the process (GDK-560,
-    `internal/linear/download.go:26`).
+    `internal/linear/download.go:24`).
 
 [^112]: The in-process Built-in origin answers the same content route, so the
     verb needs no site: measured on a `gadak init --local` workspace, `attach
     get` wrote the bytes `gadak attach` had uploaded. The branch is on the
-    mirrored row's source, never a fallback (`cmd/gadak/attach_get.go:136`).
+    mirrored row's source, never a fallback (`cmd/gadak/attach_get.go:143`).
 
 [^113]: Same multipart route as Jira ([^79]), streamed end to end: the CLI
     builds the multipart body through a pipe (`internal/jira/write.go:582`)
@@ -775,16 +775,16 @@ this table from the code instead of maintaining it by hand is GDK-1301.
     reported as success.
 
 [^114]: `PUT` / `DELETE /rest/api/3/issue/{key}/comment/{id}`
-    (`internal/jira/write.go:282`, `:290`); an edit sends what a post sends,
+    (`internal/jira/write.go:283`, `:291`); an edit sends what a post sends,
     so a Jira Server origin's edit carries the wiki-markup string the post
     path already sends (`internal/origin/body.go:28`). The CLI verb is
-    `gadak comment edit|rm` (`cmd/gadak/agent_write.go:418`), and an edited body
+    `gadak comment edit|rm` (`cmd/gadak/agent_write.go:423`), and an edited body
     carries the actor trailer with the same idempotence a post has
-    (`internal/origin/trailer.go:258`).
+    (`internal/origin/trailer.go:266`).
 
 [^115]: `commentUpdate` / `commentDelete` over GraphQL
-    (`internal/linear/write.go:246`, `:267`,
-    `internal/origin/linearwriter.go:109`); the body is markdown, the same
+    (`internal/linear/write.go:268`, `:289`,
+    `internal/origin/linearwriter.go:121`); the body is markdown, the same
     dialect `comment` posts in.
 
 [^116]: The built-in tracker answers the same two routes since issuetap
@@ -826,7 +826,7 @@ this table from the code instead of maintaining it by hand is GDK-1301.
     `GET /wiki/rest/api/content/{pageId}/child/attachment`,
     `start`-paged 100 rows at a time — and mirrored into the same
     attachments table an issue's ride, keyed apart by `item_id`
-    (`internal/confluence/client.go:559`, `internal/sync/confluence.go:1578`,
+    (`internal/confluence/client.go:562`, `internal/sync/confluence.go:1578`,
     `internal/store/write.go:859`). The page detail carries them in the same
     wire shape the issue detail does (`internal/server/read.go:927`), and the
     bytes stream from `content/{attId}/download` through `origin.Wiki` on the
@@ -851,7 +851,7 @@ this table from the code instead of maintaining it by hand is GDK-1301.
 
 [^150]: The seed YAML is the built-in tracker's own format — a Jira, Server,
     or Linear workspace has nothing to hand over in it, and the verb says so
-    instead of exporting an empty document (`internal/origin/origin.go:416`).
+    instead of exporting an empty document (`internal/origin/origin.go:419`).
 
 [^151]: `gadak workspace export [--out FILE]` writes the persist file's
     contents as the seed YAML `origin/issuetap.yaml` always was — the export
@@ -864,7 +864,7 @@ this table from the code instead of maintaining it by hand is GDK-1301.
 [^152]: One owner states the whole block — `origin.CapabilitiesOf`
     (`internal/origin/capabilities.go`) — and config.json carries it beside
     the legacy `originWritable`, which stays as an alias of
-    `capabilities.issueWrite` (`internal/server/settings.go:104`). The axes
+    `capabilities.issueWrite` (`internal/server/settings.go:105`). The axes
     on Cloud: `issueWrite`, `wikiWrite` and `identity` follow the site
     credential (with no token all three are false — the row the
     set-credentials CTA lives on), `originDeepLink` + `originBaseUrl` need
