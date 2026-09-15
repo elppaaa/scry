@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# GDK-681: issue write handlers in internal/server/write.go must not call
+# GDK-681: issue write handlers in internal/server/write*.go must not call
 # s.client() — that mint is origin.Client, Jira-only. A Linear apiKey still
 # passes HasCredential, so the 409 gate does not save those handlers.
 #

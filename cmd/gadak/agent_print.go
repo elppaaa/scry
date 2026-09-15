@@ -51,7 +51,7 @@ type issueEditMetaField struct {
 
 // printIssueEditMeta is `gadak issue KEY --editmeta`: one origin GET
 // editmeta, then the same allowlist ∩ ResolveEditable filter
-// handleEditMeta uses (internal/server/write.go). The answer is not
+// handleEditMeta uses (internal/server/write_issue.go). The answer is not
 // written to the mirror — origin is the source of truth for this verb.
 func printIssueEditMeta(key string, asJSON bool) error {
 	return withKeyWriteSession(key, func(ctx context.Context, cfg *config.Config, _ *store.DB, c origin.Writer, _ string) error {

@@ -14,7 +14,7 @@ import { shell } from './messages/shell'
 import { write } from './messages/write'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const WRITE_GO = join(HERE, '../../../../internal/server/write.go')
+const WRITE_CREATE_GO = join(HERE, '../../../../internal/server/write_create.go')
 const WEB_SRC = join(HERE, '../..')
 const E2E_ROOT = join(HERE, '../../../../e2e')
 // The phone is a second app with its own tsconfig and its own lockfile, and
@@ -184,7 +184,7 @@ const ALLOWED_PHONE_ONLY = new Map<string, string>([
 
 function failCreateCodes(src: string): string[] {
   const start = src.indexOf('func failCreate(')
-  expect(start, 'internal/server/write.go must define failCreate').toBeGreaterThanOrEqual(0)
+  expect(start, 'internal/server/write_create.go must define failCreate').toBeGreaterThanOrEqual(0)
   const rest = src.slice(start)
   const next = rest.indexOf('\nfunc ', 1)
   const body = next === -1 ? rest : rest.slice(0, next)
@@ -269,7 +269,7 @@ describe('catalog contracts', () => {
   })
 
   test('every failCreate wire code maps to a catalog sentence', () => {
-    const src = readFileSync(WRITE_GO, 'utf8')
+    const src = readFileSync(WRITE_CREATE_GO, 'utf8')
     const codes = failCreateCodes(src)
     const missing = codes.filter((c) => !(c in WRITE_ERROR_KEYS))
     expect(missing, `unmapped failCreate codes: ${missing.join(', ')}`).toEqual([])

@@ -3275,10 +3275,10 @@ func TestWikiWritesRequireCredential(t *testing.T) {
 	}
 }
 
-// clientCallAllowlist is the only remaining s.client() callers in write.go.
-// Each entry must say why that call is not an issue-origin write. A new
-// write handler that mints origin.Client this way fails
-// TestWriteHandlersDoNotCallClient (GDK-681).
+// clientCallAllowlist is the only remaining s.client() callers in the
+// write*.go shards. Each entry must say why that call is not an
+// issue-origin write. A new write handler that mints origin.Client this
+// way fails TestWriteHandlersDoNotCallClient (GDK-681).
 var clientCallAllowlist = map[string]string{
 	"handlePageResync":   "wiki page re-read; credential gate only — issue writes must not share this Jira mint",
 	"handlePriorities":   "GET workspace-wide Jira priority catalog; Linear rows use handleKeyPriorities / keyWriter",
@@ -3288,50 +3288,61 @@ var clientCallAllowlist = map[string]string{
 }
 
 // TestWriteHandlersDoNotCallClient is the GDK-681 lock: issue write handlers
-// in write.go must route through writerFor / keyWriter / createWriter, not
-// s.client() (origin.Client is Jira-only; a Linear apiKey still passes
-// HasCredential). Catalog GETs stay on the allowlist above with a reason.
+// in the write*.go shards must route through writerFor / keyWriter /
+// createWriter, not s.client() (origin.Client is Jira-only; a Linear apiKey
+// still passes HasCredential). Catalog GETs stay on the allowlist above with
+// a reason.
 func TestWriteHandlersDoNotCallClient(t *testing.T) {
 	_, thisFile, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("runtime.Caller failed")
 	}
-	src := filepath.Join(filepath.Dir(thisFile), "write.go")
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, src, nil, 0)
+	// write.go was split by resource into write*.go (GDK-1922); the gate
+	// walks every shard so a handler cannot move out of its sight.
+	srcs, err := filepath.Glob(filepath.Join(filepath.Dir(thisFile), "write*.go"))
 	if err != nil {
-		t.Fatalf("parse write.go: %v", err)
+		t.Fatal(err)
 	}
+	fset := token.NewFileSet()
 
 	var hits []string
 	seen := map[string]bool{}
-	for _, decl := range f.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Name == nil || fn.Body == nil {
+	for _, src := range srcs {
+		if strings.HasSuffix(src, "_test.go") {
 			continue
 		}
-		name := fn.Name.Name
-		ast.Inspect(fn.Body, func(n ast.Node) bool {
-			call, ok := n.(*ast.CallExpr)
-			if !ok {
-				return true
+		f, err := parser.ParseFile(fset, src, nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", src, err)
+		}
+		for _, decl := range f.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Name == nil || fn.Body == nil {
+				continue
 			}
-			sel, ok := call.Fun.(*ast.SelectorExpr)
-			if !ok || sel.Sel == nil || sel.Sel.Name != "client" {
+			name := fn.Name.Name
+			ast.Inspect(fn.Body, func(n ast.Node) bool {
+				call, ok := n.(*ast.CallExpr)
+				if !ok {
+					return true
+				}
+				sel, ok := call.Fun.(*ast.SelectorExpr)
+				if !ok || sel.Sel == nil || sel.Sel.Name != "client" {
+					return true
+				}
+				id, ok := sel.X.(*ast.Ident)
+				if !ok || id.Name != "s" {
+					return true
+				}
+				seen[name] = true
+				if _, allowed := clientCallAllowlist[name]; allowed {
+					return true
+				}
+				pos := fset.Position(sel.Pos())
+				hits = append(hits, fmt.Sprintf("%s:%d %s", filepath.Base(pos.Filename), pos.Line, name))
 				return true
-			}
-			id, ok := sel.X.(*ast.Ident)
-			if !ok || id.Name != "s" {
-				return true
-			}
-			seen[name] = true
-			if _, allowed := clientCallAllowlist[name]; allowed {
-				return true
-			}
-			pos := fset.Position(sel.Pos())
-			hits = append(hits, fmt.Sprintf("%s:%d %s", filepath.Base(pos.Filename), pos.Line, name))
-			return true
-		})
+			})
+		}
 	}
 	if len(hits) > 0 {
 		t.Fatalf("issue write handlers must not call s.client() (use writerFor / keyWriter / createWriter); allowlisted catalog GETs need a reason in clientCallAllowlist:\n  %s", strings.Join(hits, "\n  "))

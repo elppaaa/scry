@@ -185,9 +185,10 @@ func TestTerminalSurfaceNeverWritesToOrigin(t *testing.T) {
 		t.Fatal(err)
 	}
 	src := string(raw)
-	// The write verbs of the origin surface (internal/server/write.go) and
-	// the mirror. Names, not shapes: this fails loudly on a rename, which is
-	// the moment to re-read this comment rather than delete the line.
+	// The write verbs of the origin surface (internal/server/write_issue.go
+	// holds them since the write.go split, GDK-1922) and the mirror. Names,
+	// not shapes: this fails loudly on a rename, which is the moment to
+	// re-read this comment rather than delete the line.
 	for _, verb := range []string{
 		"originWriter", "origin.Writer", "SetAssignee", "Transition(",
 		"transitionIssue", "s.store.", "db.Exec", "UPDATE issues",

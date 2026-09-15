@@ -327,7 +327,7 @@ Markers:
 [^50]: `POST /issue` (`internal/jira/write.go:374`). A CLI (agent) create
     ends the description with the actor trailer `— via gadak · <actor>`
     (`internal/origin/trailer.go:50`, off with `actor.trailer false`); the web
-    create does not (`internal/server/write.go:217`).
+    create does not (`internal/server/write_create.go:185`).
 
 [^51]: Create works; assignee, labels, parent, and issue type are refused on
     create (`internal/origin/linearwriter.go:335`).

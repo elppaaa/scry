@@ -35,15 +35,15 @@ var pendingCanonicalKeyFile = map[string]string{
 	// tracks of the same audit). Each migrates to CanonicalKey/IsIssueKey in
 	// its own round; when it does, this gate goes stale and forces the entry
 	// out — the ratchet cannot slip backwards.
-	"cmd/gadak/views.go":         "looksLikeIssueKey = fields.IsIssueKey; fold (GDK-1129 named it for immediate deletion)",
-	"cmd/gadak/fields.go":        "project filter canonicalization, cmd track",
-	"cmd/gadak/create.go":        "issue-key positional canonicalization, cmd track",
-	"cmd/gadak/config.go":        "project-key canonicalization, cmd track",
-	"internal/jql/compile.go":    "mergeUniqueUpper keys — also holds the two-standards defect the issue names (dst ToUpper-only, src ToUpper+Trim)",
-	"internal/server/link.go":    "issue-key canonicalization, server track",
-	"internal/server/write.go":   "parent-key comparison, server track",
-	"internal/mcp/tools.go":      "three issue-key sites (show/edit/comment keys), mcp track",
-	"internal/jira/devstatus.go": "not a key: dev status / gh-state name canonicalization — tracked here only so the idiom's file count cannot grow silently",
+	"cmd/gadak/views.go":             "looksLikeIssueKey = fields.IsIssueKey; fold (GDK-1129 named it for immediate deletion)",
+	"cmd/gadak/fields.go":            "project filter canonicalization, cmd track",
+	"cmd/gadak/create.go":            "issue-key positional canonicalization, cmd track",
+	"cmd/gadak/config.go":            "project-key canonicalization, cmd track",
+	"internal/jql/compile.go":        "mergeUniqueUpper keys — also holds the two-standards defect the issue names (dst ToUpper-only, src ToUpper+Trim)",
+	"internal/server/link.go":        "issue-key canonicalization, server track",
+	"internal/server/write_issue.go": "parent-key comparison, server track",
+	"internal/mcp/tools.go":          "three issue-key sites (show/edit/comment keys), mcp track",
+	"internal/jira/devstatus.go":     "not a key: dev status / gh-state name canonicalization — tracked here only so the idiom's file count cannot grow silently",
 }
 
 // TestKeyNormalizationHasOneOwner fails on any production file spelling
