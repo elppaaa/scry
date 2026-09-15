@@ -200,6 +200,13 @@ type Info struct {
 	Title   string    `json:"title,omitempty"`
 	TitleAt time.Time `json:"title_at,omitzero"`
 	Seq     int       `json:"seq"`
+	// LastResizeExit names the branch the most recent resize left by
+	// (GDK-1192): "matched/N" (read-back agreed on attempt N),
+	// "unverified:<err>" (read-back failed and the set was trusted),
+	// "exhausted" (bounded attempts, error returned), "set-error:<err>",
+	// or "unsupported" on Windows. Empty before the first resize. Pure
+	// diagnostic — it changes no behaviour, it names it.
+	LastResizeExit string `json:"last_resize_exit,omitempty"`
 }
 
 // Create spawns a shell under a PTY and returns its session.

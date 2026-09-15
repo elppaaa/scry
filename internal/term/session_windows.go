@@ -31,7 +31,11 @@ func (p *ptyProc) resize(cols, rows uint16) error {
 func (p *ptyProc) winsize() (cols, rows uint16, err error) {
 	return 0, 0, ErrUnsupportedPlatform
 }
-func (p *ptyProc) hangup() error      { return ErrUnsupportedPlatform }
-func (p *ptyProc) kill() error        { return ErrUnsupportedPlatform }
-func (p *ptyProc) wait() (int, error) { return -1, ErrUnsupportedPlatform }
-func (p *ptyProc) closePTY() error    { return ErrUnsupportedPlatform }
+
+// lastResizeExit mirrors the unix diagnostic field on the stub: resize can
+// never run here, so the answer is fixed.
+func (p *ptyProc) lastResizeExit() string { return "unsupported" }
+func (p *ptyProc) hangup() error          { return ErrUnsupportedPlatform }
+func (p *ptyProc) kill() error            { return ErrUnsupportedPlatform }
+func (p *ptyProc) wait() (int, error)     { return -1, ErrUnsupportedPlatform }
+func (p *ptyProc) closePTY() error        { return ErrUnsupportedPlatform }

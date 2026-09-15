@@ -52,6 +52,15 @@ type ptyProc struct {
 	// caller of proc.Write/resize get the same answer without repeating it.
 	closed atomic.Bool
 
+	// resizeExit records which exit the last resize took (GDK-1192): the
+	// read-back loop has two silent success paths — matched and trusted-but-
+	// unverified — that a CI failure log cannot otherwise tell apart, and the
+	// flake under diagnosis is exactly "nil returned, kernel disagrees".
+	// atomic.Pointer rather than a mutex: written on every resize, read by
+	// Info() from any goroutine, and a one-word store/load is the whole
+	// contention story.
+	resizeExit atomic.Pointer[string]
+
 	ttyOnce sync.Once
 	ttyDev  int32
 	ttyOK   bool
@@ -107,6 +116,20 @@ var (
 // resizeReadBackAttempts bounds the set → read-back loop below.
 const resizeReadBackAttempts = 5
 
+// recordResizeExit names the branch the last resize left by, so the next CI
+// recurrence's Info() line says which of the silent exits it took.
+func (p *ptyProc) recordResizeExit(s string) {
+	p.resizeExit.Store(&s)
+}
+
+// lastResizeExit reports the recorded exit, "" when no resize has run yet.
+func (p *ptyProc) lastResizeExit() string {
+	if s := p.resizeExit.Load(); s != nil {
+		return *s
+	}
+	return ""
+}
+
 func (p *ptyProc) resize(cols, rows uint16) error {
 	// TIOCSWINSZ rides creack/pty's raw syscall.Syscall, which the runtime
 	// does not restart — under load the runtime's own SIGURG preemption can
@@ -137,17 +160,24 @@ func (p *ptyProc) resize(cols, rows uint16) error {
 			}
 		}
 		if err != nil {
+			p.recordResizeExit("set-error:" + err.Error())
 			break
 		}
 		got, gerr := ptyGetsize(p.f)
-		if gerr != nil || (got.Cols == cols && got.Rows == rows) {
+		if gerr != nil {
 			// Unverifiable is trusted: a read-back failure is not evidence
 			// the set was lost, and refusing here would turn every such pty
 			// into an unresizable one.
+			p.recordResizeExit("unverified:" + gerr.Error())
+			break
+		}
+		if got.Cols == cols && got.Rows == rows {
+			p.recordResizeExit(fmt.Sprintf("matched/%d", attempt+1))
 			break
 		}
 		if attempt+1 >= resizeReadBackAttempts {
 			err = fmt.Errorf("term: resize to %dx%d accepted %d times but the pty still reads %dx%d", cols, rows, attempt+1, got.Cols, got.Rows)
+			p.recordResizeExit("exhausted")
 			break
 		}
 		time.Sleep(time.Duration(attempt+1) * 5 * time.Millisecond)

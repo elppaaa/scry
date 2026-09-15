@@ -200,6 +200,7 @@ func (s *Session) Info() Info {
 		TitleAt:            s.titleAt,
 		Seq:                s.seq,
 	}
+	info.LastResizeExit = s.proc.lastResizeExit()
 	s.mu.Unlock()
 	return info
 }

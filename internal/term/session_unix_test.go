@@ -1137,6 +1137,11 @@ func TestResizeReissuesUntilTheKernelReadsItBack(t *testing.T) {
 	if sets != 3 {
 		t.Errorf("Setsize called %d times; want 3 (re-issued after two stale read-backs)", sets)
 	}
+	// GDK-1192: each exit records the branch it took, so the next CI failure
+	// log can name it instead of guessing between the two silent successes.
+	if e := p.lastResizeExit(); e != "matched/3" {
+		t.Errorf("lastResizeExit = %q; want matched/3 after the third read-back agrees", e)
+	}
 
 	ptyGetsize = func(_ *os.File) (*pty.Winsize, error) { return &pty.Winsize{Cols: 80, Rows: 24}, nil }
 	sets = 0
@@ -1147,11 +1152,26 @@ func TestResizeReissuesUntilTheKernelReadsItBack(t *testing.T) {
 	if sets != resizeReadBackAttempts {
 		t.Errorf("Setsize called %d times; want %d bounded attempts", sets, resizeReadBackAttempts)
 	}
+	if e := p.lastResizeExit(); e != "exhausted" {
+		t.Errorf("lastResizeExit = %q; want exhausted after the bounded attempts", e)
+	}
 
 	// A read-back that cannot be taken is not evidence: the set is trusted.
 	ptyGetsize = func(_ *os.File) (*pty.Winsize, error) { return nil, syscall.EBADF }
 	if err := p.resize(132, 43); err != nil {
 		t.Fatalf("unverifiable read-back must trust the set, got %v", err)
+	}
+	if e := p.lastResizeExit(); !strings.HasPrefix(e, "unverified:") {
+		t.Errorf("lastResizeExit = %q; want it to start with unverified:", e)
+	}
+
+	// First-attempt agreement names its attempt count.
+	ptyGetsize = func(_ *os.File) (*pty.Winsize, error) { return &pty.Winsize{Cols: 132, Rows: 43}, nil }
+	if err := p.resize(132, 43); err != nil {
+		t.Fatalf("immediate agreement = %v; want nil", err)
+	}
+	if e := p.lastResizeExit(); e != "matched/1" {
+		t.Errorf("lastResizeExit = %q; want matched/1", e)
 	}
 }
 
