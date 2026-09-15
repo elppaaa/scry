@@ -1004,6 +1004,11 @@ export const detail = {
   'retro.inProgress': { en: 'In progress', ko: '진행 중', ja: '進行中' },
   'retro.wipAge': { en: 'Oldest in progress', ko: '가장 오래된 진행 중', ja: '最も古い進行中' },
   'retro.mismatch': { en: 'Mismatch', ko: '불일치', ja: '不一致' },
+  // The sprint membership rows, each directly under the interval
+  // row it answers to. Rendered only on the sprint cut: a week has no
+  // members, so the rows do not exist there — not a dash.
+  'retro.sprintDone': { en: 'in sprint · done', ko: '스프린트 내 완료', ja: 'スプリント内の完了' },
+  'retro.sprintInProgress': { en: 'in sprint · in progress', ko: '스프린트 내 진행 중', ja: 'スプリント内の進行中' },
   // The definitions under each row label (GDK-1692). These used to be read
   // straight out of `doc.definitions`, which is `internal/retro`'s footer —
   // English, because the CLI is English — so a Korean frame stood on eight
@@ -1053,6 +1058,21 @@ export const detail = {
     en: 'the oldest in-progress issue at {bucket} end, in days',
     ko: '그 {bucket}이 끝나는 시점에 가장 오래 진행 중이던 이슈의 경과일',
     ja: '{bucket}終了時点で最も長く進行中だった課題の経過日数',
+  },
+  // The membership pair's definitions: what the sprint column
+  // holds now, against the interval rows above it that count the window.
+  // These two rows exist only on the sprint cut, so they name the sprint
+  // outright rather than taking the {bucket} substitution the rows above
+  // share — "this week" can never reach them.
+  'retro.def.sprintDone': {
+    en: 'issues carrying this sprint whose status is done now — membership, not the interval',
+    ko: '이 스프린트에 속한 이슈 중 지금 완료 상태인 것 — 구간이 아니라 소속 기준',
+    ja: 'このスプリントに属する課題のうち、現在完了状態のもの — 期間ではなく所属基準',
+  },
+  'retro.def.sprintInProgress': {
+    en: 'issues carrying this sprint that are in progress now — membership, not the interval',
+    ko: '이 스프린트에 속한 이슈 중 지금 진행 중인 것 — 구간이 아니라 소속 기준',
+    ja: 'このスプリントに属する課題のうち、現在進行中のもの — 期間ではなく所属基準',
   },
   'retro.def.mismatch': {
     en: "comments claiming the work is finished on issues not done now (heuristic: a done-word standing on its own, negations and quoted text excluded; only comments newer than the issue's last status change count)",

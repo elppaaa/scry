@@ -200,9 +200,11 @@
     sessions: t('retro.sessions'),
     'resume (median)': t('retro.resume'),
     closed: t('retro.closed'),
+    sprint_done: t('retro.sprintDone'),
     'cycle p50': t('retro.cycleP50'),
     'cycle p85': t('retro.cycleP85'),
     'in progress': t('retro.inProgress'),
+    sprint_in_progress: t('retro.sprintInProgress'),
     'wip age max': t('retro.wipAge'),
     mismatch: t('retro.mismatch'),
   })
@@ -210,9 +212,11 @@
     sessions: t('retro.def.sessions', { gap, bucket }),
     'resume (median)': t('retro.def.resume', { bucket }),
     closed: t('retro.def.closed', { bucket }),
+    sprint_done: t('retro.def.sprintDone'),
     'cycle p50': t('retro.def.cycleP50', { bucket }),
     'cycle p85': t('retro.def.cycleP85', { bucket }),
     'in progress': t('retro.def.inProgress', { bucket }),
+    sprint_in_progress: t('retro.def.sprintInProgress'),
     'wip age max': t('retro.def.wipAge', { bucket }),
     mismatch: t('retro.def.mismatch', { bucket }),
   })
@@ -363,6 +367,11 @@
   }
 
   function keysOf(b: RetroBucket, m: Metric): string[] {
+    // The membership rows keep their keys flat beside `keys`: the
+    // server emits sprint_done_keys on the bucket itself, where omitempty
+    // drops it whole on a week cut instead of leaving an empty array behind.
+    if (m.keys === 'sprint_done') return b.sprint_done_keys ?? []
+    if (m.keys === 'sprint_in_progress') return b.sprint_in_progress_keys ?? []
     return m.keys ? b.keys[m.keys] : []
   }
 
@@ -631,7 +640,10 @@
           </tr>
         </thead>
         <tbody>
-          {#each METRICS as m (m.key)}
+          <!-- The membership rows exist only when the columns are sprints:
+               a week has no members, and a dash row there would read as
+               data this server could not fill. -->
+          {#each METRICS.filter((m) => !m.sprintOnly || sprintCut) as m (m.key)}
             <tr class="border-t border-border-subtle">
               <th
                 class="sticky left-0 z-10 bg-bg-base py-2 pr-6 text-left align-top font-normal"

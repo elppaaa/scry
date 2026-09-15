@@ -110,16 +110,29 @@ export interface MetricSpec {
   unit: Unit
   direction: Direction
   /** Which key array opens the cell, if any. */
-  keys?: 'closed' | 'in progress' | 'mismatch' | 'cycle'
+  keys?: 'closed' | 'in progress' | 'mismatch' | 'cycle' | 'sprint_done' | 'sprint_in_progress'
+  /**
+   * The row exists only when the buckets are sprints: the two
+   * membership rows count what is in the sprint now, and a week has no
+   * members. The view drops them unless the report says it was cut by
+   * sprint — a dash row on every week would read as missing data.
+   */
+  sprintOnly?: boolean
 }
 
 export const METRIC_SPECS: MetricSpec[] = [
   { key: 'sessions', unit: 'count', direction: 'neutral' },
   { key: 'resume (median)', unit: 'seconds', direction: 'neutral' },
   { key: 'closed', unit: 'count', direction: 'up-good', keys: 'closed' },
+  // The two membership rows, each directly under the interval row
+  // it answers to. `key` is the JSON field (sprint_done, not the CLI's row
+  // name "in sprint · done") because that is what a cell reads; the label and
+  // the definition come from the view's own translations.
+  { key: 'sprint_done', unit: 'count', direction: 'up-good', keys: 'sprint_done', sprintOnly: true },
   { key: 'cycle p50', unit: 'days', direction: 'down-good', keys: 'cycle' },
   { key: 'cycle p85', unit: 'days', direction: 'down-good', keys: 'cycle' },
   { key: 'in progress', unit: 'count', direction: 'neutral', keys: 'in progress' },
+  { key: 'sprint_in_progress', unit: 'count', direction: 'neutral', keys: 'sprint_in_progress', sprintOnly: true },
   { key: 'wip age max', unit: 'days', direction: 'down-good' },
   { key: 'mismatch', unit: 'count', direction: 'neutral', keys: 'mismatch' },
 ]

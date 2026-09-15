@@ -240,7 +240,10 @@ func TestRetroTableAnswerOmitsPerBucketKeyLists(t *testing.T) {
 	}
 	for _, entry := range buckets {
 		b, _ := entry.(map[string]any)
-		for _, banned := range []string{"events", "keys"} {
+		// The two flat membership key lists (GDK-1846) are pruned too;
+		// the week cut never carries them, so the ban is only checked when
+		// the field is present at all.
+		for _, banned := range retroHeavyBucketFields {
 			if _, present := b[banned]; present {
 				t.Errorf("table answer still carries bucket.%s", banned)
 			}

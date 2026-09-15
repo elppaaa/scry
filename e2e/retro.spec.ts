@@ -183,6 +183,9 @@ test.describe('retro by sprint', () => {
     await page.getByTestId('retro-defs-toggle').click()
     // The default cut is weeks, and the definitions say so.
     await expect(page.getByTestId('retro-table')).toContainText('at week end')
+    // GDK-1846: a week has no members, so the two membership rows are not on
+    // this cut — not dash rows standing in for data nobody can read.
+    await expect(page.getByTestId('retro-table')).not.toContainText('in sprint ·')
 
     await page.getByTestId('retro-range').filter({ hasText: 'By sprint' }).click()
     // Sprint 41 and the running Sprint 42; Sprint 43 starts in the future.
@@ -193,9 +196,18 @@ test.describe('retro by sprint', () => {
     await expect(page.getByTestId('retro-week').last()).toContainText('running')
     // …and the sentence under every row names a sprint, not a week. The
     // fold survives the cut: a person who opened the definitions keeps them.
-    await expect(page.getByTestId('retro-def')).toHaveCount(8)
+    // The two membership rows joined the cut (GDK-1846), so ten rows carry a
+    // definition — the count moved with them.
+    await expect(page.getByTestId('retro-def')).toHaveCount(10)
     await expect(page.getByTestId('retro-table')).toContainText('at sprint end')
     await expect(page.getByTestId('retro-table')).not.toContainText('at week end')
+    // The membership rows sit under the interval rows they answer to, and
+    // their cells are doors like every other count (GDK-1846).
+    await expect(page.getByTestId('retro-table')).toContainText('in sprint · done')
+    await expect(page.getByTestId('retro-table')).toContainText('in sprint · in progress')
+    await expect(
+      page.locator('[data-testid="retro-cell"][data-metric="sprint_done"]').last(),
+    ).toContainText('6')
 
     // A cell is still a door.
     const cell = page.locator('[data-testid="retro-cell"][data-metric="closed"]').last()

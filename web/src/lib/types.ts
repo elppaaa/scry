@@ -606,6 +606,18 @@ export interface RetroBucket {
     keys_truncated?: boolean
   }
   /*
+   * The sprint membership rows: what is in the sprint now, not
+   * what happened inside its window — the answer to the question a column
+   * headed "Sprint 42" asks. Flat like the counts they sit beside and carried
+   * beside `keys`' arrays, but only under the sprint cut: a week bucket omits
+   * all four (omitempty on the server), which reads as "the row does not
+   * exist", not as a dash.
+   */
+  sprint_done?: number | null
+  sprint_in_progress?: number | null
+  sprint_done_keys?: string[]
+  sprint_in_progress_keys?: string[]
+  /*
    * The retro materials (GDK-1721..1725). Every one of these is optional and
    * every reader draws nothing when it is absent: the columns above are what
    * an older server sends, and a view that assumed the new shape would render

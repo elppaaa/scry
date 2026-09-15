@@ -23,7 +23,13 @@ import (
 // it (materials.go). `aging` is the one that is not per bucket — it is
 // measured at now — so a week does not apply to it and saying so is better
 // than quietly ignoring it.
-var OpenMetrics = []string{"closed", "in-progress", "mismatch", "cycle",
+//
+// `sprint-done` and `sprint-in-progress` answer only on the sprint cut, whose
+// columns have members (membership.go); a week cut has no sprint cell to open,
+// and the keys come back empty rather than the name being rejected — the same
+// way a bucket without surprises answers `surprises`.
+var OpenMetrics = []string{"closed", "in-progress", "sprint-done", "sprint-in-progress",
+	"mismatch", "cycle",
 	"aging", "unplanned", "surprises", "seen-not-moved", "moved-not-seen"}
 
 // ReportMetrics are the OpenMetrics answered by the report rather than by one
@@ -43,6 +49,10 @@ func KeysFor(b Bucket, metric string) []string {
 		return b.ClosedKeys
 	case "in-progress":
 		return b.InProgressKeys
+	case "sprint-done":
+		return b.SprintDoneKeys
+	case "sprint-in-progress":
+		return b.SprintInProgKeys
 	case "mismatch":
 		return b.MismatchKeys
 	case "cycle":

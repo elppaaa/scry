@@ -261,7 +261,10 @@ func (s *Server) toolRetro(args map[string]any) ([]contentItem, error) {
 // Without them the same two are 74 KB and 141 KB, and the numbers, the
 // definitions, the surprises, the per-type/per-epic closes, the cycle points,
 // the aging tail and the actions are all still there.
-var retroHeavyBucketFields = []string{"events", "keys"}
+// The sprint cut's two membership key lists (GDK-1846) ride the bucket
+// flat, beside `keys`, and are dropped for the same reason: `open` with
+// sprint-done / sprint-in-progress returns them on demand.
+var retroHeavyBucketFields = []string{"events", "keys", "sprint_done_keys", "sprint_in_progress_keys"}
 
 // retroHeavyKeySets are the material objects whose `keys` array is dropped;
 // their counts stay.

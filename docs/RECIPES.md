@@ -577,10 +577,14 @@ needs no join at all and `= 0` is exactly the `gadak ready` filter.
 retro` prints the weekly table (sessions, resume, wip age p85, wip age max,
 in progress, closed, cycle p50, cycle p85, mismatch) with a definition under
 every row; these three are the ones worth re-deriving when a number looks
-wrong. They key on status ids through `status_catalog`, on `status_category`,
-or on frozen flow columns (`resolved_at`, `cycle_hours`) — never on the
-display name beside them, which is zero rows on an account that names
-statuses in another language. The mirror stores UTC timestamps, while
+wrong. Under `--by-sprint` the table grows two membership rows —
+`in sprint · done`, `in sprint · in progress` — which are the simplest
+queries in this file, because they read one live column and no interval
+(the recipe after `closed` below). All of these key on status ids through
+`status_catalog`, on `status_category`, or on frozen flow columns
+(`resolved_at`, `cycle_hours`) — never on the display name beside them,
+which is zero rows on an account that names statuses in another language.
+The mirror stores UTC timestamps, while
 retro's week edges are local midnight, so a hand query states the bound in
 UTC: for the ISO week starting Monday 2026-08-24 in a UTC+9 workspace, the
 bound is `2026-08-23T15:00:00.000Z` (`gadak retro --json` prints the same
@@ -604,6 +608,21 @@ where c.field = 'status'
   and c.at >= '2026-08-23T15:00:00.000Z'
   and c.at <  '2026-08-30T15:00:00.000Z'
   and prev.status_id is null
+```
+
+`in sprint · done` / `in sprint · in progress` — the sprint cut's membership
+rows. Every other row of that table answers an interval, so a
+column headed "Sprint 42" used to print the whole tracker's numbers under
+it; these two count what the sprint actually holds, now. Membership is a
+live column, so there is no window to state and no changelog to walk — swap
+the category for the other row:
+
+```sql
+select count(*) as in_sprint_done
+from issues i
+join items it on it.id = i.item_id
+where i.sprint_id = (select id from sprints where name = 'Sprint 42')
+  and i.status_category = 'done'
 ```
 
 `wip age p85` — the 85th percentile of how long the issues now in progress

@@ -21,7 +21,7 @@ import (
 	"github.com/midagedev/gadak/internal/store"
 )
 
-const retroUsageLine = "usage: gadak retro [--since 14d|<N>d|<N>w | --by-sprint [--board <id>]] [--session-gap " + config.DefaultRetroSessionGap + "] [--json] [--explain] [--open closed|in-progress|mismatch|cycle|aging|unplanned|surprises|seen-not-moved|moved-not-seen [--week N]] [--no-open]"
+const retroUsageLine = "usage: gadak retro [--since 14d|<N>d|<N>w | --by-sprint [--board <id>]] [--session-gap " + config.DefaultRetroSessionGap + "] [--json] [--explain] [--open closed|in-progress|sprint-done|sprint-in-progress|mismatch|cycle|aging|unplanned|surprises|seen-not-moved|moved-not-seen [--week N]] [--no-open]"
 
 // retroDefaultSince is two ISO weeks, enough for a "this week against last
 // week" read without paging.

@@ -281,6 +281,12 @@ type Bucket struct {
 	CycleP85 *float64 // days, nearest-rank 85th percentile of the same
 	Mismatch int
 
+	// The sprint membership rows (membership.go): what is in this
+	// sprint now, as opposed to what happened inside its window. Nil on week
+	// columns, where the rows do not exist.
+	SprintDone   *int
+	SprintInProg *int
+
 	// The issue keys behind the counts, sorted by key, one entry per
 	// counted item (mismatch: per counted comment), so each count is the
 	// length of its slice. CycleKeys has no count field of its own: its
@@ -290,6 +296,12 @@ type Bucket struct {
 	InProgressKeys []string
 	MismatchKeys   []string
 	CycleKeys      []string
+
+	// SprintDoneKeys and SprintInProgKeys are the members behind the two
+	// membership rows, same rule as the slices above: one entry per counted
+	// issue, sorted, so each count is the length of its slice (membership.go).
+	SprintDoneKeys   []string
+	SprintInProgKeys []string
 
 	// closedItems and cycleItems are the item ids behind ClosedKeys and
 	// CycleKeys, kept in lockstep with them. The materials below decompose
@@ -553,6 +565,17 @@ func Compute(ctx context.Context, db *sql.DB, me store.FeedIdentity, since time.
 	issCategory, issChangedAt, err := loadIssues(ctx, db)
 	if err != nil {
 		return rep, err
+	}
+
+	// The sprint membership rows (membership.go): a current-state answer, so
+	// it rides the issue maps above and needs neither the changelog nor the
+	// window — only the sprint cut has the columns for it.
+	if opts.BySprint {
+		var sprintItems map[int64][]string
+		if sprintItems, err = loadSprintIssues(ctx, db); err != nil {
+			return rep, err
+		}
+		fillSprintMembership(rep.Buckets, itemByID, issCategory, sprintItems)
 	}
 
 	// Cycle columns (v43), only when the schema has them — see the schema
@@ -1466,6 +1489,13 @@ func (r Report) Definitions() [][2]string {
 		[2]string{"wip age max", fmt.Sprintf("the oldest in-progress issue at %s end, in days", b)},
 		[2]string{"in progress", fmt.Sprintf("issues in progress at %s end", b)},
 		[2]string{"closed", fmt.Sprintf("issues that entered a done status during the %s (status ids resolved through status_catalog)", b)},
+	)
+	// The membership pair sits between closed and the cycle rows it stands
+	// beside in the table, and only the sprint cut defines it.
+	if r.BySprint {
+		defs = append(defs, sprintMembershipDefinitions()...)
+	}
+	defs = append(defs,
 		[2]string{"cycle p50", fmt.Sprintf("median of cycle_hours — first entry into progress to the latest done entry — in days, over issues resolved during the %s that are done now and were never reopened (reopen_count = 0)", b)},
 		[2]string{"cycle p85", fmt.Sprintf("nearest-rank 85th percentile of cycle_hours — first entry into progress to the latest done entry — in days, over issues resolved during the %s that are done now and were never reopened (reopen_count = 0)", b)},
 		[2]string{"mismatch", "comments claiming the work is finished on issues not done now (heuristic: a done-word standing on its own, negations and quoted text excluded; only comments newer than the issue's last status change count)"},
@@ -1572,7 +1602,7 @@ func (r Report) Table() string {
 		}
 		rows = append(rows, row)
 	}
-	// The three metric shapes the nine rows come in. metricRow is the row
+	// The three metric shapes the table's rows come in. metricRow is the row
 	// writer; these bind a shape to it so a new day-valued or counted row is
 	// one line, not the cell/change pair every row used to spell inline —
 	// four days rows and two counted rows shared those pairs by hand.
@@ -1605,6 +1635,13 @@ func (r Report) Table() string {
 	metricRowDays("wip age max", func(b *Bucket) *float64 { return b.WipMax })
 	metricRowCount("in progress", func(b Bucket) *int { return b.InProg })
 	metricRowCount("closed", func(b Bucket) *int { return b.Closed })
+	// The membership pair, directly under the closed row it answers to — and
+	// only on the sprint cut, whose columns name a membership at all. The week
+	// cut keeps its nine rows.
+	if r.BySprint {
+		metricRowCount("in sprint · done", func(b Bucket) *int { return b.SprintDone })
+		metricRowCount("in sprint · in progress", func(b Bucket) *int { return b.SprintInProg })
+	}
 	metricRowDays("cycle p50", func(b *Bucket) *float64 { return b.CycleP50 })
 	metricRowDays("cycle p85", func(b *Bucket) *float64 { return b.CycleP85 })
 	metricRowInt("mismatch", func(b Bucket) int { return b.Mismatch })
@@ -1673,6 +1710,14 @@ type BucketJSON struct {
 	CycleP85   *float64   `json:"cycle p85"`
 	Mismatch   int        `json:"mismatch"`
 	Keys       BucketKeys `json:"keys"`
+
+	// The sprint membership rows, flat like the counts they sit
+	// beside in the table. Absent on the week cut, where the rows do not
+	// exist — omitempty keeps a week bucket byte-identical to what it was.
+	SprintDone       *int     `json:"sprint_done,omitempty"`
+	SprintInProg     *int     `json:"sprint_in_progress,omitempty"`
+	SprintDoneKeys   []string `json:"sprint_done_keys,omitempty"`
+	SprintInProgKeys []string `json:"sprint_in_progress_keys,omitempty"`
 
 	// The materials (materials.go): what happened in the bucket. Every
 	// array is present, empty rather than null, so a renderer can iterate
@@ -1858,6 +1903,18 @@ func (r Report) JSON() Doc {
 		if b.CycleP85 != nil {
 			v := round(*b.CycleP85)
 			j.CycleP85 = &v
+		}
+		// The membership pair only exists on the sprint cut; filling it
+		// unconditionally would put empty arrays on every week bucket and
+		// break omitempty's "absent when the row does not exist".
+		if r.BySprint {
+			j.SprintDone = ptrOrNil(b.SprintDone)
+			j.SprintInProg = ptrOrNil(b.SprintInProg)
+			j.SprintDoneKeys, _ = capKeys(b.SprintDoneKeys)
+			j.SprintInProgKeys, _ = capKeys(b.SprintInProgKeys)
+			if len(b.SprintDoneKeys) > MaxJSONKeys || len(b.SprintInProgKeys) > MaxJSONKeys {
+				j.Keys.KeysTruncated = true
+			}
 		}
 		out.Buckets = append(out.Buckets, j)
 	}

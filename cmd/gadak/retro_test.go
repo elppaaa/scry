@@ -652,8 +652,11 @@ func TestRetroOpenCell(t *testing.T) {
 		out, err := capture(t, func() error { return cmdRetro([]string{"--open", "bogus"}) })
 		// The value list grew its fourth entry with the cycle rows
 		// (2026-09-07); the full list is the assertion so a future fifth
-		// cannot quietly shrink this error back down.
-		if err == nil || !strings.Contains(err.Error(), "closed, in-progress, mismatch, cycle") {
+		// cannot quietly shrink this error back down. The sprint membership
+		// pair joined the cells (GDK-1846, 2026-09-16) and the pin moved with
+		// the enum — the red run of the old pin against the new list is
+		// scratch/t1846-cmd-pin-red.txt.
+		if err == nil || !strings.Contains(err.Error(), "closed, in-progress, sprint-done, sprint-in-progress, mismatch, cycle") {
 			t.Fatalf("--open bogus: %v (out %q)", err, out)
 		}
 	})
