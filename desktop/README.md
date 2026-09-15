@@ -100,13 +100,19 @@ exe path changes. To remove it: `gadak-desktop.exe --unregister-gadak-protocol`.
 
 ### Linux build prerequisites
 
-wails v3 (`v3.0.0-beta.17`, `desktop/go.mod`) compiles the Linux host with
-`#cgo pkg-config: gtk4 webkitgtk-6.0`. `CGO_ENABLED=0` does not compile (see
+wails v3 (`v3.0.0-beta.22`, `desktop/go.mod`) compiles the Linux host with
+`#cgo pkg-config: gtk4 webkitgtk-6.0`
+(`pkg/application/linux_cgo.go:17`). `CGO_ENABLED=0` does not compile (see
 the comment on the desktop job in `.github/workflows/ci.yml`). Do not pass
-`-tags gtk3`: that is the webkit2gtk 4.1 legacy stack, and wails plans to
-remove it in v3.1. GTK4 `gtk_application_new` uses `G_APPLICATION_NON_UNIQUE`
-(`pkg/application/linux_cgo.h`); second-launch focusing is wails
-`SingleInstanceOptions` (session-bus name on Linux), not GTK uniqueness.
+`-tags gtk3`: that is the webkit2gtk 4.1 legacy stack
+(`pkg/application/linux_cgo_gtk3.go:19`,
+`pkg-config: gtk+-3.0 webkit2gtk-4.1`), which wails has said it will remove
+in v3.1 — the removal plan is not restated anywhere in the beta.22 source
+tree, so the legacy-stack fact, not the date, is the reason. GTK4
+`gtk_application_new` uses `G_APPLICATION_NON_UNIQUE`
+(`pkg/application/linux_cgo.h:22`, applied at `linux_cgo.go:152`);
+second-launch focusing is wails `SingleInstanceOptions` (session-bus name
+on Linux), not GTK uniqueness.
 
 Development packages as listed by that wails release's doctor (not installed
 or compiled against in this repository's CI):
@@ -129,7 +135,7 @@ only the directory tree for the same reason.
 
 ### Windows build prerequisites
 
-wails v3 (`v3.0.0-beta.17`, `desktop/go.mod`) talks to WebView2 over COM. The
+wails v3 (`v3.0.0-beta.22`, `desktop/go.mod`) talks to WebView2 over COM. The
 pack script sets `CGO_ENABLED=0`. This script has not been executed on a
 Windows machine in this repository (the authoring runner is darwin).
 
@@ -151,16 +157,18 @@ includes the Evergreen runtime and that many Windows 10 machines already
 have it via Edge; **this repository has not checked either claim on a
 Windows machine.**
 
-What happens if the runtime is missing is taken from the wails v3.0.0-beta.17
+What happens if the runtime is missing is taken from the wails v3.0.0-beta.22
 source this module links, **not from launching `gadak-desktop.exe` on a
 machine without WebView2** (that has not been done):
 
 - `webviewloader` reports `no webview2 found`
-  (`internal/webview2/webviewloader/find_dll.go`).
-- `Chromium.Embed` waits at most 30s for the controller (`embedTimeout` /
-  `pumpUntilInited` in `internal/webview2/pkg/edge/chromium.go`). A
-  controller that never becomes ready calls `errorCallback` with a timeout
-  instead of blocking forever on `GetMessageW`.
+  (`internal/webview2/webviewloader/find_dll.go:16`).
+- `Chromium.Embed` waits at most 60s for the controller (`embedTimeout` /
+  `pumpUntilInited` in `internal/webview2/pkg/edge/chromium.go:237`; 60s
+  in every beta in the local module cache — 15, 17, 22 — so the 30s this
+  README used to name was stale). A controller that never becomes ready
+  calls `errorCallback` with a timeout instead of blocking forever on
+  `GetMessageW`.
 - `Chromium.errorCallback` still calls `os.Exit(1)` after the handler
   (`internal/webview2/pkg/edge/chromium.go`).
 - `gadak-desktop` sets an `ErrorHandler` that runs `desktopFatal`
