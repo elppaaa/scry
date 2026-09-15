@@ -568,7 +568,7 @@ func runConfluencePass(ctx context.Context, c *confluence.Client, cfg *config.Co
 		}
 	}
 	if len(fullyListed) > 0 {
-		deleted, err := deleteAbsentConfluencePages(ctx, c, db, spaces, fullyListed, beforeListings)
+		deleted, err := deleteAbsentConfluencePages(ctx, c, db, spaces, fullyListed, beforeListings, opts.logf)
 		if err != nil {
 			return record(ctx, cfg, db, ConfluenceSourceID, err)
 		}
@@ -736,11 +736,84 @@ func resolveSpaceScope(ctx context.Context, c *confluence.Client, cfg *config.Co
 	return spaces, verified, nil
 }
 
+// confirmVerdict is deleteAbsentConfluencePages's reading of one candidate's
+// confirm GET (c.Page). One pure classifier owns the verdict so every status
+// has exactly one owner and tests can pin each row (GDK-1887). Before it,
+// any confirm error that was not ErrNotFound returned from the whole pass —
+// one undecidable candidate (a 400) silently froze every other deletion,
+// every pass, forever.
+type confirmVerdict int
+
+const (
+	confirmCheckPage confirmVerdict = iota // err == nil: apply today's status/space check
+	confirmGone                            // the page left this credential's view: delete (guarded)
+	confirmKeep                            // this candidate is undecidable this pass: keep the row, continue
+	confirmAbort                           // the pass cannot trust any answer: return the error
+)
+
+// classifyReconcileConfirm sorts one confirm-GET error. The readings follow
+// the fetch path's existing attitude (fetchPageRecord): ErrNotFound is
+// "deleted or view-restricted between listing and fetch — not a failure",
+// and 410 joins it — a page this credential can no longer read must not
+// stay in the cache and the FTS index. A dead credential
+// (IsRejectedCredential), a cancelled context, a throttle (429) or a server
+// error (≥500) aborts the pass loudly: those answers say nothing about the
+// page, and the next pass retries. Any other 4xx is an answer about this
+// request only — the candidate is kept for the next pass and the rest of
+// the pass proceeds. Anything unrecognized (network, decode) aborts.
+//
+// 403 is deliberately absent from the gone rule: atlhttp.Do folds 401 and
+// 403 into a rejected credential before the API error mapping runs
+// (internal/atlhttp/auth.go authFromStatus), so a wire 403 arrives here as
+// IsRejectedCredential — confirmAbort — and a Status-403 APIError cannot
+// come off the wire. Whether a restricted page should instead read as gone
+// is an open lead decision (GDK-1887); a synthetic APIError{403} falls
+// through to the undecidable default below.
+func classifyReconcileConfirm(err error) confirmVerdict {
+	switch {
+	case err == nil:
+		return confirmCheckPage
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		return confirmAbort
+	case IsRejectedCredential(err):
+		return confirmAbort
+	case errors.Is(err, confluence.ErrNotFound):
+		return confirmGone
+	}
+	var apiErr *confluence.APIError
+	if errors.As(err, &apiErr) {
+		switch {
+		case apiErr.Status == http.StatusGone:
+			return confirmGone
+		case apiErr.Status == http.StatusTooManyRequests || apiErr.Status >= 500:
+			return confirmAbort
+		case apiErr.Status >= 400 && apiErr.Status < 500:
+			return confirmKeep
+		}
+	}
+	return confirmAbort
+}
+
+// apiErrStatus reports the APIError status inside err, 0 when there is none.
+// Call it only where classifyReconcileConfirm already proved the shape
+// (confirmKeep): the pair logged for a kept candidate names the status the
+// pass could not decide on.
+func apiErrStatus(err error) int {
+	var apiErr *confluence.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.Status
+	}
+	return 0
+}
+
 // deleteAbsentConfluencePages compares only spaces whose complete, unfiltered
 // page listing succeeded. It considers only rows present before that listing,
 // confirms each missing candidate by direct GET (search pagination may omit a
 // live page), then conditionally deletes unchanged rows with delta tombstones.
-func deleteAbsentConfluencePages(ctx context.Context, c *confluence.Client, db *store.DB, scope []string, seen map[string]map[string]bool, before map[string]map[string]store.PageStamp) (int, error) {
+// A candidate whose confirm GET is undecidable (classifyReconcileConfirm →
+// confirmKeep) is kept and logged — it costs only itself, not the pass
+// (GDK-1887).
+func deleteAbsentConfluencePages(ctx context.Context, c *confluence.Client, db *store.DB, scope []string, seen map[string]map[string]bool, before map[string]map[string]store.PageStamp, logf func(string, ...any)) (int, error) {
 	guards := map[string]store.PageStamp{}
 	kept := map[string]bool{}
 	for _, space := range scope {
@@ -751,21 +824,42 @@ func deleteAbsentConfluencePages(ctx context.Context, c *confluence.Client, db *
 		spaces = append(spaces, space)
 	}
 	sort.Strings(spaces)
+	var keptPairs []string
 	for _, space := range spaces {
 		for id, stamp := range before[space] {
 			if !seen[space][id] {
 				page, err := c.Page(ctx, id)
-				if err != nil && !errors.Is(err, confluence.ErrNotFound) {
+				switch classifyReconcileConfirm(err) {
+				case confirmAbort:
 					return 0, err
-				}
-				// Search pagination can omit a still-current page under concurrent
-				// edits. A direct read must confirm it really left the live set.
-				if err == nil && (page.Status == "" || page.Status == "current") && (page.Space.Key == "" || kept[page.Space.Key]) {
+				case confirmKeep:
+					// An answer about this request, not about the page: keep
+					// the row for the next pass and let the other candidates
+					// decide.
+					keptPairs = append(keptPairs, fmt.Sprintf("%s=%d", id, apiErrStatus(err)))
 					continue
+				case confirmGone:
+					// Search pagination can omit a still-current page under
+					// concurrent edits. A direct read must confirm it really
+					// left the live set; ErrNotFound and 410 both mean it
+					// left this credential's view.
+					guards[id] = stamp
+				case confirmCheckPage:
+					if (page.Status == "" || page.Status == "current") && (page.Space.Key == "" || kept[page.Space.Key]) {
+						continue
+					}
+					guards[id] = stamp
 				}
-				guards[id] = stamp
 			}
 		}
+	}
+	if len(keptPairs) > 0 {
+		sort.Strings(keptPairs)
+		shown := keptPairs
+		if len(shown) > 5 {
+			shown = append(shown[:5:5], "…")
+		}
+		logf("confluence: reconcile kept %d candidate(s) it could not confirm: %s", len(keptPairs), strings.Join(shown, ", "))
 	}
 	return db.DeletePagesIfUnchanged(ctx, ConfluenceSourceID, guards)
 }

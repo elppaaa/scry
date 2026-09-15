@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -44,6 +45,11 @@ type confFixture struct {
 	// failIfCQLContains, when non-empty, makes serveSearch return 400 for a
 	// matching CQL (not 500: atlhttp would retry).
 	failIfCQLContains string
+	// bodyStatus, when it holds a page id, makes that id's body GET answer
+	// the given HTTP status instead of the page — the confirm path's failure
+	// injection (GDK-1887). Checked before the page lookup, so a status can
+	// be injected whether or not the fixture still serves the page.
+	bodyStatus map[string]int
 	// omitSearchIDs simulates a successful but malformed page listing. A
 	// reconcile must never treat those rows as proof that all pages vanished.
 	omitSearchIDs bool
@@ -191,6 +197,11 @@ func (f *confFixture) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		f.bodyGETs = append(f.bodyGETs, id)
+		if code := f.bodyStatus[id]; code != 0 {
+			w.WriteHeader(code)
+			_, _ = w.Write([]byte("injected body failure"))
+			return
+		}
 		p := f.pages[id]
 		if p == nil {
 			http.NotFound(w, r)
@@ -1818,6 +1829,231 @@ func TestConfluenceScheduledReconcileConfirmsOnlyMissingPage(t *testing.T) {
 	}
 	if got := f.bodyFetches(); len(got) != 1 || got[0] != "1002" {
 		t.Fatalf("reconcile should confirm only the missing candidate, got body requests %v", got)
+	}
+}
+
+// TestConfluenceReconcileConfirmVerdicts pins how the reconcile confirm GET
+// sorts a failed candidate (classifyReconcileConfirm, GDK-1887): one bad
+// candidate must cost only itself. An undecidable 4xx keeps the row and lets
+// the pass continue; a dead credential, a throttle or a server error still
+// fails the pass loudly; 410 shares ErrNotFound's gone reading (the fetch
+// path already reads "deleted or restricted" that way,
+// fetchPageRecord). The 403 case pins what atlhttp actually does — Do folds
+// 401/403 into a rejected credential before the API error mapping
+// (internal/atlhttp/auth.go), so a wire 403 aborts the pass as a dead
+// credential, never an APIError{403}; whether it should instead read as
+// gone is an open lead decision.
+func TestConfluenceReconcileConfirmVerdicts(t *testing.T) {
+	ctx := context.Background()
+	// prepare mirrors AAA once — 1001, 1002 and, when extra is set, one more
+	// page — then removes 1002 (and extra) from the fixture so the next
+	// reconcile pass has to confirm them by direct GET.
+	prepare := func(t *testing.T, extra string) (*confFixture, *confluence.Client, *mirror, *config.Config) {
+		t.Helper()
+		f := newConfFixture(t)
+		if extra != "" {
+			f.pages[extra] = &confPage{ID: extra, Space: "AAA", Title: "Extra AAA page", Version: 1,
+				When: "2026-08-10T09:00:00.000Z", BodyADF: confADF("extra aaa")}
+		}
+		client := f.start()
+		db := newMirror(t)
+		cfg := confCfg([]string{"AAA"})
+		if _, err := RunConfluence(ctx, cfg, db.DB, Options{Full: true, ConfluenceClient: client}); err != nil {
+			t.Fatal(err)
+		}
+		f.mu.Lock()
+		delete(f.pages, "1002")
+		if extra != "" {
+			delete(f.pages, extra)
+		}
+		f.mu.Unlock()
+		return f, client, db, cfg
+	}
+	// injectStatus points the fixture's body-status override at the given
+	// ids before the reconcile pass runs.
+	injectStatus := func(f *confFixture, ids map[string]int) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if f.bodyStatus == nil {
+			f.bodyStatus = map[string]int{}
+		}
+		for id, code := range ids {
+			f.bodyStatus[id] = code
+		}
+	}
+	// mirrored reports whether the mirror still holds a page key.
+	mirrored := func(t *testing.T, db *mirror, key string) bool {
+		t.Helper()
+		pages, err := db.PageLites(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range pages {
+			if p.Key == key {
+				return true
+			}
+		}
+		return false
+	}
+	tombstoned := func(t *testing.T, db *mirror, key string) bool {
+		t.Helper()
+		gone, err := db.DeletedKeysSince(ctx, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return containsString(gone, key)
+	}
+
+	t.Run("undecidable 400 keeps the candidate and the pass", func(t *testing.T) {
+		f, client, db, cfg := prepare(t, "")
+		injectStatus(f, map[string]int{"1002": http.StatusBadRequest})
+		var logs []string
+		res, err := RunConfluence(ctx, cfg, db.DB, Options{Reconcile: true, ConfluenceClient: client,
+			Log: func(line string) { logs = append(logs, line) }})
+		if err != nil {
+			t.Fatalf("one 400 candidate must not fail the pass: %v", err)
+		}
+		if res.Deleted != 0 {
+			t.Fatalf("deleted = %d, want 0 (undecidable is not gone)", res.Deleted)
+		}
+		if !mirrored(t, db, "1002") {
+			t.Fatal("undecidable candidate must keep its mirror row")
+		}
+		if tombstoned(t, db, "1002") {
+			t.Fatal("undecidable candidate must not leave a tombstone")
+		}
+		// The debugging layer: the pass names what it could not confirm, the
+		// same way the scan names its refetch reasons.
+		want := "confluence: reconcile kept 1 candidate(s) it could not confirm: 1002=400"
+		if !containsString(logs, want) {
+			t.Errorf("log lines have no %q:\n%s", want, strings.Join(logs, "\n"))
+		}
+	})
+
+	t.Run("400 candidate does not cost the 404 one", func(t *testing.T) {
+		// The defect's heart: two candidates go missing, one answers 400 and
+		// one 404 — the pass must still delete the 404 one.
+		f, client, db, cfg := prepare(t, "1003")
+		injectStatus(f, map[string]int{"1002": http.StatusBadRequest})
+		res, err := RunConfluence(ctx, cfg, db.DB, Options{Reconcile: true, ConfluenceClient: client})
+		if err != nil {
+			t.Fatalf("one 400 candidate must not fail the pass: %v", err)
+		}
+		if res.Deleted != 1 {
+			t.Fatalf("deleted = %d, want 1 (the 404 candidate is gone)", res.Deleted)
+		}
+		if !tombstoned(t, db, "1003") {
+			t.Fatal("the 404 candidate must leave a tombstone")
+		}
+		if !mirrored(t, db, "1002") {
+			t.Fatal("the 400 candidate must keep its mirror row")
+		}
+		if tombstoned(t, db, "1002") {
+			t.Fatal("the 400 candidate must not leave a tombstone")
+		}
+	})
+
+	t.Run("410 reads as gone like 404", func(t *testing.T) {
+		f, client, db, cfg := prepare(t, "")
+		injectStatus(f, map[string]int{"1002": http.StatusGone})
+		res, err := RunConfluence(ctx, cfg, db.DB, Options{Reconcile: true, ConfluenceClient: client})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Deleted != 1 {
+			t.Fatalf("deleted = %d, want 1 (410 left this credential's view)", res.Deleted)
+		}
+		if !tombstoned(t, db, "1002") {
+			t.Fatal("the 410 candidate must leave a tombstone")
+		}
+	})
+
+	t.Run("500 fails the pass and keeps the mirror", func(t *testing.T) {
+		f, client, db, cfg := prepare(t, "")
+		injectStatus(f, map[string]int{"1002": http.StatusInternalServerError})
+		if _, err := RunConfluence(ctx, cfg, db.DB, Options{Reconcile: true, ConfluenceClient: client}); err == nil {
+			t.Fatal("server error on the confirm GET must fail the pass")
+		}
+		if !mirrored(t, db, "1002") || tombstoned(t, db, "1002") {
+			t.Fatal("failed pass must leave the mirror unchanged")
+		}
+	})
+
+	t.Run("401 fails the pass as a rejected credential", func(t *testing.T) {
+		f, client, db, cfg := prepare(t, "")
+		injectStatus(f, map[string]int{"1002": http.StatusUnauthorized})
+		_, err := RunConfluence(ctx, cfg, db.DB, Options{Reconcile: true, ConfluenceClient: client})
+		if err == nil {
+			t.Fatal("401 on the confirm GET must fail the pass")
+		}
+		if !IsRejectedCredential(err) {
+			t.Fatalf("401 must surface as a rejected credential, got %v", err)
+		}
+		if !mirrored(t, db, "1002") || tombstoned(t, db, "1002") {
+			t.Fatal("failed pass must leave the mirror unchanged")
+		}
+	})
+
+	t.Run("403 fails the pass as a rejected credential (atlhttp, lead decision pending)", func(t *testing.T) {
+		// atlhttp.Do folds 403 into ErrAuth before the API error mapping, so
+		// the classifier never sees an APIError{403} off the wire. This pins
+		// today's classification; reading a restricted page as gone instead
+		// is GDK-1887's open lead decision.
+		f, client, db, cfg := prepare(t, "")
+		injectStatus(f, map[string]int{"1002": http.StatusForbidden})
+		_, err := RunConfluence(ctx, cfg, db.DB, Options{Reconcile: true, ConfluenceClient: client})
+		if err == nil {
+			t.Fatal("403 on the confirm GET must fail the pass (rejected credential)")
+		}
+		if !IsRejectedCredential(err) {
+			t.Fatalf("403 must surface as a rejected credential, got %v", err)
+		}
+		if !mirrored(t, db, "1002") || tombstoned(t, db, "1002") {
+			t.Fatal("failed pass must leave the mirror unchanged")
+		}
+	})
+}
+
+// TestClassifyReconcileConfirm pins every rule of the confirm classifier,
+// including wrapping: the wire shape is fmt.Errorf-wrapped (confluence
+// client call), so errors.As must see through it. The synthetic
+// APIError{403} row documents the deliberate hold: a wire 403 never arrives
+// as an APIError (atlhttp.Do folds 401/403 into a rejected credential
+// first), so the gone-rule for 403 is not implemented (GDK-1887, lead
+// decision) and the synthetic value falls to the undecidable default.
+func TestClassifyReconcileConfirm(t *testing.T) {
+	wrapAPI := func(status int) error {
+		return fmt.Errorf("GET /rest/api/content/1002?expand=…: %w",
+			&confluence.APIError{Status: status, Body: "injected"})
+	}
+	cases := []struct {
+		name string
+		err  error
+		want confirmVerdict
+	}{
+		{"nil", nil, confirmCheckPage},
+		{"canceled", context.Canceled, confirmAbort},
+		{"deadline wrapped", fmt.Errorf("confirm: %w", context.DeadlineExceeded), confirmAbort},
+		// The wire shape of a 401/403 (atlhttp auth.go):
+		{"rejected credential (wire 401/403)",
+			fmt.Errorf("GET /rest/api/content/1002: %w (401 Unauthorized)", confluence.ErrAuth), confirmAbort},
+		{"not found (wire 404)",
+			fmt.Errorf("GET /rest/api/content/1002: %w: page gone", confluence.ErrNotFound), confirmGone},
+		{"gone 410", wrapAPI(http.StatusGone), confirmGone},
+		{"gone 410 wrapped deeper", fmt.Errorf("outer: %w", wrapAPI(http.StatusGone)), confirmGone},
+		{"throttle 429", wrapAPI(http.StatusTooManyRequests), confirmAbort},
+		{"server 500", wrapAPI(http.StatusInternalServerError), confirmAbort},
+		{"server 503", wrapAPI(http.StatusServiceUnavailable), confirmAbort},
+		{"other 4xx 400", wrapAPI(http.StatusBadRequest), confirmKeep},
+		{"other 4xx 409", wrapAPI(http.StatusConflict), confirmKeep},
+		{"synthetic 403 APIError falls to keep (wire 403 is a rejected credential; see hold)",
+			fmt.Errorf("…: %w", &confluence.APIError{Status: http.StatusForbidden}), confirmKeep},
+		{"network error", fmt.Errorf("GET /rest/api/content/1002: %w", errors.New("connection reset by peer")), confirmAbort},
+	}
+	for _, tc := range cases {
+		if got := classifyReconcileConfirm(tc.err); got != tc.want {
+			t.Errorf("%s: classifyReconcileConfirm(%v) = %d, want %d", tc.name, tc.err, got, tc.want)
+		}
 	}
 }
 
