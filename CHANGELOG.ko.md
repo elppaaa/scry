@@ -61,7 +61,9 @@
 새 스페이스로 따라갑니다 — 전에는 reconcile이 옛 스페이스 아래 그대로 뒀습니다
 ([GDK-1886]). Linear에도 Jira와
 위키가 이미 하던 일이 붙었습니다. 원본에서 지운 이슈는 gadak이 다음에 그 이슈를
-다시 읽는 순간 캐시에서 빠집니다 ([GDK-1889]).
+다시 읽는 순간 캐시에서 빠집니다 ([GDK-1889]). 첨부 크기를 문자열이 아니라 숫자로
+답하는 Confluence 사이트에서 위키 동기화가 첫 목록에서 멈추던 것도 고쳤습니다
+([GDK-1900]).
 
 ## v0.22.1 — 2026-09-14
 
@@ -1600,3 +1602,4 @@ FlagSet에서 생성되어 어긋날 수 없습니다. 즐겨찾기가 미러에
 [GDK-1884]: https://gadak.dev/backlog/#/?ks=GDK-1884
 [GDK-1886]: https://gadak.dev/backlog/#/?ks=GDK-1886
 [GDK-1889]: https://gadak.dev/backlog/#/?ks=GDK-1889
+[GDK-1900]: https://gadak.dev/backlog/#/?ks=GDK-1900

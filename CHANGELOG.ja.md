@@ -62,6 +62,8 @@ reconcileでも新しいスペースへ付いていきます—以前はreconcil
 残したままでした([GDK-1886])。
 LinearにもJiraとWikiが既にしていたことが加わりました。原本で削除した課題は、
 gadakが次にその課題を読み直した時点でキャッシュから消えます([GDK-1889])。
+添付のサイズを文字列ではなく数値で返すConfluenceサイトで、Wiki同期が最初の一覧で
+止まっていたのも直しました([GDK-1900])。
 
 ## v0.22.1 — 2026-09-14
 
@@ -1689,3 +1691,4 @@ Jiraサイトでも同じ意味になる軸をキーにします。解決の判�
 [GDK-1884]: https://gadak.dev/backlog/#/?ks=GDK-1884
 [GDK-1886]: https://gadak.dev/backlog/#/?ks=GDK-1886
 [GDK-1889]: https://gadak.dev/backlog/#/?ks=GDK-1889
+[GDK-1900]: https://gadak.dev/backlog/#/?ks=GDK-1900

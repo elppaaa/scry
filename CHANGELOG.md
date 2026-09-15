@@ -75,7 +75,9 @@ alone ([GDK-1884]; #104, thanks @wafe). A page moved between two synced spaces
 now follows to its new space on the hourly reconcile, not only on a full
 sync — before, the reconcile left it filed under the old one ([GDK-1886]). Linear gets what the Jira and
 wiki paths already had: an issue deleted at the origin leaves the cache the
-next time gadak re-reads it, instead of surviving there ([GDK-1889]).
+next time gadak re-reads it, instead of surviving there ([GDK-1889]). And a
+Confluence site that reports attachment sizes as numbers rather than strings
+no longer stops the wiki sync at the first listing ([GDK-1900]).
 
 ## v0.22.1 — 2026-09-14
 
@@ -1689,3 +1691,4 @@ priority sorting keyed on `priority_rank`.
 [GDK-1884]: https://gadak.dev/backlog/#/?ks=GDK-1884
 [GDK-1886]: https://gadak.dev/backlog/#/?ks=GDK-1886
 [GDK-1889]: https://gadak.dev/backlog/#/?ks=GDK-1889
+[GDK-1900]: https://gadak.dev/backlog/#/?ks=GDK-1900
