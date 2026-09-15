@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
-import { issueContext, pageContext } from './artifact-context'
-import type { DetailResponse, IssueLite, PageDetail } from './types'
+import { issueContext } from './artifact-context'
+import type { DetailResponse, IssueLite } from './types'
 
 /*
  * GDK-1897: artifact-context is the single owner of what an artifact frame
@@ -106,26 +106,6 @@ function detailFixture(over: Partial<DetailResponse> = {}): DetailResponse {
   }
 }
 
-function pageFixture(over: Partial<PageDetail> = {}): PageDetail {
-  return {
-    key: 'STD~42',
-    title: 'Runbook: artifact frames',
-    space_key: 'STD',
-    space_name: 'Standard',
-    parent_id: null,
-    author: 'Milo',
-    updated_at: '2026-09-12T12:00:00.000Z',
-    version: 3,
-    url: 'https://tracker.example.com/wiki/STD~42',
-    body_adf: { type: 'doc', content: [{ type: 'paragraph', text: ADF_MARKER }] },
-    body_text: ADF_MARKER,
-    comments: [],
-    attachments: [],
-    labels: ['runbook'],
-    ...over,
-  }
-}
-
 describe('issueContext', () => {
   test('maps a fixture detail to the expected keys and nothing else', () => {
     const ctx = issueContext(liteFixture(), detailFixture())
@@ -167,44 +147,10 @@ describe('issueContext', () => {
   })
 })
 
-describe('pageContext', () => {
-  test('maps the page axes and leaves the issue-only axes null', () => {
-    const ctx = pageContext(pageFixture())
-    expect(ctx).toEqual({
-      kind: 'page',
-      key: 'STD~42',
-      title: 'Runbook: artifact frames',
-      status: null,
-      status_category: null,
-      priority: null,
-      assignee: null,
-      reporter: 'Milo',
-      labels: ['runbook'],
-      issue_type: null,
-      space_key: 'STD',
-      version: 3,
-      created_at: null,
-      updated_at: '2026-09-12T12:00:00.000Z',
-      resolved_at: null,
-      url: 'https://tracker.example.com/wiki/STD~42',
-    })
-  })
-
-  test('treats an absent labels array as empty, not undefined', () => {
-    const ctx = pageContext(pageFixture({ labels: undefined }))
-    expect(ctx.labels).toEqual([])
-  })
-
-  test('carries no page body', () => {
-    expect(JSON.stringify(pageContext(pageFixture()))).not.toContain(ADF_MARKER)
-  })
-})
-
 describe('serialisability (the postMessage contract)', () => {
   const contexts = [
     issueContext(liteFixture(), detailFixture()),
     issueContext(undefined, detailFixture()),
-    pageContext(pageFixture()),
   ]
 
   test('round-trips through structuredClone unchanged', () => {

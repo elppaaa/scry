@@ -15,7 +15,7 @@
  * without keying logic on a localized name (the repo-wide display-name
  * trap). The frame is opaque-origin either way — it cannot ask for more.
  */
-import type { DetailResponse, IssueLite, PageDetail } from './types'
+import type { DetailResponse, IssueLite } from './types'
 
 /** The one message an artifact frame receives about its host. */
 export interface ArtifactContext {
@@ -75,28 +75,10 @@ export function issueContext(
   }
 }
 
-/**
- * The page an artifact is attached to. Pages have no status/priority/
- * assignee — those fields go out null, and the page's own axes (space,
- * version, author) fill the rest.
+/*
+ * There is no page producer yet: the page detail mounts no attachment
+ * gallery, so nothing on a page can open an artifact. The `page` kind and
+ * the page-only fields above are the frame's contract shape, reserved for
+ * the round that adds that gallery — a producer with no consumer would be
+ * a second copy of PageDetail's fields nobody measures.
  */
-export function pageContext(page: PageDetail): ArtifactContext {
-  return {
-    kind: 'page',
-    key: page.key,
-    title: page.title,
-    status: null,
-    status_category: null,
-    priority: null,
-    assignee: null,
-    reporter: page.author,
-    labels: page.labels ?? [],
-    issue_type: null,
-    space_key: page.space_key,
-    version: page.version,
-    created_at: null,
-    updated_at: page.updated_at,
-    resolved_at: null,
-    url: page.url,
-  }
-}
