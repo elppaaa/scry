@@ -297,7 +297,7 @@ Markers:
 [^43]: A parent must exist and sit exactly one hierarchy level above the child
     (`issuetap/docs/COMPATIBILITY.md:76`).
 
-[^44]: Confluence Cloud through the wiki client (`internal/origin/origin.go:408`,
+[^44]: Confluence Cloud through the wiki client (`internal/origin/origin.go:474`,
     `internal/sync/confluence.go`). A team-spaces fix landed on main after
     this table's base (17e48607).
 
@@ -826,14 +826,19 @@ this table from the code instead of maintaining it by hand is GDK-1301.
     `GET /wiki/rest/api/content/{pageId}/child/attachment`,
     `start`-paged 100 rows at a time — and mirrored into the same
     attachments table an issue's ride, keyed apart by `item_id`
-    (`internal/confluence/client.go:463`, `internal/sync/confluence.go:907`,
-    `internal/store/write.go:796`). The page detail carries them in the same
-    wire shape the issue detail does (`internal/server/read.go:736`), and the
+    (`internal/confluence/client.go:559`, `internal/sync/confluence.go:1284`,
+    `internal/store/write.go:859`). The page detail carries them in the same
+    wire shape the issue detail does (`internal/server/read.go:927`), and the
     bytes stream from `content/{attId}/download` through `origin.Wiki` on the
     `pages/` byte route, which reuses the issue byte handler rather than
-    growing a second copy (`internal/server/server.go:288`,
-    `internal/server/attachment.go:447`). The REST v1 shapes are pinned by
-    httptest fixtures; not yet measured against a live Cloud site.
+    growing a second copy (`internal/server/server.go:317`,
+    `internal/server/attachment.go:512`). The REST v1 shapes are pinned by
+    httptest fixtures; not yet measured against a live Cloud site. Adding or
+    deleting an attachment bumps no page version, so the hourly reconcile
+    compares each search hit's `children.attachment` ids (a shape measured
+    live) with the cached set and re-fetches the page when they differ; a
+    listing truncated at the expansion's limit is left uncompared
+    (`internal/sync/confluence.go:1187`).
 
 [^148]: The built-in wiki serves the page surface (footnote 46) but not this
     one: `child/attachment` and `content/{id}/download` fall to
@@ -841,7 +846,7 @@ this table from the code instead of maintaining it by hand is GDK-1301.
     (`issuetap/internal/api/confluence.go:164`). The sync pass measures the
     refusal once, skips the listing for the rest of the pass, and reports the
     degrade in one summary line while the pages themselves mirror normally
-    (`internal/sync/confluence.go:1032`); the byte proxy needs no change when
+    (`internal/sync/confluence.go:1442`); the byte proxy needs no change when
     the origin grows the routes — that is an issuetap round.
 
 [^150]: The seed YAML is the built-in tracker's own format — a Jira, Server,
