@@ -116,7 +116,7 @@ On-demand detail. Everything comes from the mirror; no Jira call.
 {
   "issue_key": "NMB-142",
   "description_adf": { "type": "doc", "version": 1, "content": [] },
-  "attachments": [ { "id": "10021", "filename": "...", "mime_type": "...", "size": 0, "media_id": "", "media_collection": "", "is_image": true, "is_video": false, "cache_status": "ready", "created_at": "...", "content_url": "/api/v1/issues/NMB-142/attachments/10021/content/" } ],
+  "attachments": [ { "id": "10021", "filename": "...", "mime_type": "...", "size": 0, "media_id": "", "media_collection": "", "is_image": true, "is_video": false, "cache_status": "ready", "created_at": "...", "content_url": "/api/v1/issues/NMB-142/attachments/10021/content/", "is_artifact": false, "artifact_url": "" } ],
   "comments": [ { "comment_id": "...", "author": "...", "author_email": null, "author_account_id": "...", "author_account_type": "agent", "body": "flattened text", "raw_body": {}, "created_at": "..." } ],
   "history": [ { "at": "...", "by": "...", "author_id": "...", "field": "status", "from": "...", "to": "...", "from_category": "done", "to_category": "inprogress" } ],
   "linked_issues": [ { "key": "NMA-8", "type": "Blocks", "direction": "inward", "summary": "...", "status_category": "done" } ],
@@ -128,6 +128,8 @@ On-demand detail. Everything comes from the mirror; no Jira call.
   "progress_ms": 5127000
 }
 ```
+
+`is_artifact` is true for an HTML attachment (`text/html`, `application/xhtml+xml`), and `artifact_url` then points at `…/attachments/{id}/artifact/`, which serves the file as a sandboxed document (`sandbox` CSP directive, no referrer, not cached); `content/` still downloads it. Both are empty on every other attachment.
 
 The field names above are the client's (`DetailResponse` in
 `web/src/lib/types.ts`), which is what actually gets parsed: comments carry
