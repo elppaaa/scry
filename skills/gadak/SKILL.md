@@ -724,6 +724,7 @@ gadak claim NMB-140 --take-over                # replace the current holder
 gadak create Batch worker drops the last page --project NMB --type Bug -m "repro on staging" --parent NMB-1
 gadak create Severity required --project NMB --type Task --field severity=High
 gadak attach NMB-140 screenshot.png trace.log
+gadak attach NMB-140 /tmp/bench.html           # an .html attachment renders inline on the issue, sandboxed like a dashboard — see "The same wall, attached to one issue"
 gadak attach get NMB-140 trace.log             # the read half: bytes to ./trace.log. `gadak issue KEY` lists the names; --out takes a directory, a path, or - for stdout. Works on every origin — do not parse issues.raw for an id and hand-build a REST path for `gadak api`.
 gadak edit NMB-140 --summary "…" --label +regression --label -needs-triage --priority High --parent none
 gadak edit NMB-140 --type Task                # name, localized name, or id — same resolver as create --type
@@ -1049,6 +1050,30 @@ gadak dashboards open label_ratio
   fetch `https://github.com/midagedev/gadak/blob/main/docs/DASHBOARDS.md` if
   you want it. Do not search the filesystem for it: there is nothing to find,
   and the block above is already a working wall.
+
+### The same wall, attached to one issue
+
+A dashboard is workspace-wide. When the report belongs to one issue — a
+benchmark you just ran, a diff you just measured, a failure you just
+reproduced — attach the HTML to that issue instead and the detail renders it
+inline:
+
+```bash
+gadak attach NMB-140 /tmp/bench.html    # any .html attachment becomes an artifact
+```
+
+The issue detail draws it in a sandboxed frame under the **same policy the
+dashboard frame gets**: opaque origin, the network closed, and the vendored
+libraries reachable at `/api/v1/dashboards/vendor/…` (leading slash required).
+So the charting half of the block above works unchanged. Two differences: there
+are no datasources — an artifact has no `postMessage` channel and paints the
+numbers you wrote into it — and nothing live-replaces it; a new upload is a new
+attachment. The frame inherits no app styling, so set your own palette, and
+give any list that can grow its own `overflow-y: auto` region for the same
+reason the wall does.
+
+This is the one way an agent leaves a *rendered* result where the work lives.
+A comment holds text; this holds the chart.
 
 ## Rules that come with the file
 
