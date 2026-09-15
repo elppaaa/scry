@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import {
+  isArtifactAttachment,
   isImageAttachment,
   mimeSubtype,
   partitionAttachments,
@@ -69,6 +70,32 @@ describe('isImageAttachment', () => {
   it('does not read a video or a name that merely contains the word', () => {
     expect(isImageAttachment({ is_image: false, mime_type: 'video/mp4' })).toBe(false)
     expect(isImageAttachment({ is_image: false, mime_type: 'text/image-notes' })).toBe(false)
+  })
+})
+
+describe('isArtifactAttachment', () => {
+  it('takes the server flag over the mime', () => {
+    // is_artifact is the desk's own verdict (content-sniffed at upload);
+    // a text/plain it stamps is still an artifact, not a ledger plain file.
+    expect(isArtifactAttachment({ is_artifact: true, mime_type: 'text/plain' })).toBe(true)
+  })
+
+  it('falls back to the mime when the flag was never computed', () => {
+    // Same reason as isImageAttachment's second half: an older serve or an
+    // upload answer can hand back a row without the flag, and an artifact
+    // that passes as a plain file is DESIGN.md §1's silent absence.
+    expect(isArtifactAttachment({ mime_type: 'text/html; charset=utf-8' })).toBe(true)
+    expect(isArtifactAttachment({ mime_type: 'application/xhtml+xml' })).toBe(true)
+  })
+
+  it('reads only the type half, and only exactly html', () => {
+    expect(isArtifactAttachment({ mime_type: 'TEXT/HTML; charset=utf-8' })).toBe(true)
+    expect(isArtifactAttachment({ is_artifact: false, mime_type: 'text/htmlx' })).toBe(false)
+  })
+
+  it('leaves a picture and an unstamped plain file alone', () => {
+    expect(isArtifactAttachment({ is_artifact: false, mime_type: 'image/png' })).toBe(false)
+    expect(isArtifactAttachment({ mime_type: 'application/pdf' })).toBe(false)
   })
 })
 
@@ -148,6 +175,21 @@ describe('the markup promises the pure half cannot hold', () => {
     const file = markup.slice(markup.indexOf('data-testid="attachment-file"'))
     expect(file).not.toContain('<button')
     expect(markup).not.toMatch(/download|href=/i)
+  })
+
+  it('says where an artifact renders — the desk, at half voice (GDK-1897)', () => {
+    // The artifact variant replaces the plain file row's kind word with the
+    // catalog's `detail.artifact` and adds DeskRow's right-hand sentence,
+    // dimmed the same way (DESIGN.md §1: never a silent absence).
+    const artifact = markup.slice(
+      markup.indexOf('data-testid="attachment-artifact"'),
+      markup.indexOf('data-testid="attachment-file"'),
+    )
+    expect(artifact).toContain("t('detail.artifact')")
+    expect(artifact).toContain("t('sidebar.scopeOpenDesktop')")
+    expect(artifact).not.toContain('<button')
+    expect(styles).toMatch(/\.file\.artifact\s*\{\s*opacity:\s*0\.5;\s*\}/)
+    expect(styles).toMatch(/\.why\s*\{/)
   })
 
   it('reuses the one URL join and the one viewer instead of a second copy', () => {

@@ -35,6 +35,22 @@
     return a.is_image || a.mime_type.trim().toLowerCase().startsWith('image/')
   }
 
+  /**
+   * Is this row an artifact — an HTML document the desk renders sandboxed
+   * (GDK-1897)?
+   *
+   * Server verdict first, mime second, same shape as isImageAttachment: the
+   * phone cannot render it either way (its bytes arrive bearer-fetched, so
+   * the artifact route's CSP never applies — GDK-1901), but the row must
+   * say so, and a mime-only test would miss an older serve that computed
+   * `is_artifact` for a type it classifies by content.
+   */
+  export function isArtifactAttachment(a: Pick<DetailAttachment, 'is_artifact' | 'mime_type'>): boolean {
+    if (a.is_artifact === true) return true
+    const type = a.mime_type.split(';')[0].trim().toLowerCase()
+    return type === 'text/html' || type === 'application/xhtml+xml'
+  }
+
   /** How far one thumbnail has got. `failed` is a demotion, not an error state. */
   export type CellStatus = 'loading' | 'ready' | 'failed'
 
@@ -186,18 +202,34 @@
   {/if}
 
   {#each split.rows as a (a.id)}
-    <!-- Not a button: the phone has no download path and no opener, so a tap
-         here can only be a promise it cannot keep (DESIGN.md §1 third
-         clause — an honest absence over an invented verb). -->
-    <div class="file" data-testid="attachment-file">
-      <span class="f-name">{label(a)}</span>
-      {#if formatAttachmentSize(a.size)}
-        <span class="f-meta">{formatAttachmentSize(a.size)}</span>
-      {/if}
-      {#if mimeSubtype(a.mime_type)}
-        <span class="f-meta">{mimeSubtype(a.mime_type)}</span>
-      {/if}
-    </div>
+    {#if isArtifactAttachment(a)}
+      <!-- The desk's dialect (GDK-1874): a row this screen cannot render
+           names where the work lives instead of passing as a plain file —
+           DESIGN.md §1's "never silently". Inert for the same reason the
+           plain row is: the phone has no opener, so a tap could only be a
+           promise it cannot keep. -->
+      <div class="file artifact" data-testid="attachment-artifact">
+        <span class="f-name">{label(a)}</span>
+        {#if formatAttachmentSize(a.size)}
+          <span class="f-meta">{formatAttachmentSize(a.size)}</span>
+        {/if}
+        <span class="f-meta">{t('detail.artifact')}</span>
+        <span class="why">{t('sidebar.scopeOpenDesktop')}</span>
+      </div>
+    {:else}
+      <!-- Not a button: the phone has no download path and no opener, so a tap
+           here can only be a promise it cannot keep (DESIGN.md §1 third
+           clause — an honest absence over an invented verb). -->
+      <div class="file" data-testid="attachment-file">
+        <span class="f-name">{label(a)}</span>
+        {#if formatAttachmentSize(a.size)}
+          <span class="f-meta">{formatAttachmentSize(a.size)}</span>
+        {/if}
+        {#if mimeSubtype(a.mime_type)}
+          <span class="f-meta">{mimeSubtype(a.mime_type)}</span>
+        {/if}
+      </div>
+    {/if}
   {/each}
 </div>
 
@@ -257,6 +289,17 @@
     color: var(--color-text-secondary);
   }
   .f-meta {
+    flex: none;
+    font-size: var(--text-micro);
+    color: var(--color-text-muted);
+  }
+  /* The desk's row said at half voice, the same dimming DeskRow wears — the
+     register is the message, not a disabled state (nothing here was ever
+     tappable). */
+  .file.artifact {
+    opacity: 0.5;
+  }
+  .why {
     flex: none;
     font-size: var(--text-micro);
     color: var(--color-text-muted);

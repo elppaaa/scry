@@ -127,11 +127,19 @@ describe('GDK-1874 the Fields desk row is owed by a custom field, not by a syste
 })
 
 describe('GDK-1874 one component owns the desk row, and five places use it', () => {
-  it('keeps the desktop sentence inside DeskRow.svelte alone', () => {
+  it('keeps the desktop sentence inside DeskRow.svelte and the artifact ledger row alone', () => {
+    // 2026-09-15 (GDK-1897 R3-lite): a second wearer, deliberately. An HTML
+    // attachment the desk renders as an artifact is a ledger line on the
+    // phone, and that line is a <div> beside the plain file line — not a
+    // DeskRow, which is a disabled <button> the attachment markup test
+    // forbids in that lane. The sentence is still the catalog's one; what
+    // this pins is that no third file borrows it. FAIL-first: the R3-lite
+    // tree went red here before this line changed (scratch/r3lite/gate1).
     const referrers = sourceFiles()
       .filter((p) => code(p).includes('sidebar.scopeOpenDesktop'))
       .map((p) => relative(srcDir, p))
-    expect(referrers).toEqual(['ui/DeskRow.svelte'])
+      .sort()
+    expect(referrers).toEqual(['ui/AttachmentGrid.svelte', 'ui/DeskRow.svelte'])
   })
 
   it('draws the row from the shared component at every call site', () => {

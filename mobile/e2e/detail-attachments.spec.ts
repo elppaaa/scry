@@ -47,6 +47,64 @@ async function capture(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: join(dir, name) })
 }
 
+/*
+ * GDK-1897 — the artifact row. The fixture carries no HTML attachment (all
+ * three rows on NMB-110 are image/png), and regenerating it is another
+ * round's gate (`make demo-fixture`), so the row is added to the *response*
+ * the way a7-captures.spec.ts does: the JSON shape internal/server/read.go
+ * emits, fields and all. Unlike a7 this row needs no bytes behind it — the
+ * phone never fetches an artifact, which is half of what the test asserts.
+ */
+type SyntheticAttachment = {
+  id: string
+  filename: string
+  mime_type: string
+  size: number
+  media_id: string
+  media_collection: string
+  is_image: boolean
+  is_video: boolean
+  cache_status: string
+  created_at: string | null
+  content_url: string
+  is_artifact: boolean
+  artifact_url: string
+}
+
+/**
+ * Adds one HTML artifact row to whatever the serve answers for NMB-110.
+ * Everything else — the three real image attachments included — passes
+ * through untouched, so the tests above keep their meaning under this one.
+ */
+async function withSyntheticArtifact(page: Page, key: string): Promise<void> {
+  await page.route(`**/api/v1/issues/${key}/detail/`, async (route) => {
+    const res = await route.fetch()
+    // A 304 carries no body to widen (the screen re-uses its cached copy).
+    if (res.status() !== 200) {
+      await route.fulfill({ response: res })
+      return
+    }
+    const doc = (await res.json()) as { attachments?: SyntheticAttachment[] }
+    const row: SyntheticAttachment = {
+      id: 'gdk1897a',
+      filename: 'sprint-burnup.html',
+      mime_type: 'text/html',
+      size: 12_288,
+      media_id: '',
+      media_collection: '',
+      is_image: false,
+      is_video: false,
+      cache_status: 'ready',
+      created_at: null,
+      content_url: `/api/v1/issues/${key}/attachments/gdk1897a/content/`,
+      is_artifact: true,
+      artifact_url: `/api/v1/issues/${key}/attachments/gdk1897a/artifact/`,
+    }
+    doc.attachments = [...(doc.attachments ?? []), row]
+    await route.fulfill({ response: res, json: doc })
+  })
+}
+
 /**
  * Palette → row → detail, the pane's own road to any key. GDK-902
  * 2026-09-15: written against the tab bar the same day it was removed; the
@@ -116,6 +174,31 @@ test('an attachment no body embeds is visible in the section', async ({ page }) 
     .filter({ has: page.locator(`img[alt="${ORPHAN}"]`) })
   await expect(cell).toHaveCount(1)
   await expect(cell).toBeVisible()
+})
+
+test('an HTML attachment is a ledger row that says it renders on the desk', async ({ page }) => {
+  await withSyntheticArtifact(page, ISSUE)
+  await openIssue(page, ISSUE)
+
+  const row = page.locator('[data-testid="detail-attachments"] [data-testid="attachment-artifact"]')
+  await expect(row).toHaveCount(1)
+  await expect(row).toBeVisible()
+  await expect(row.locator('.f-name')).toHaveText('sprint-burnup.html')
+  // The two halves of the sentence: what it is (the catalog's kind word
+  // replacing the `html` subtype) and where it renders (DeskRow's line).
+  await expect(row.locator('.why')).toHaveText('Open on the desktop')
+  await expect(row).toContainText('Artifact')
+
+  // It moved variants, not duplicated: no plain file row and no thumb cell
+  // carries the name — and no fetch was spent on it (it has no bytes).
+  const asFile = page
+    .locator('[data-testid="attachment-file"]')
+    .filter({ hasText: 'sprint-burnup.html' })
+  await expect(asFile).toHaveCount(0)
+  const asThumb = page
+    .locator('[data-testid="attachment-thumb"]')
+    .filter({ hasText: 'sprint-burnup.html' })
+  await expect(asThumb).toHaveCount(0)
 })
 
 test('a thumbnail opens the full-screen viewer, and back closes the viewer', async ({ page }) => {
