@@ -30,6 +30,15 @@
 #                                            shard, no stale weight row,
 #                                            discovery == playwright --list
 #   tools/e2e-partition.sh --list <total>    shard / files / seconds map
+#   tools/e2e-partition.sh --measure <run-id>  reprint this table from a green
+#                                            CI run's three Playwright shard
+#                                            logs (GDK-1914)
+#
+# Why --measure takes a run id and not a local run: the weights are CI
+# seconds. A laptop's numbers are a different unit, and a table mixing the
+# two balances neither machine — the shard a spec lands on would depend on
+# who last refreshed it. The refresh is therefore reading what CI already
+# measured, which also makes it free.
 #
 # Exit: 0 ok, 1 partition broken (--check), 2 usage error.
 set -euo pipefail
@@ -46,6 +55,8 @@ usage:
   tools/e2e-partition.sh <shard> <total>   print the spec files for one shard
   tools/e2e-partition.sh --check <total>   verify the partition (exit 1 if broken)
   tools/e2e-partition.sh --list <total>    shard / files / seconds map
+  tools/e2e-partition.sh --measure <run-id>  reprint the weight table from a
+                                           green CI run's Playwright logs
 EOF
   exit 2
 }
@@ -103,11 +114,88 @@ deal() { # $1 = total
       }'
 }
 
+# --measure <run-id>: reprint shard-weights.tsv from a CI run's Playwright
+# shard logs. Every "✓ N [chromium] › e2e/foo.spec.ts:L:C › name (1.2s)" line
+# carries the test's own duration; summing them per file is the weight. The
+# attempt-1 logs are used deliberately: a rerun does not replace attempt 1,
+# so a flake that was rerun still reports the timings of the run that
+# measured the tree (the same reason tools/ci-status.sh reads attempt 1).
+#
+# The output is the whole table, header included — redirect it over the file
+# and read the diff. It does NOT write in place: a refresh that silently
+# rewrote the table would make "the weights moved" invisible in review, and
+# the moves are the interesting part (GDK-1914 found terminal-fold on the
+# median while this cycle had just halved it).
+measure() {
+  local run="$1"
+  # tmp is deliberately NOT local: the EXIT trap below runs after this
+  # function's frame is gone, and under `set -u` a local would be unbound
+  # there — the cleanup would fail with "tmp: unbound variable" and take the
+  # exit status with it, after the table had already printed correctly.
+  tmp=
+  [[ "$run" =~ ^[0-9]+$ ]] || {
+    echo "$SELF: --measure needs a numeric CI run id, got '$run'" >&2
+    exit 2
+  }
+  command -v gh >/dev/null || { echo "$SELF: --measure needs the gh CLI" >&2; exit 2; }
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "${tmp:-}"' EXIT
+  gh api "repos/midagedev/gadak/actions/runs/$run/attempts/1/logs" > "$tmp/logs.zip" || {
+    echo "$SELF: could not fetch logs for run $run" >&2
+    exit 2
+  }
+  (cd "$tmp" && unzip -oq logs.zip) || { echo "$SELF: run $run has no readable log archive" >&2; exit 2; }
+  python3 - "$tmp" "$run" "$WEIGHTS" <<'PYMEASURE'
+import collections, pathlib, re, sys
+
+tmp, run, weights = pathlib.Path(sys.argv[1]), sys.argv[2], pathlib.Path(sys.argv[3])
+line = re.compile(r'\u203a (e2e/[A-Za-z0-9._-]+\.spec\.ts):\d+:\d+ \u203a.*?\(([\d.]+)(m?s)\)\s*$')
+secs, tests = collections.defaultdict(float), collections.Counter()
+logs = sorted(tmp.glob("*Playwright E2E*.txt"))
+if not logs:
+    sys.exit(f"e2e-partition: run {run} has no Playwright shard logs")
+for f in logs:
+    for row in f.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = line.search(row)
+        if not m:
+            continue
+        v = float(m.group(2))
+        if m.group(3) == "ms":
+            v /= 1000.0
+        secs[m.group(1)] += v
+        tests[m.group(1)] += 1
+if not secs:
+    sys.exit(f"e2e-partition: run {run}'s logs carry no per-test durations")
+
+# A spec every one of whose tests is env-gated reports nothing and is a
+# measured zero, not an absent row — keep whatever the table already says
+# about it rather than dropping it into the median.
+for row in weights.read_text(encoding="utf-8").splitlines():
+    if row.startswith("#") or not row.strip():
+        continue
+    name = row.split("\t")[0]
+    secs.setdefault(name, 0.0)
+
+print(f"# Regenerate with `tools/e2e-partition.sh --measure <run-id>`.")
+print(f"# Provenance: run {run}, its three Playwright shard logs parsed per")
+print(f"# test and summed per file — {sum(tests.values())} tests, {len(tests)} files,")
+print(f"# {sum(secs.values()):.1f} s. Nothing below is adjusted.")
+print("#")
+print("# A spec absent from this table is dealt the median: a new spec starts")
+print("# average-heavy, never silently free. A row naming a file that no longer")
+print("# exists fails `--check`. Weights are seconds of test time; the ~2 min of")
+print("# fixed per-shard cost is the same on every shard and is not modelled.")
+for name in sorted(secs):
+    print(f"{name}\t{secs[name]:.1f}")
+PYMEASURE
+}
+
 [[ $# -eq 2 ]] || usage
 mode=shard
 case "$1" in
   --check) mode=check ;;
   --list) mode=list ;;
+  --measure) measure "$2"; exit 0 ;;
   -*) usage ;;
   *) shard="$1" ;;
 esac
