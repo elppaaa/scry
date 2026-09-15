@@ -2,7 +2,13 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { fontFamily, readBufferOffset, readBufferType, readMouseTrackingMode } from './renderer'
+import {
+  fontFamily,
+  readBufferOffset,
+  readBufferType,
+  readMouseTrackingMode,
+  terminalFontSize,
+} from './renderer'
 import { TERMINAL_CHROME_VARS } from '../../../../web/src/lib/terminal/protocol'
 
 /*
@@ -212,5 +218,41 @@ describe('GDK-1131 — the terminal font stack comes from --font-mono-terminal',
     // GDK-1109 one directory over.
     const appCss = readFileSync(join(here, '..', '..', '..', '..', 'web', 'src', 'app.css'), 'utf8')
     expect(appCss).toMatch(/--font-mono-terminal:/)
+  })
+})
+
+/*
+ * GDK-901 — the size side of the same contract. terminalFontSize keeps
+ * reading --text-terminal (the inline override termprefs.ts writes is
+ * indistinguishable from the token to this reader, which is the point), and
+ * a pane that already exists must be able to take a new size live — the
+ * option plus a fit, because new metrics mean a new grid. The unit project
+ * cannot mount an xterm here, so the live half is a source contract on the
+ * wiring and the e2e (mobile/e2e/termfont.spec.ts) measures the real pane.
+ */
+describe('GDK-901 — the grid size follows --text-terminal and can change live', () => {
+  it('terminalFontSize reads the variable through the injectable reader', () => {
+    expect(terminalFontSize(() => '17px')).toBe(17)
+    expect(terminalFontSize(() => '13px')).toBe(13)
+  })
+
+  it('terminalFontSize falls back when the variable is unset or junk', () => {
+    expect(terminalFontSize(() => '')).toBe(16)
+    expect(terminalFontSize(() => 'not-a-size')).toBe(16)
+  })
+
+  it('setFontSize exists on the renderer and refits after the option', () => {
+    // Order is the contract: the option first, then the fit — the fit must
+    // measure the new size, and onResize (wired to the driver's single
+    // sender in Shell.svelte) is what tells the server.
+    expect(rendererSrc).toContain('setFontSize(px: number)')
+    expect(rendererSrc).toContain('term.options.fontSize = px')
+    expect(rendererSrc).toMatch(/term\.options\.fontSize = px\n[\s\S]*?fitAddon\.fit\(\)/)
+    // The fit is guarded: a display:none pane has no box, and the addon's
+    // floor (2×1) as gospel is the exact defect paneLaidOut() closed for
+    // the driver (GDK-1154). An unguarded fit here would reflow the local
+    // buffer of a hidden-but-mounted shell whenever Settings moved the
+    // size under it.
+    expect(rendererSrc).toMatch(/host\.clientWidth > 0 \|\| host\.clientHeight > 0/)
   })
 })

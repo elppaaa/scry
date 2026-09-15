@@ -172,6 +172,15 @@ export interface PhoneTerminalRenderer extends TerminalRenderer {
   bufferType(): BufferType
   /** Scroll the local viewport by n rows (xterm sign: negative = toward history). */
   scrollLines(n: number): void
+  /**
+   * Changes the grid's font size on a live terminal (GDK-901): the option
+   * first, then a fit, because a new size means new cell metrics — without
+   * the fit the pane keeps its old cols/rows against bigger glyphs and the
+   * server is never told. Boot already applied the preference to
+   * --text-terminal before this renderer was created; this is the road a
+   * pane that already exists takes when the setting changes under it.
+   */
+  setFontSize(px: number): void
   /** Viewport position for the scroll indicator thumb. */
   viewport(): { viewportY: number; baseY: number }
 }
@@ -285,6 +294,18 @@ export async function createRenderer(): Promise<PhoneTerminalRenderer> {
     },
     scrollLines(n: number) {
       term.scrollLines?.(n)
+    },
+    setFontSize(px: number) {
+      term.options.fontSize = px
+      // Fit only when the pane has a box. On a display:none pane (the
+      // shell stays mounted, hidden, while another owner draws — App
+      // .svelte) the addon clamps to its 2×1 floor and term.resize()
+      // reflows the live buffer to a degenerate grid; the server is spared
+      // by the driver's measurable() guard (GDK-1154) but the local
+      // scrollback is not. The option rides along regardless, and the
+      // ResizeObserver refits at the new metrics when the pane comes back.
+      const host = term.element?.parentElement
+      if (host && (host.clientWidth > 0 || host.clientHeight > 0)) fitAddon.fit()
     },
     viewport() {
       return {

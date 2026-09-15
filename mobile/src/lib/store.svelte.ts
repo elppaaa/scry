@@ -42,6 +42,7 @@ import {
   migrateHostKeys,
 } from './host-keys'
 import { loadSprints } from './sprint'
+import { applyTerminalFontSize, readTerminalFontSize, writeTerminalFontSize } from './termprefs'
 import { probeShellPairing } from './terminal/api'
 import { serveTokenOf, terminalTokenOf, OfferScopeError, type OfferToken } from './offer'
 import type {
@@ -209,6 +210,14 @@ export const app = $state({
   recentVisits: [] as VisitedRow[],
   /** Terminal pairing metadata — never the token. Null → no Shell tab. */
   terminal: null as PairMeta | null,
+  /**
+   * The terminal grid's font size (GDK-901), in termprefs.ts's set. Kept on
+   * `app` so Settings can mark the chosen button and the shell can follow
+   * the setting reactively; the persisted truth and the --text-terminal
+   * override both stay in termprefs.ts, the one owner. 13 is the token's
+   * own value — a phone that never opted out holds the default here.
+   */
+  terminalFontSize: 13,
   /** Ticks every 30s so relative times stay honest while the app is open. */
   now: new Date(),
 
@@ -426,6 +435,11 @@ async function migrateLegacyPairing(): Promise<void> {
 }
 
 export async function boot(): Promise<void> {
+  // Before any early return below: the font preference must be on the root
+  // before a renderer can be created (it reads --text-terminal once, at
+  // creation), and boot has several exits that never reach a pairing.
+  app.terminalFontSize = readTerminalFontSize()
+  applyTerminalFontSize(app.terminalFontSize)
   await migrateLegacyPairing()
   const activeHost = getActiveHostId()
   // B2: with a roster host active, the six session documents live at its
@@ -1134,6 +1148,19 @@ export async function unpairTerminal(): Promise<void> {
 /** Session the shell REST calls use — terminal token, never the serve one. */
 export function terminalSession(): { endpoint: string; token: string | null } {
   return { endpoint: app.terminal?.endpoint ?? '', token: terminalToken }
+}
+
+/**
+ * Sets the terminal grid's font size (GDK-901): persist, apply the
+ * --text-terminal override, and move the state Settings marks its buttons
+ * by and the shell's effect follows. One road — every caller of the three
+ * underlying termprefs functions is this function or boot(), so the
+ * variable and the stored key cannot disagree with `app.terminalFontSize`.
+ */
+export function setTerminalFontSize(px: number): void {
+  writeTerminalFontSize(px)
+  applyTerminalFontSize(px)
+  app.terminalFontSize = px
 }
 
 /* ── navigation ── */

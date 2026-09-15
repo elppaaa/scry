@@ -12,7 +12,9 @@
     exitDemo,
     switchHost,
     removeRosterHost,
+    setTerminalFontSize,
   } from '../lib/store.svelte'
+  import { TERMINAL_FONT_SIZES } from '../lib/termprefs'
   import { relTime, hasIdentity, offerExpiry } from '../lib/domain'
   import { decodeOffer, OfferError, OfferScopeError } from '../lib/offer'
   import { ApiError, errorMessage } from '../lib/api'
@@ -323,6 +325,32 @@
         {#if app.terminal}
           <p class="big">{app.terminal.label || host(app.terminal.endpoint)}</p>
           <p class="sub mono">{host(app.terminal.endpoint)}</p>
+          <!-- The first real terminal option (GDK-901): the grid's size.
+               Four buttons, the numbers themselves in the mono face — a
+               number is not copy (§3.6). The label is the desk's catalog
+               key; nothing here is phone-authored prose. -->
+          <!-- A row label, not a section heading: `.lbl` is the uppercase
+               header register, and under it the unpair button read as a
+               member of a "FONT SIZE" section (vision verdict, GDK-901
+               2026-09-15). Sentence case, muted, and 12px off the host line
+               so it is an option row, not a third line of the shell's identity. -->
+          <p class="sub opt">{t('settings.terminalFontSize')}</p>
+          <div
+            class="sizes"
+            role="radiogroup"
+            aria-label={t('settings.terminalFontSize')}
+            data-testid="terminal-font-size"
+          >
+            {#each TERMINAL_FONT_SIZES as px (px)}
+              <button
+                class="size"
+                class:on={app.terminalFontSize === px}
+                role="radio"
+                aria-checked={app.terminalFontSize === px}
+                onclick={() => setTerminalFontSize(px)}>{px}</button
+              >
+            {/each}
+          </div>
           <button class="unpair-shell" class:armed={termArmed} onclick={onUnpairTerminal}>
             {termArmed ? t('app.unpairConfirm') : t('app.unpairShell')}
           </button>
@@ -600,6 +628,36 @@
     margin: 8px 0 0;
     font-size: var(--text-micro);
     color: var(--color-status-reopen);
+  }
+  /* The size row (GDK-901): four equal tappable segments over the 44pt
+     floor, numbers in the identifier face, the chosen one carrying the
+     accent thread — the same dialect as every other control here (hairline
+     border, no fills). */
+  .opt {
+    margin: 12px 0 6px;
+  }
+  .sizes {
+    display: flex;
+    gap: 8px;
+    /* 24px below, not the chips' own 8px: at chip spacing the unpair
+       button read as a fifth chip (vision verdict, GDK-901 2026-09-15) —
+       proximity has to bind it to the shell block, not to this row. */
+    margin: 2px 0 24px;
+  }
+  .size {
+    flex: 1;
+    min-height: var(--spacing-control);
+    border-radius: 6px;
+    border: 1px solid var(--color-border-subtle);
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-body);
+    background: transparent;
+  }
+  .size.on {
+    color: var(--color-accent-text);
+    border-color: var(--color-accent-text);
+    font-weight: 600;
   }
   .unpair-shell {
     width: 100%;

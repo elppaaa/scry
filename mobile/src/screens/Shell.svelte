@@ -927,6 +927,20 @@
     }
   })
 
+  // The grid follows the Settings control (GDK-901). Reads the state only —
+  // the effect must never write state (GDK-692), and it has nothing to
+  // write: termprefs already put the value on --text-terminal before this
+  // component's renderer was created, so this is purely the live change on
+  // a pane that already exists. `renderer` is a plain let, read
+  // unreactively on purpose: the effect re-runs on the setting, not on the
+  // pane's lifecycle, and a pane created after a change reads the variable
+  // at creation instead — no path needs the resize.
+  $effect(() => {
+    const px = app.terminalFontSize
+    if (!renderer) return
+    renderer.setFontSize(px)
+  })
+
   // The roster poll runs only while the sheet is up (GDK-1497 A6). The
   // desktop polls for as long as its pane is open; this list travels over a
   // tailnet on a battery, and the one row a closed sheet still shows — the
