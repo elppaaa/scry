@@ -42,6 +42,48 @@ func TestSuggestColumnIssueKey(t *testing.T) {
 	}
 }
 
+// demoIssuesColumns is the real `issues` column set, copied verbatim from
+// `sqlite3 examples/demo.db "select name from pragma_table_info('issues')"`
+// on 2026-09-15 — prefix misses are an agent-vs-schema shape, so the list
+// must be the schema agents actually hit, not a curated sample.
+var demoIssuesColumns = []string{
+	"summary", "item_id", "key", "project_key", "issue_type", "issue_type_id",
+	"status", "status_id", "status_category", "priority", "priority_rank",
+	"assignee", "assignee_id", "assignee_email", "reporter", "reporter_id",
+	"reporter_email", "parent_key", "labels", "components", "fix_versions",
+	"affects_versions", "environment_text", "duedate", "resolution",
+	"created_at", "updated_at", "status_changed_at", "resolved_at",
+	"reopen_count", "reopened_at", "assignee_changed_at", "comment_count",
+	"description_adf", "custom", "raw", "reopen_reason", "cloned_from",
+	"hierarchy_level", "epic_key", "priority_id", "resolution_id", "sprint_id",
+	"sprint_name", "sprint_state", "fix_version_ids", "security_level_id",
+	"security_level", "started_at", "cycle_hours", "last_activity_at",
+	"open_blockers", "carryover_count", "first_sprint_id", "first_sprint_at",
+	"blocked_hours", "blocked_since", "description_text",
+}
+
+// GDK-1899: agents type the Jira field name, which is a prefix of the real
+// column — created → created_at, description → both description_adf and
+// description_text (both are right answers; the hint must not pick for the
+// caller). Ordered shortest first, then alphabetical.
+func TestSuggestColumnPrefixMisses(t *testing.T) {
+	if got := suggestColumn("created", demoIssuesColumns); got != "created_at" {
+		t.Errorf("created → %q, want created_at", got)
+	}
+	if got := suggestColumn("updated", demoIssuesColumns); got != "updated_at" {
+		t.Errorf("updated → %q, want updated_at", got)
+	}
+	want := []string{"description_adf", "description_text"}
+	got := suggestColumns("description", demoIssuesColumns)
+	if len(got) != len(want) || got[0] != want[0] || got[len(got)-1] != want[len(want)-1] {
+		t.Errorf("description → %v, want %v", got, want)
+	}
+	// A prefix of nothing, edit-distant: stays silent.
+	if got := suggestColumns("foo", demoIssuesColumns); len(got) != 0 {
+		t.Errorf("foo → %v, want none", got)
+	}
+}
+
 func TestWithColumnSuggestionWrongTable(t *testing.T) {
 	db, err := sql.Open("sqlite", "file::memory:")
 	if err != nil {
@@ -89,6 +131,29 @@ func TestWithColumnSuggestionWrongTable(t *testing.T) {
 	}
 	if got := WithColumnSuggestion(db, q, baseErr); got.Error() != baseErr.Error() {
 		t.Fatalf("distant name must stay unadorned: %q", got)
+	}
+}
+
+// GDK-1899: a prefix miss with two continuations names both in one
+// did-you-mean — `did you mean "a" or "b"?`.
+func TestWithColumnSuggestionPrefixTwoCandidates(t *testing.T) {
+	db, err := sql.Open("sqlite", "file::memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`CREATE TABLE issues (description_adf TEXT, description_text TEXT)`); err != nil {
+		t.Fatal(err)
+	}
+	q := `SELECT description FROM issues`
+	rows, baseErr := db.Query(q)
+	if baseErr == nil {
+		rows.Close()
+		t.Fatalf("query %q unexpectedly succeeded", q)
+	}
+	got := WithColumnSuggestion(db, q, baseErr)
+	if !strings.Contains(got.Error(), `did you mean "description_adf" or "description_text"?`) {
+		t.Fatalf("two-candidate hint missing: %q", got)
 	}
 }
 

@@ -4,7 +4,8 @@
 // priority names are localized per account; filtering on the display column
 // is the locale trap that returns zero rows silently. A "no such column"
 // error also gets a did-you-mean when the unknown name is close to a real
-// column (GDK-255: issue_key → key).
+// column (GDK-255: issue_key → key) or a prefix of one (GDK-1899: created →
+// created_at, description → both description_adf and description_text).
 package sqlhint
 
 import (
@@ -12,6 +13,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -83,11 +85,21 @@ func WithColumnSuggestion(db *sql.DB, query string, err error) error {
 	if table, ok := owner[strings.ToLower(name)]; ok {
 		return fmt.Errorf("%w; column %q exists on %s — query %s", err, name, table, table)
 	}
-	sug := suggestColumn(name, cols)
-	if sug == "" {
+	sug := suggestColumns(name, cols)
+	if len(sug) == 0 {
 		return err
 	}
-	return fmt.Errorf("%w; did you mean %q?", err, sug)
+	quoted := make([]string, len(sug))
+	for i, s := range sug {
+		quoted[i] = fmt.Sprintf("%q", s)
+	}
+	// One candidate keeps the exact single-name sentence; several join as
+	// `"a" or "b"` / `"a", "b" or "c"` (GDK-1899).
+	tail := quoted[len(quoted)-1]
+	if len(quoted) > 1 {
+		tail = strings.Join(quoted[:len(quoted)-1], ", ") + " or " + tail
+	}
+	return fmt.Errorf("%w; did you mean %s?", err, tail)
 }
 
 func parseAmbiguousColumn(msg string) (string, bool) {
@@ -160,13 +172,27 @@ func hintColumns(db *sql.DB) ([]string, map[string]string, error) {
 }
 
 func suggestColumn(unknown string, columns []string) string {
+	if sug := suggestColumns(unknown, columns); len(sug) == 1 {
+		return sug[0]
+	}
+	return ""
+}
+
+// suggestColumns returns every column worth offering for an unknown name:
+// the suffix rule first (issue_key → key), then the prefix rule
+// (created → created_at, description → description_adf and description_text
+// — GDK-1899: the most common agent shape is a name that is a prefix of the
+// real column, too far for edit distance), with Levenshtein as the last
+// resort. More than one answer is real — an agent that typed a prefix
+// deserves every continuation, and picking one would hide the others.
+func suggestColumns(unknown string, columns []string) []string {
 	if unknown == "" || len(columns) == 0 {
-		return ""
+		return nil
 	}
 	lower := strings.ToLower(unknown)
 	for _, c := range columns {
 		if strings.EqualFold(c, unknown) {
-			return ""
+			return nil
 		}
 	}
 	// Prefer "<prefix>_<column>" over raw edit distance so issue_key → key
@@ -178,8 +204,27 @@ func suggestColumn(unknown string, columns []string) string {
 		}
 	}
 	if best != "" {
-		return best
+		return []string{best}
 	}
+	// A name that is a prefix of a real column: every "<name>_*" column is
+	// a candidate, ordered shortest first then alphabetical, so the caller
+	// reads them in schema order rather than pragma order.
+	var cands []string
+	for _, c := range columns {
+		if strings.HasPrefix(strings.ToLower(c), lower+"_") {
+			cands = append(cands, c)
+		}
+	}
+	if len(cands) > 0 {
+		sort.Slice(cands, func(i, j int) bool {
+			if len(cands[i]) != len(cands[j]) {
+				return len(cands[i]) < len(cands[j])
+			}
+			return cands[i] < cands[j]
+		})
+		return cands
+	}
+	// Levenshtein fallback — a unique winner within distanceOK.
 	bestDist := math.MaxInt
 	winner := ""
 	ties := 0
@@ -194,9 +239,9 @@ func suggestColumn(unknown string, columns []string) string {
 		}
 	}
 	if ties != 1 || !distanceOK(bestDist, len(unknown)) {
-		return ""
+		return nil
 	}
-	return winner
+	return []string{winner}
 }
 
 func distanceOK(dist, nameLen int) bool {
