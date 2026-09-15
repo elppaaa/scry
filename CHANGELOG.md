@@ -85,7 +85,8 @@ network, no access to gadak's own origin — with the issue it belongs to
 pushed in as data, the same contract dashboards already run under, so an
 agent that can write a dashboard can write a page for one issue. Expand it,
 or download the file; on Jira and Linear the same attachment is just a file,
-which is the point — nothing new has to live in the body ([GDK-1897]).
+which is the point — nothing new has to live in the body. The phone lists
+the same attachment as a row that says it renders on the desk ([GDK-1897]).
 
 ## v0.22.1 — 2026-09-14
 
