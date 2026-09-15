@@ -143,7 +143,9 @@ func seedRefsFixture(t *testing.T, db *DB) {
 	if err := db.UpsertSource(context.Background(), Source{ID: "confluence", Kind: "confluence", BaseURL: "https://j.example/wiki"}); err != nil {
 		t.Fatal(err)
 	}
-	// Two issues so known project keys include NMB.
+	// Two issues so known project keys include NMB. (IDs stay "jira:1"/"1"
+	// on purpose — later rewrites in this file key on them, so the search
+	// fixtures' lowercased-key id convention does not apply here.)
 	if _, err := db.UpsertIssues(context.Background(), Batch{
 		Categories: map[string]string{"1": "new"},
 		Records: []IssueRecord{

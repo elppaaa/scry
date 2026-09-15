@@ -22,62 +22,14 @@ func seedCJKCompound(t *testing.T, db *DB) {
 	b := Batch{
 		Categories: fixtureCategories,
 		Records: []IssueRecord{
-			{
-				// 결제 appears nowhere in this row except inside the compound.
-				Item: Item{
-					ID: "jira:ko-mid", SourceID: "jira", Kind: "issue", ExternalID: "ko-mid",
-					Key:       "KO-MID",
-					Title:     "간편결제 실패",
-					BodyText:  "모바일 웹에서 카드 등록 직후 재현된다",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				},
-				Issue: Issue{
-					ProjectKey: "KO", IssueType: "Bug", IssueTypeID: "10004",
-					Status: "To Do", StatusID: "1", StatusCategory: "new",
-				},
-			},
-			{
-				Item: Item{
-					ID: "jira:ko-pre", SourceID: "jira", Kind: "issue", ExternalID: "ko-pre",
-					Key:       "KO-PRE",
-					Title:     "결제내역 조회 오류",
-					BodyText:  "월별 결제내역 보고서가 비어 있다",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				},
-				Issue: Issue{
-					ProjectKey: "KO", IssueType: "Bug", IssueTypeID: "10004",
-					Status: "To Do", StatusID: "1", StatusCategory: "new",
-				},
-			},
-			{
-				Item: Item{
-					ID: "jira:en-idem", SourceID: "jira", Kind: "issue", ExternalID: "en-idem",
-					Key:       "EN-IDEM",
-					Title:     "idempotency key handling fails",
-					BodyText:  "Duplicate webhook events create duplicate charges.",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				},
-				Issue: Issue{
-					ProjectKey: "EN", IssueType: "Bug", IssueTypeID: "10004",
-					Status: "To Do", StatusID: "1", StatusCategory: "new",
-				},
-			},
-			{
-				// Space-separated tokens: reachable with explicit FTS5 syntax
-				// on any index shape, so the operator pass-through has a row
-				// to find both before and after the rewrite change.
-				Item: Item{
-					ID: "jira:ko-op", SourceID: "jira", Kind: "issue", ExternalID: "ko-op",
-					Key:       "KO-OP",
-					Title:     "알림 채널 개선",
-					BodyText:  "웹훅 재시도 정책을 문서화했다",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				},
-				Issue: Issue{
-					ProjectKey: "KO", IssueType: "Task", IssueTypeID: "10002",
-					Status: "To Do", StatusID: "1", StatusCategory: "new",
-				},
-			},
+			// 결제 appears nowhere in this row except inside the compound.
+			newBundle("KO-MID", "간편결제 실패", "Bug", "모바일 웹에서 카드 등록 직후 재현된다"),
+			newBundle("KO-PRE", "결제내역 조회 오류", "Bug", "월별 결제내역 보고서가 비어 있다"),
+			newBundle("EN-IDEM", "idempotency key handling fails", "Bug", "Duplicate webhook events create duplicate charges."),
+			// Space-separated tokens: reachable with explicit FTS5 syntax
+			// on any index shape, so the operator pass-through has a row
+			// to find both before and after the rewrite change.
+			newBundle("KO-OP", "알림 채널 개선", "Task", "웹훅 재시도 정책을 문서화했다"),
 		},
 	}
 	if _, err := db.UpsertIssues(context.Background(), b); err != nil {

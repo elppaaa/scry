@@ -25,106 +25,23 @@ func seedSearchRelevance(t *testing.T, db *DB) {
 	// The body row repeats the term so default equal-weight bm25 prefers it;
 	// weighted columns must still put the title row first.
 	rankBody := strings.Repeat("RankNeedleXYZ ", 24) + "padding so the body is long enough to look like a real description."
+	relC := newBundle("REL-C", "Nothing of the ranking token in the title", "Task", "Nothing of the ranking token in the body either.")
+	relC.Comments = []Comment{{
+		ID: "jira:rel-c1", ExternalID: "rel-c1", Author: "Ada",
+		BodyText:  "Comment carries RankNeedleXYZ once.",
+		CreatedAt: ago(1), UpdatedAt: ago(1),
+	}}
 	if _, err := db.UpsertIssues(context.Background(), Batch{
 		Categories: fixtureCategories,
 		Records: []IssueRecord{
-			{
-				Item: Item{
-					ID: "jira:rel-140", SourceID: "jira", Kind: "issue", ExternalID: "rel-140",
-					Key: "REL-140", Title: "The real issue whose key is not in the prose",
-					BodyText:  "Description without the identifier.",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				},
-				Issue: Issue{
-					ProjectKey: "REL", IssueType: "Bug", IssueTypeID: "10004",
-					Status: "To Do", StatusID: "1", StatusCategory: "new",
-				},
-			},
-			{
-				Item: Item{
-					ID: "jira:key-1", SourceID: "jira", Kind: "issue", ExternalID: "key-1",
-					Key: "KEY-1", Title: "First of the prefix family",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				},
-				Issue: Issue{
-					ProjectKey: "KEY", IssueType: "Task", IssueTypeID: "10002",
-					Status: "To Do", StatusID: "1", StatusCategory: "new",
-				},
-			},
-			{
-				Item: Item{
-					ID: "jira:key-10", SourceID: "jira", Kind: "issue", ExternalID: "key-10",
-					Key: "KEY-10", Title: "Tenth of the prefix family",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				},
-				Issue: Issue{
-					ProjectKey: "KEY", IssueType: "Task", IssueTypeID: "10002",
-					Status: "To Do", StatusID: "1", StatusCategory: "new",
-				},
-			},
-			{
-				Item: Item{
-					ID: "jira:key-11", SourceID: "jira", Kind: "issue", ExternalID: "key-11",
-					Key: "KEY-11", Title: "Eleventh of the prefix family",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				},
-				Issue: Issue{
-					ProjectKey: "KEY", IssueType: "Task", IssueTypeID: "10002",
-					Status: "To Do", StatusID: "1", StatusCategory: "new",
-				},
-			},
-			{
-				Item: Item{
-					ID: "jira:key-2", SourceID: "jira", Kind: "issue", ExternalID: "key-2",
-					Key: "KEY-2", Title: "Sibling outside the prefix family",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				},
-				Issue: Issue{
-					ProjectKey: "KEY", IssueType: "Task", IssueTypeID: "10002",
-					Status: "To Do", StatusID: "1", StatusCategory: "new",
-				},
-			},
-			{
-				Item: Item{
-					ID: "jira:rel-t", SourceID: "jira", Kind: "issue", ExternalID: "rel-t",
-					Key: "REL-T", Title: "RankNeedleXYZ lives only in this title",
-					BodyText:  "Generic description with no ranking token.",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				},
-				Issue: Issue{
-					ProjectKey: "REL", IssueType: "Bug", IssueTypeID: "10004",
-					Status: "To Do", StatusID: "1", StatusCategory: "new",
-				},
-			},
-			{
-				Item: Item{
-					ID: "jira:rel-b", SourceID: "jira", Kind: "issue", ExternalID: "rel-b",
-					Key: "REL-B", Title: "Ordinary summary without the ranking token",
-					BodyText:  rankBody,
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				},
-				Issue: Issue{
-					ProjectKey: "REL", IssueType: "Bug", IssueTypeID: "10004",
-					Status: "To Do", StatusID: "1", StatusCategory: "new",
-				},
-			},
-			{
-				Item: Item{
-					ID: "jira:rel-c", SourceID: "jira", Kind: "issue", ExternalID: "rel-c",
-					Key: "REL-C", Title: "Nothing of the ranking token in the title",
-					BodyText:  "Nothing of the ranking token in the body either.",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				},
-				Issue: Issue{
-					ProjectKey: "REL", IssueType: "Task", IssueTypeID: "10002",
-					Status: "To Do", StatusID: "1", StatusCategory: "new",
-				},
-				Comments: []Comment{{
-					ID: "jira:rel-c1", ExternalID: "rel-c1", Author: "Ada",
-					BodyText:  "Comment carries RankNeedleXYZ once.",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				}},
-			},
+			newBundle("REL-140", "The real issue whose key is not in the prose", "Bug", "Description without the identifier."),
+			newBundle("KEY-1", "First of the prefix family", "Task", ""),
+			newBundle("KEY-10", "Tenth of the prefix family", "Task", ""),
+			newBundle("KEY-11", "Eleventh of the prefix family", "Task", ""),
+			newBundle("KEY-2", "Sibling outside the prefix family", "Task", ""),
+			newBundle("REL-T", "RankNeedleXYZ lives only in this title", "Bug", "Generic description with no ranking token."),
+			newBundle("REL-B", "Ordinary summary without the ranking token", "Bug", rankBody),
+			relC,
 		},
 	}); err != nil {
 		t.Fatal(err)

@@ -15,68 +15,26 @@ func seedSearchMatchFields(t *testing.T, db *DB) {
 	if err := db.UpsertSource(context.Background(), Source{ID: "jira", Kind: "jira", BaseURL: "https://example.invalid"}); err != nil {
 		t.Fatal(err)
 	}
+	smComment := newBundle("SM-COMMENT", "Nothing special in the title", "Bug", "Nothing special in the body either.")
+	smComment.Comments = []Comment{{
+		ID: "jira:sm-c1", ExternalID: "sm-c1", Author: "Ada",
+		BodyText:  "Reproduced UniqueCommentNeedle on staging with a fresh workspace.",
+		CreatedAt: ago(1), UpdatedAt: ago(1),
+	}}
+	// Title and body both contain MultiHitNeedle — field must be title.
+	smMulti := newBundle("SM-MULTI", "MultiHitNeedle in the title wins", "Task", "MultiHitNeedle also in the body but lower priority.")
+	smMulti.Comments = []Comment{{
+		ID: "jira:sm-c2", ExternalID: "sm-c2", Author: "Ada",
+		BodyText:  "MultiHitNeedle in a comment too.",
+		CreatedAt: ago(1), UpdatedAt: ago(1),
+	}}
 	b := Batch{
 		Categories: fixtureCategories,
 		Records: []IssueRecord{
-			{
-				Item: Item{
-					ID: "jira:sm-title", SourceID: "jira", Kind: "issue", ExternalID: "sm-title",
-					Key: "SM-TITLE", Title: "UniqueTitleNeedle appears only here",
-					BodyText:  "Generic body with no special tokens for this case.",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				},
-				Issue: Issue{
-					ProjectKey: "SM", IssueType: "Bug", IssueTypeID: "10004",
-					Status: "To Do", StatusID: "1", StatusCategory: "new",
-				},
-			},
-			{
-				Item: Item{
-					ID: "jira:sm-body", SourceID: "jira", Kind: "issue", ExternalID: "sm-body",
-					Key: "SM-BODY", Title: "Ordinary summary without the secret word",
-					BodyText:  "The UniqueBodyNeedle lives only in the description of this issue.",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				},
-				Issue: Issue{
-					ProjectKey: "SM", IssueType: "Bug", IssueTypeID: "10004",
-					Status: "To Do", StatusID: "1", StatusCategory: "new",
-				},
-			},
-			{
-				Item: Item{
-					ID: "jira:sm-comment", SourceID: "jira", Kind: "issue", ExternalID: "sm-comment",
-					Key: "SM-COMMENT", Title: "Nothing special in the title",
-					BodyText:  "Nothing special in the body either.",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				},
-				Issue: Issue{
-					ProjectKey: "SM", IssueType: "Bug", IssueTypeID: "10004",
-					Status: "To Do", StatusID: "1", StatusCategory: "new",
-				},
-				Comments: []Comment{{
-					ID: "jira:sm-c1", ExternalID: "sm-c1", Author: "Ada",
-					BodyText:  "Reproduced UniqueCommentNeedle on staging with a fresh workspace.",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				}},
-			},
-			{
-				// Title and body both contain MultiHitNeedle — field must be title.
-				Item: Item{
-					ID: "jira:sm-multi", SourceID: "jira", Kind: "issue", ExternalID: "sm-multi",
-					Key: "SM-MULTI", Title: "MultiHitNeedle in the title wins",
-					BodyText:  "MultiHitNeedle also in the body but lower priority.",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				},
-				Issue: Issue{
-					ProjectKey: "SM", IssueType: "Task", IssueTypeID: "10002",
-					Status: "To Do", StatusID: "1", StatusCategory: "new",
-				},
-				Comments: []Comment{{
-					ID: "jira:sm-c2", ExternalID: "sm-c2", Author: "Ada",
-					BodyText:  "MultiHitNeedle in a comment too.",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				}},
-			},
+			newBundle("SM-TITLE", "UniqueTitleNeedle appears only here", "Bug", "Generic body with no special tokens for this case."),
+			newBundle("SM-BODY", "Ordinary summary without the secret word", "Bug", "The UniqueBodyNeedle lives only in the description of this issue."),
+			smComment,
+			smMulti,
 		},
 	}
 	if _, err := db.UpsertIssues(context.Background(), b); err != nil {

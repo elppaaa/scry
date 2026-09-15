@@ -23,58 +23,39 @@ func seedLabelOnly(t *testing.T, db *DB) {
 	if err := db.UpsertSource(context.Background(), Source{ID: "confluence", Kind: "confluence", BaseURL: "https://fixture.invalid/wiki"}); err != nil {
 		t.Fatal(err)
 	}
-	issue := func(id, key, title, body string, labels []string) IssueRecord {
-		return IssueRecord{
-			Item: Item{
-				ID: "jira:" + id, SourceID: "jira", Kind: "issue", ExternalID: id,
-				Key: key, Title: title, BodyText: body,
-				CreatedAt: ago(1), UpdatedAt: ago(1),
-			},
-			Issue: Issue{
-				ProjectKey: "LAB", IssueType: "Bug", IssueTypeID: "10004",
-				Status: "To Do", StatusID: "1", StatusCategory: "new",
-				Labels: labels,
-			},
-		}
+	issue := func(key, title, body string, labels ...string) IssueRecord {
+		r := newBundle(key, title, "Bug", body)
+		r.Issue.Labels = labels
+		return r
 	}
+	labLC := newBundle("LAB-LC", "Ordinary summary without the ranking token", "Bug", "Generic description with no ranking token.")
+	labLC.Comments = []Comment{{
+		ID: "jira:lab-lc1", ExternalID: "lab-lc1", Author: "Ada",
+		BodyText:  "Comment carries RankNeedleLMN once.",
+		CreatedAt: ago(1), UpdatedAt: ago(1),
+	}}
 	recs := []IssueRecord{
 		// The label-only row: "payments" appears nowhere in title/body/comments.
-		issue("lab-1", "LAB-1", "Card statement rendering",
-			"Quarterly statement PDF misses pages.", []string{"payments"}),
+		issue("LAB-1", "Card statement rendering",
+			"Quarterly statement PDF misses pages.", "payments"),
 		// Stem variants, one each direction. porter("payments") == porter("payment"),
 		// so each doc matches the other's query form; unicode61 cannot.
-		issue("lab-s", "LAB-S", "Charge retry loop",
-			"The payment pipeline drops the second attempt.", nil),
-		issue("lab-p", "LAB-P", "Chargeback window",
-			"Duplicate payments created one invoice twice.", nil),
+		issue("LAB-S", "Charge retry loop",
+			"The payment pipeline drops the second attempt."),
+		issue("LAB-P", "Chargeback window",
+			"Duplicate payments created one invoice twice."),
 		// Korean mid-compound in a label: 결제 exists only inside 간편결제 —
 		// the title deliberately carries no 결제 of its own.
-		issue("lab-ko", "LAB-KO", "모바일 오류 보고",
-			"재현 절차를 정리했다.", []string{"간편결제"}),
+		issue("LAB-KO", "모바일 오류 보고",
+			"재현 절차를 정리했다.", "간편결제"),
 		// Ranking family — one shared needle, one field each.
-		issue("lab-lt", "LAB-LT", "RankNeedleLMN lives only in this title",
-			"Generic description with no ranking token.", nil),
-		issue("lab-ll", "LAB-LL", "Ordinary summary without the ranking token",
-			"Generic description with no ranking token.", []string{"rankneedlelmn"}),
-		issue("lab-lb", "LAB-LB", "Ordinary summary without the ranking token",
-			"One body occurrence of RankNeedleLMN only.", nil),
-		{
-			Item: Item{
-				ID: "jira:lab-lc", SourceID: "jira", Kind: "issue", ExternalID: "lab-lc",
-				Key: "LAB-LC", Title: "Ordinary summary without the ranking token",
-				BodyText:  "Generic description with no ranking token.",
-				CreatedAt: ago(1), UpdatedAt: ago(1),
-			},
-			Issue: Issue{
-				ProjectKey: "LAB", IssueType: "Bug", IssueTypeID: "10004",
-				Status: "To Do", StatusID: "1", StatusCategory: "new",
-			},
-			Comments: []Comment{{
-				ID: "jira:lab-lc1", ExternalID: "lab-lc1", Author: "Ada",
-				BodyText:  "Comment carries RankNeedleLMN once.",
-				CreatedAt: ago(1), UpdatedAt: ago(1),
-			}},
-		},
+		issue("LAB-LT", "RankNeedleLMN lives only in this title",
+			"Generic description with no ranking token."),
+		issue("LAB-LL", "Ordinary summary without the ranking token",
+			"Generic description with no ranking token.", "rankneedlelmn"),
+		issue("LAB-LB", "Ordinary summary without the ranking token",
+			"One body occurrence of RankNeedleLMN only."),
+		labLC,
 	}
 	if _, err := db.UpsertIssues(context.Background(), Batch{Categories: fixtureCategories, Records: recs}); err != nil {
 		t.Fatal(err)

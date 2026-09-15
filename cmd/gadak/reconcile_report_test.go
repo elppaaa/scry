@@ -54,29 +54,7 @@ func TestDoctorNamesAShortMirror(t *testing.T) {
 	config.SetProfile("")
 
 	ctx := context.Background()
-	db, err := store.Open(filepath.Join(home, "gadak.db"))
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	if err := db.UpsertSource(ctx, store.Source{ID: "jira", Kind: "jira", BaseURL: "https://example.atlassian.net"}); err != nil {
-		t.Fatalf("source: %v", err)
-	}
-	if _, err := db.UpsertIssues(ctx, store.Batch{
-		Categories: map[string]string{"3": "new"},
-		Records: []store.IssueRecord{{
-			Item: store.Item{
-				ID: "jira:1", SourceID: "jira", Kind: "issue", ExternalID: "1",
-				Key: "GDK-1", Title: "the one row this mirror got",
-				CreatedAt: "2026-01-01T00:00:00.000Z", UpdatedAt: "2026-01-01T00:00:00.000Z",
-			},
-			Issue: store.Issue{
-				ProjectKey: "GDK", IssueType: "Bug", IssueTypeID: "1",
-				Status: "To Do", StatusID: "3", StatusCategory: "new",
-			},
-		}},
-	}); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
+	db := seedOneIssue(t, home, "GDK-1", "GDK", "the one row this mirror got", "To Do", "new")
 	// A watermark is what makes this the issue source status reads.
 	if err := db.RecordSync(ctx, "jira", store.SyncResult{Watermark: "2026-09-03T11:17:35.422Z"}); err != nil {
 		t.Fatalf("record sync: %v", err)
@@ -121,29 +99,7 @@ func TestDoctorSaysNothingWhenTheMirrorIsLevel(t *testing.T) {
 	config.SetProfile("")
 
 	ctx := context.Background()
-	db, err := store.Open(filepath.Join(home, "gadak.db"))
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	if err := db.UpsertSource(ctx, store.Source{ID: "jira", Kind: "jira", BaseURL: "https://example.atlassian.net"}); err != nil {
-		t.Fatalf("source: %v", err)
-	}
-	if _, err := db.UpsertIssues(ctx, store.Batch{
-		Categories: map[string]string{"3": "new"},
-		Records: []store.IssueRecord{{
-			Item: store.Item{
-				ID: "jira:1", SourceID: "jira", Kind: "issue", ExternalID: "1",
-				Key: "GDK-1", Title: "level",
-				CreatedAt: "2026-01-01T00:00:00.000Z", UpdatedAt: "2026-01-01T00:00:00.000Z",
-			},
-			Issue: store.Issue{
-				ProjectKey: "GDK", IssueType: "Bug", IssueTypeID: "1",
-				Status: "To Do", StatusID: "3", StatusCategory: "new",
-			},
-		}},
-	}); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
+	db := seedOneIssue(t, home, "GDK-1", "GDK", "level", "To Do", "new")
 	if err := db.RecordSync(ctx, "jira", store.SyncResult{Watermark: "2026-09-03T11:17:35.422Z"}); err != nil {
 		t.Fatalf("record sync: %v", err)
 	}

@@ -23,26 +23,7 @@ import (
 //
 // Tests (*_test.go) may still call jira.New to stand up httptest servers.
 func TestNoDirectJiraNewOutsideOrigin(t *testing.T) {
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("runtime.Caller failed")
-	}
-	root := filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", ".."))
-
-	var hits []string
-	err := archlint.Walk(root, func(af *archlint.File) error {
-		if strings.HasSuffix(af.Rel, "_test.go") {
-			return nil
-		}
-		if allowedJiraNewFile(af.Rel) {
-			return nil
-		}
-		hits = append(hits, findJiraNewCalls(t, af)...)
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	hits := findPkgNewCallsOutside(t, "github.com/midagedev/gadak/internal/jira", allowedJiraNewFile)
 	if len(hits) > 0 {
 		t.Fatalf("jira.New must not be called from production code outside internal/origin (and its definition in internal/jira):\n  %s",
 			strings.Join(hits, "\n  "))
@@ -60,26 +41,53 @@ func allowedJiraNewFile(rel string) bool {
 	return false
 }
 
-func findJiraNewCalls(t *testing.T, af *archlint.File) []string {
+// findPkgNewCallsOutside walks every production file and returns file:line
+// for each call of the package's New constructor, where the package is
+// identified by its import path (import aliases handled: the local bound
+// name is what calls must use). Shared by the Jira and Confluence locks —
+// the two walks were byte-identical except for the import path and the
+// allow-list, which is exactly the duplication this helper owns.
+func findPkgNewCallsOutside(t *testing.T, importPath string, allowed func(rel string) bool) []string {
+	t.Helper()
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	root := filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", ".."))
+
+	var hits []string
+	err := archlint.Walk(root, func(af *archlint.File) error {
+		if strings.HasSuffix(af.Rel, "_test.go") || allowed(af.Rel) {
+			return nil
+		}
+		hits = append(hits, findPkgNewCalls(t, af, importPath)...)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return hits
+}
+
+// findPkgNewCalls returns the <local>.New( call sites in one file. The
+// default local name is the import path's last segment.
+func findPkgNewCalls(t *testing.T, af *archlint.File, importPath string) []string {
 	t.Helper()
 	f, fset, err := af.AST()
 	if err != nil {
 		t.Fatalf("parse %s: %v", af.Rel, err)
 		return nil
 	}
-	var jiraName string
+	pkgName := importPath[strings.LastIndexByte(importPath, '/')+1:]
 	for _, imp := range f.Imports {
-		p := strings.Trim(imp.Path.Value, `"`)
-		if p != "github.com/midagedev/gadak/internal/jira" {
+		if strings.Trim(imp.Path.Value, `"`) != importPath {
 			continue
 		}
 		if imp.Name != nil {
-			jiraName = imp.Name.Name
-		} else {
-			jiraName = "jira"
+			pkgName = imp.Name.Name
 		}
 	}
-	if jiraName == "" || jiraName == "_" {
+	if pkgName == "" || pkgName == "_" {
 		return nil
 	}
 	var hits []string
@@ -93,7 +101,7 @@ func findJiraNewCalls(t *testing.T, af *archlint.File) []string {
 			return true
 		}
 		id, ok := sel.X.(*ast.Ident)
-		if !ok || id.Name != jiraName {
+		if !ok || id.Name != pkgName {
 			return true
 		}
 		pos := fset.Position(call.Pos())

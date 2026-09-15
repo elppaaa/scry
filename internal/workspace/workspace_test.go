@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"runtime"
 	"sort"
 	"strings"
@@ -14,57 +12,16 @@ import (
 	"time"
 
 	"github.com/midagedev/gadak/internal/config"
-	"github.com/midagedev/gadak/internal/store"
 	"github.com/midagedev/gadak/internal/uifocus"
 )
 
 // seedProfile writes config.json and an empty migrated gadak.db under GADAK_HOME
-// for the named profile ("" = default root).
+// for the named profile ("" = default root), via the exported SeedProfile.
 func seedProfile(t *testing.T, name string, cfg *config.Config) {
 	t.Helper()
-	dir, err := config.DirFor(name)
-	if err != nil {
+	if err := SeedProfile(name, cfg); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := config.LoadFor(name)
-	if err != nil {
-		t.Fatal(err)
-	}
-	loaded.Site = cfg.Site
-	loaded.Email = cfg.Email
-	loaded.Token = cfg.Token
-	loaded.Projects = cfg.Projects
-	if err := loaded.Save(); err != nil {
-		t.Fatal(err)
-	}
-	dbPath := filepath.Join(dir, "gadak.db")
-	db, err := store.Open(dbPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	key := "AAA-1"
-	if name != "" && name != "default" {
-		key = "BBB-1"
-	}
-	if err := db.UpsertSource(context.Background(), store.Source{ID: "jira", Kind: "jira", BaseURL: cfg.Site}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.UpsertIssues(context.Background(), store.Batch{
-		Categories: map[string]string{"1": "new"},
-		Records: []store.IssueRecord{{
-			Item: store.Item{
-				ID: "jira:" + key, SourceID: "jira", ExternalID: key, Key: key,
-				Title: "fixture " + key, CreatedAt: "2026-07-01T00:00:00.000Z", UpdatedAt: "2026-07-01T00:00:00.000Z",
-			},
-			Issue: store.Issue{ProjectKey: strings.Split(key, "-")[0], Status: "To Do", StatusID: "1", StatusCategory: "new"},
-		}},
-	}); err != nil {
-		t.Fatal(err)
-	}
-	_ = db.Close()
 }
 
 func setupHome(t *testing.T) {

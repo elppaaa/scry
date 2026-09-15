@@ -53,19 +53,11 @@ func seedPagesWithIssues(t *testing.T, db *DB) {
 	if err := db.UpsertSource(context.Background(), Source{ID: "confluence", Kind: "confluence", BaseURL: "https://j.example/wiki"}); err != nil {
 		t.Fatal(err)
 	}
+	issue := newBundle("NMB-1", "billing webhook retry", "Bug", "sandbox token")
+	issue.Item.CreatedAt = ago(2)
 	if _, err := db.UpsertIssues(context.Background(), Batch{
 		Categories: map[string]string{"1": "new"},
-		Records: []IssueRecord{{
-			Item: Item{
-				ID: "jira:1", SourceID: "jira", Kind: "issue", ExternalID: "1",
-				Key: "NMB-1", Title: "billing webhook retry", BodyText: "sandbox token",
-				CreatedAt: ago(2), UpdatedAt: ago(1),
-			},
-			Issue: Issue{
-				ProjectKey: "NMB", IssueType: "Bug", IssueTypeID: "10004",
-				Status: "To Do", StatusID: "1", StatusCategory: "new",
-			},
-		}},
+		Records:    []IssueRecord{issue},
 	}); err != nil {
 		t.Fatal(err)
 	}

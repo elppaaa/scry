@@ -23,6 +23,40 @@ import (
 	"github.com/midagedev/gadak/internal/store"
 )
 
+// seedOneIssue opens home/gadak.db, registers the jira source, and writes the
+// single-issue mirror the doctor and reconcile-report tests run against: one
+// Bug (type id 1), status id 3, timestamps frozen at 2026-01-01 so age math
+// never depends on the wall clock. project is its own argument because the
+// paste-safety fixture deliberately files its issue under a project that is
+// not the key's prefix. The caller closes the returned DB.
+func seedOneIssue(t *testing.T, home, key, project, title, status, category string) *store.DB {
+	t.Helper()
+	db, err := store.Open(filepath.Join(home, "gadak.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	if err := db.UpsertSource(context.Background(), store.Source{ID: "jira", Kind: "jira", BaseURL: "https://example.atlassian.net"}); err != nil {
+		t.Fatalf("source: %v", err)
+	}
+	if _, err := db.UpsertIssues(context.Background(), store.Batch{
+		Categories: map[string]string{"3": category},
+		Records: []store.IssueRecord{{
+			Item: store.Item{
+				ID: "jira:1", SourceID: "jira", Kind: "issue", ExternalID: "1",
+				Key: key, Title: title,
+				CreatedAt: "2026-01-01T00:00:00.000Z", UpdatedAt: "2026-01-01T00:00:00.000Z",
+			},
+			Issue: store.Issue{
+				ProjectKey: project, IssueType: "Bug", IssueTypeID: "1",
+				Status: status, StatusID: "3", StatusCategory: category,
+			},
+		}},
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	return db
+}
+
 func TestParseLsofHoldersDropsSelfAndDedups(t *testing.T) {
 	const self = 99
 	out := []byte("p99\ncgadak\np42\ncGadak\np42\ncGadak\np7\ncgadak\n")
@@ -76,29 +110,7 @@ func TestDoctorProjectsMismatch(t *testing.T) {
 	t.Setenv("HOME", home)
 	config.SetProfile("")
 
-	db, err := store.Open(filepath.Join(home, "gadak.db"))
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	if err := db.UpsertSource(context.Background(), store.Source{ID: "jira", Kind: "jira", BaseURL: "https://example.atlassian.net"}); err != nil {
-		t.Fatalf("source: %v", err)
-	}
-	if _, err := db.UpsertIssues(context.Background(), store.Batch{
-		Categories: map[string]string{"3": "inprogress"},
-		Records: []store.IssueRecord{{
-			Item: store.Item{
-				ID: "jira:1", SourceID: "jira", Kind: "issue", ExternalID: "1",
-				Key: "NMB-1", Title: "renamed upstream",
-				CreatedAt: "2026-01-01T00:00:00.000Z", UpdatedAt: "2026-01-01T00:00:00.000Z",
-			},
-			Issue: store.Issue{
-				ProjectKey: "NMB", IssueType: "Bug", IssueTypeID: "1",
-				Status: "Open", StatusID: "3", StatusCategory: "inprogress",
-			},
-		}},
-	}); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
+	db := seedOneIssue(t, home, "NMB-1", "NMB", "renamed upstream", "Open", "inprogress")
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -311,29 +323,7 @@ func TestDoctorRedaction(t *testing.T) {
 	config.SetProfile("")
 
 	// Seed a tiny mirror with project keys that must never appear in output.
-	db, err := store.Open(filepath.Join(home, "gadak.db"))
-	if err != nil {
-		t.Fatalf("open: %v", err)
-	}
-	if err := db.UpsertSource(context.Background(), store.Source{ID: "jira", Kind: "jira", BaseURL: "https://example.atlassian.net"}); err != nil {
-		t.Fatalf("source: %v", err)
-	}
-	if _, err := db.UpsertIssues(context.Background(), store.Batch{
-		Categories: map[string]string{"3": "inprogress"},
-		Records: []store.IssueRecord{{
-			Item: store.Item{
-				ID: "jira:1", SourceID: "jira", Kind: "issue", ExternalID: "1",
-				Key: "LEAKY-42", Title: "do not leak this summary",
-				CreatedAt: "2026-01-01T00:00:00.000Z", UpdatedAt: "2026-01-01T00:00:00.000Z",
-			},
-			Issue: store.Issue{
-				ProjectKey: "SECRET", IssueType: "Bug", IssueTypeID: "1",
-				Status: "Open", StatusID: "3", StatusCategory: "inprogress",
-			},
-		}},
-	}); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
+	db := seedOneIssue(t, home, "LEAKY-42", "SECRET", "do not leak this summary", "Open", "inprogress")
 	// Plant a last_error that embeds a host, key, and URL — classifier only.
 	if err := db.RecordSync(context.Background(), "jira", store.SyncResult{
 		Err: errString("GET /rest/api/3/search: jira: 403: You do not have access to LEAKY-42 on https://example.atlassian.net"),

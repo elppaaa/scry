@@ -428,51 +428,10 @@ func seedKoreanSearch(t *testing.T, db *DB) {
 	b := Batch{
 		Categories: fixtureCategories,
 		Records: []IssueRecord{
-			{
-				Item: Item{
-					ID: "jira:kr1", SourceID: "jira", Kind: "issue", ExternalID: "kr1",
-					Key: "KR-1", Title: "로그인이 간헐적으로 실패합니다",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				},
-				Issue: Issue{
-					ProjectKey: "KR", IssueType: "Bug", IssueTypeID: "10004",
-					Status: "To Do", StatusID: "1", StatusCategory: "new",
-				},
-			},
-			{
-				Item: Item{
-					ID: "jira:kr2", SourceID: "jira", Kind: "issue", ExternalID: "kr2",
-					Key: "KR-2", Title: "결제 오류",
-					BodyText:  "결제 모듈이 응답하지 않습니다",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				},
-				Issue: Issue{
-					ProjectKey: "KR", IssueType: "Bug", IssueTypeID: "10004",
-					Status: "To Do", StatusID: "1", StatusCategory: "new",
-				},
-			},
-			{
-				Item: Item{
-					ID: "jira:en1", SourceID: "jira", Kind: "issue", ExternalID: "en1",
-					Key: "EN-1", Title: "Payment retries fail",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				},
-				Issue: Issue{
-					ProjectKey: "EN", IssueType: "Bug", IssueTypeID: "10004",
-					Status: "To Do", StatusID: "1", StatusCategory: "new",
-				},
-			},
-			{
-				Item: Item{
-					ID: "jira:kr3", SourceID: "jira", Kind: "issue", ExternalID: "kr3",
-					Key: "KR-3", Title: "로그인 화면 깨짐",
-					CreatedAt: ago(1), UpdatedAt: ago(1),
-				},
-				Issue: Issue{
-					ProjectKey: "KR", IssueType: "Bug", IssueTypeID: "10004",
-					Status: "To Do", StatusID: "1", StatusCategory: "new",
-				},
-			},
+			newBundle("KR-1", "로그인이 간헐적으로 실패합니다", "Bug", ""),
+			newBundle("KR-2", "결제 오류", "Bug", "결제 모듈이 응답하지 않습니다"),
+			newBundle("EN-1", "Payment retries fail", "Bug", ""),
+			newBundle("KR-3", "로그인 화면 깨짐", "Bug", ""),
 		},
 	}
 	if _, err := db.UpsertIssues(context.Background(), b); err != nil {
