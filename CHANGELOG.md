@@ -79,7 +79,9 @@ next time gadak re-reads it, instead of surviving there ([GDK-1889]). And a
 Confluence site that reports attachment sizes as numbers rather than strings
 no longer stops the wiki sync at the first listing ([GDK-1900]). A page the
 hourly reconcile cannot confirm no longer fails the whole pass every hour:
-that one page stays, and the rest of the pass finishes ([GDK-1887]).
+that one page stays, and the rest of the pass finishes ([GDK-1887]). An
+attachment added to or removed from a page reaches the cache on the hourly
+reconcile even when the page itself was not edited ([GDK-1888]).
 
 **An agent's page renders on the issue.** Attach an HTML file to an issue and
 the detail shows it as an artifact: the page runs in a sandboxed frame — no
@@ -1704,6 +1706,7 @@ priority sorting keyed on `priority_rank`.
 [GDK-1884]: https://gadak.dev/backlog/#/?ks=GDK-1884
 [GDK-1886]: https://gadak.dev/backlog/#/?ks=GDK-1886
 [GDK-1887]: https://gadak.dev/backlog/#/?ks=GDK-1887
+[GDK-1888]: https://gadak.dev/backlog/#/?ks=GDK-1888
 [GDK-1889]: https://gadak.dev/backlog/#/?ks=GDK-1889
 [GDK-1897]: https://gadak.dev/backlog/#/?ks=GDK-1897
 [GDK-1898]: https://gadak.dev/backlog/#/?ks=GDK-1898

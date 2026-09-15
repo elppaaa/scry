@@ -64,7 +64,8 @@
 다시 읽는 순간 캐시에서 빠집니다 ([GDK-1889]). 첨부 크기를 문자열이 아니라 숫자로
 답하는 Confluence 사이트에서 위키 동기화가 첫 목록에서 멈추던 것도 고쳤습니다
 ([GDK-1900]). 매시간 도는 재조정이 확인하지 못한 페이지 하나 때문에 통째로
-실패하던 것도 고쳤습니다. 이제 그 페이지만 남겨 두고 나머지는 끝냅니다 ([GDK-1887]).
+실패하던 것도 고쳤습니다. 이제 그 페이지만 남겨 두고 나머지는 끝냅니다 ([GDK-1887]). 페이지를 고치지
+않고 첨부만 더하거나 지워도, 매시간 재조정에서 캐시에 반영됩니다 ([GDK-1888]).
 
 **에이전트가 만든 페이지가 이슈 위에 그려집니다.** 이슈에 HTML 파일을 붙이면
 상세가 그것을 아티팩트로 보여줍니다. 페이지는 격리된 프레임 안에서 돌고 — 네트워크도,
@@ -1612,6 +1613,7 @@ FlagSet에서 생성되어 어긋날 수 없습니다. 즐겨찾기가 미러에
 [GDK-1884]: https://gadak.dev/backlog/#/?ks=GDK-1884
 [GDK-1886]: https://gadak.dev/backlog/#/?ks=GDK-1886
 [GDK-1887]: https://gadak.dev/backlog/#/?ks=GDK-1887
+[GDK-1888]: https://gadak.dev/backlog/#/?ks=GDK-1888
 [GDK-1889]: https://gadak.dev/backlog/#/?ks=GDK-1889
 [GDK-1897]: https://gadak.dev/backlog/#/?ks=GDK-1897
 [GDK-1898]: https://gadak.dev/backlog/#/?ks=GDK-1898
