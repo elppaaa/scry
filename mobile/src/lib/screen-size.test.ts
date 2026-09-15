@@ -1,0 +1,87 @@
+import { readFileSync, readdirSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { describe, expect, it } from 'vitest'
+
+/*
+ * Recurrence layer for GDK-1925: a phone screen grows without seams.
+ *
+ * The v0.23 audit measured Detail.svelte at 2,319 lines and 52 pieces of
+ * component state, having taken on 919 lines that cycle without gaining a
+ * single child component. Nothing failed while that happened, because size
+ * is the one property no gate here reads — svelte-check reads types, the
+ * viewport gate reads geometry, vitest reads behaviour.
+ *
+ * This is a ratchet, not a budget. Each ceiling is that screen's measurement
+ * on the date below, so today's tree is exactly green and tomorrow's growth
+ * is red; a screen that gets smaller must lower its own row in the same
+ * commit, which is what keeps the ceiling from drifting into permission. It
+ * deliberately says nothing about what good structure looks like — a 2,000
+ * line screen split into two 1,000 line halves is not obviously better, and
+ * this file is not the place to have that argument. It only refuses the
+ * growth that happens without anyone deciding to.
+ *
+ * Both numbers matter and they fail for different reasons. Lines is the
+ * reading cost. State count is the coupling: 52 pieces of mutable state in
+ * one component is 52 things any handler in it can reach, which is what
+ * makes such a file risky to change rather than merely long.
+ */
+
+const screensDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'screens')
+
+/** Measured 2026-09-16 on `main` at the v0.23 audit's fix cycle. Lower a row
+ *  when a screen shrinks; raising one is a decision, not a fix. */
+const CEILINGS: Record<string, { lines: number; state: number }> = {
+  'Detail.svelte': { lines: 2319, state: 52 },
+  'Shell.svelte': { lines: 1611, state: 18 },
+  'Settings.svelte': { lines: 765, state: 14 },
+  'PageDetail.svelte': { lines: 522, state: 8 },
+  'Issues.svelte': { lines: 482, state: 3 },
+  'PairGate.svelte': { lines: 247, state: 4 },
+}
+
+/** `let x = $state(...)`, including the typed form `$state<T>(...)` — the
+ *  form a plain `$state(` grep misses, which is how a first reading of this
+ *  file counted 28 where there are 52. */
+const STATE_DECL = /^[ \t]*let[ \t]+\w+[ \t]*(?::[^=]+)?=[ \t]*\$state\b/gm
+
+function screens(): string[] {
+  return readdirSync(screensDir).filter((n) => n.endsWith('.svelte')).sort()
+}
+
+describe('phone screen size ratchet (GDK-1925)', () => {
+  it('every screen has a ceiling, and every ceiling names a screen', () => {
+    // A new screen with no row would be unbounded, and a row left behind by a
+    // deleted or renamed screen is an exemption nobody is checking.
+    expect(screens()).toEqual(Object.keys(CEILINGS).sort())
+  })
+
+  it('no screen is larger than its ceiling', () => {
+    const over: string[] = []
+    for (const name of screens()) {
+      const src = readFileSync(join(screensDir, name), 'utf8')
+      const lines = src.split('\n').length - (src.endsWith('\n') ? 1 : 0)
+      const state = (src.match(STATE_DECL) ?? []).length
+      const cap = CEILINGS[name]
+      if (lines > cap.lines) over.push(`${name}: ${lines} lines > ceiling ${cap.lines}`)
+      if (state > cap.state) over.push(`${name}: ${state} $state > ceiling ${cap.state}`)
+    }
+    expect(over, over.join('\n')).toEqual([])
+  })
+
+  it('a ceiling that has grown past its screen is lowered', () => {
+    // The ratchet half. Without this the numbers only ever go up: a round
+    // that extracts half of Detail leaves a ceiling with room for it to come
+    // back, and the next round's growth is invisible again.
+    const slack: string[] = []
+    for (const name of screens()) {
+      const src = readFileSync(join(screensDir, name), 'utf8')
+      const lines = src.split('\n').length - (src.endsWith('\n') ? 1 : 0)
+      const state = (src.match(STATE_DECL) ?? []).length
+      const cap = CEILINGS[name]
+      if (lines < cap.lines) slack.push(`${name}: ${lines} lines, ceiling still ${cap.lines} — lower it`)
+      if (state < cap.state) slack.push(`${name}: ${state} $state, ceiling still ${cap.state} — lower it`)
+    }
+    expect(slack, slack.join('\n')).toEqual([])
+  })
+})
