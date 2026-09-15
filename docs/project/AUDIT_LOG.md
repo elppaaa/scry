@@ -179,15 +179,23 @@ remaining seven now open from.
 
 First cycle to record one, so there is nothing to compare against yet.
 
-| measure | v0.22 base |
-|---|---|
-| Go lines (test ≈ 1.3× production) | 219,183 |
-| mean non-test cyclomatic over 3,011 functions | 5.35 |
-| functions at cyclomatic ≥ 69 | 7 (worst: `cmd/gadak/init.go` 100) |
-| `internal/server` fan-out · import cycles | 23 · 0 |
-| CI wall / billable seconds | 438 / 3,358 (v0.19.0: 317 / 2,241) |
-| catalog keys · real ja fall-throughs | 1,303 · 2 |
-| fact copies · disagreeing | 122 · 10 |
+Every row names the command that produced it, because a later cycle that
+re-derives a row with a different filter reads the difference as the
+ledger being wrong (2026-09-15: the v0.23 axis-1 round measured three
+other refs with its own filter, got 2,803 functions where this table says
+3,011, and reported the baseline as irreproducible — re-run at this
+table's own base, the command below gives 3,133 / 5.28 / 7, which is this
+row).
+
+| measure | v0.22 base (`245ede99`) | command |
+|---|---|---|
+| Go lines (test ≈ 1.3× production) | 219,183 | `tools/audit/complexity.sh` |
+| mean non-test cyclomatic over 3,011 functions | 5.35 | `gocyclo -over 0 .` from the repo root, rows whose file is not `*_test.go` |
+| functions at cyclomatic ≥ 69 | 7 (worst: `cmd/gadak/init.go` 100) | the same run, `$1 >= 69` |
+| `internal/server` fan-out · import cycles | 23 · 0 | `go list -f '{{join .Imports "\n"}}' ./internal/server \| grep -c midagedev` |
+| CI wall / billable seconds | 438 / 3,358 (v0.19.0: 317 / 2,241) | `tools/audit/ci-ledger.sh` |
+| catalog keys · real ja fall-throughs | 1,303 · 2 | `tools/audit/i18n-census.sh` |
+| fact copies · disagreeing | 122 · 10 | `tools/audit/fact-ledger.sh` |
 
 ### Where the findings went
 
