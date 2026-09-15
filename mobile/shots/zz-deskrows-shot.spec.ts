@@ -65,21 +65,22 @@ async function withCustomField(page: Page): Promise<void> {
  */
 async function bootIssues(page: Page): Promise<void> {
   await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await page.locator('nav.safe-bottom').waitFor()
+  await page.locator('h1 button.scope').waitFor()
   const back = page.locator('button.back').first()
   if (await back.isVisible().catch(() => false)) {
     await back.click()
   }
-  await page.locator('nav.safe-bottom button.tab').nth(0).click()
+  // GDK-902 2026-09-15: there is no tab to return to — the list is the
+  // only owner unless the shell was entered, and this walk never enters it.
   await page.locator('.pane:not(.off) button.row').first().waitFor()
   await page.locator('.pane:not(.off) h1 button.scope').click()
-  await page.locator('button.cancel').waitFor()
-  await page.locator('.sheet button.row', { hasText: 'All open' }).click()
-  await page.locator('button.cancel').waitFor({ state: 'hidden' })
+  await page.locator('.palette-field input').waitFor()
+  await page.locator('button.palette-row', { hasText: 'All open' }).click()
+  await page.locator('.palette-field input').waitFor({ state: 'detached' })
 }
 
 async function openIssue(page: Page, key: string): Promise<void> {
-  await page.locator('nav.safe-bottom button.tab').nth(1).click()
+  await page.locator('h1 button.scope').click()
   await page.locator('.pane:not(.off) input').first().fill(key)
   const hit = page.locator('.pane:not(.off) button.row', { hasText: key }).first()
   await hit.waitFor()
@@ -89,9 +90,9 @@ async function openIssue(page: Page, key: string): Promise<void> {
 
 async function openFirstPage(page: Page): Promise<void> {
   await page.locator('.pane:not(.off) h1 button.scope').click()
-  await page.locator('button.cancel').waitFor()
-  await page.locator('.sheet button.row', { hasText: 'Updated' }).click()
-  await page.locator('button.cancel').waitFor({ state: 'hidden' })
+  await page.locator('.palette-field input').waitFor()
+  await page.locator('button.palette-row', { hasText: 'Updated' }).click()
+  await page.locator('.palette-field input').waitFor({ state: 'detached' })
   const row = page.locator('.pane:not(.off) button.row[data-testid="doc-row"]').first()
   await row.waitFor()
   await row.click()
@@ -109,12 +110,12 @@ async function walk(page: Page, suffix: string): Promise<void> {
   // top of the list, where the saved-views heading stands over its one row,
   // and the end of it, where the dashboards row closes the sheet.
   await page.locator('.pane:not(.off) h1 button.scope').click()
-  await page.locator('button.cancel').waitFor()
+  await page.locator('.palette-field input').waitFor()
   await shoot(page, `02-scope-sheet-top-${suffix}`)
   await page.locator('[data-testid="desk-row-dashboards"]').scrollIntoViewIfNeeded()
   await shoot(page, `03-scope-sheet-end-${suffix}`)
-  await page.locator('button.cancel').click()
-  await page.locator('button.cancel').waitFor({ state: 'hidden' })
+  await page.locator('button.palette-cancel').click()
+  await page.locator('.palette-field input').waitFor({ state: 'detached' })
 
   // 4. The page content row, above the body it describes.
   await openFirstPage(page)

@@ -70,7 +70,15 @@ import type {
 const UNPAIRED_KEY = 'gadak.pairing.unpaired'
 const RECENTS_KEY = 'gadak.search.recents'
 
-export type Tab = 'issues' | 'search' | 'pairing' | 'shell'
+/**
+ * Who draws the one column (GDK-902, DESIGN.md §2). Not a tab set: the
+ * owners a user actually has are the scopes they made at the desk, an
+ * unbounded list that never fitted fixed slots. `list` means "the current
+ * scope draws the column" — which scope stays `app.scopeId`.
+ */
+export type Owner = 'list' | 'shell'
+/** Push layers above the column. Settings is one; it is not an owner. */
+export type Layer = 'settings'
 export type Phase = 'boot' | 'unpaired' | 'paired'
 export type DetailRef = { kind: 'issue'; key: string } | { kind: 'page'; key: string }
 
@@ -155,7 +163,27 @@ export const app = $state({
   offline: false,
   lastSyncAt: null as Date | null,
 
-  tab: 'issues' as Tab,
+  /**
+   * The column's owner (GDK-902). Boot is always `list`: the first paint is
+   * the scope's rows, so "what's on my plate" stays a glance with no taps.
+   */
+  owner: 'list' as Owner,
+  /**
+   * True once the shell has been the owner at least once. The Shell mounts
+   * on that latch rather than on `app.terminal`, so a phone with a stored
+   * terminal pairing does not boot a PTY it was never asked for; once
+   * mounted it stays mounted (hidden with `.off`) so the session survives a
+   * switch back to the list.
+   */
+  shellEntered: false,
+  /**
+   * The palette, in place of the list body (GDK-902). Dormant on boot and
+   * never focused until the heading is tapped — an autofocused field puts
+   * the keyboard over the first screen and kills the glance.
+   */
+  palette: false,
+  /** The open push layer, or none. Mutually exclusive with `detail`. */
+  layer: null as Layer | null,
   detail: null as DetailRef | null,
   /**
    * The last issue this session opened (GDK-1527). Outlives closeIssue() —
@@ -867,7 +895,10 @@ function resetSessionState(): void {
   // — and the visit ledger is the same class of key (GDK-875).
   app.lastViewedIssueKey = null
   app.recentVisits = []
-  app.tab = 'issues'
+  app.owner = 'list'
+  app.shellEntered = false
+  app.palette = false
+  app.layer = null
   app.terminal = null
   // The boundary and the threshold belong to the host being left, not to the
   // next one (GDK-1495): a strip latched on one workspace must not speak on
@@ -1094,7 +1125,10 @@ export async function unpairTerminal(): Promise<void> {
   if (getActiveHostId() !== null) drop(TERM_META_KEY)
   terminalToken = null
   app.terminal = null
-  if (app.tab === 'shell') app.tab = 'issues'
+  // The owner cannot outlive its pairing, and the mount latch goes with it
+  // so the pane is torn down rather than left hidden (GDK-902).
+  if (app.owner === 'shell') app.owner = 'list'
+  app.shellEntered = false
 }
 
 /** Session the shell REST calls use — terminal token, never the serve one. */
@@ -1177,8 +1211,76 @@ export function closeIssue(): void {
   app.detail = null
 }
 
-export function switchTab(tab: Tab): void {
-  app.tab = tab
+/**
+ * Changes the column's owner (GDK-902). Entering the shell arms its mount
+ * latch; either direction leaves the palette, which is how the owner was
+ * picked in the first place.
+ */
+export function setOwner(owner: Owner): void {
+  app.owner = owner
+  if (owner === 'shell') app.shellEntered = true
+  app.palette = false
+}
+
+/** Opens the palette in place of the list body. */
+export function openPalette(): void {
+  app.palette = true
+}
+
+/** Closes it. The list restores the scroll position it had (DESIGN.md §2). */
+export function closePalette(): void {
+  app.palette = false
+}
+
+/**
+ * Opens Settings as a push layer. Refused while a Detail is up: the two
+ * share the layer's z-order, and only one of them is ever open.
+ */
+export function openSettings(): void {
+  if (app.detail !== null) return
+  app.layer = 'settings'
+}
+
+export function closeSettings(): void {
+  app.layer = null
+}
+
+/** True when system back has something to close — App binds this. */
+export function hasBackTarget(): boolean {
+  return app.detail !== null || app.layer !== null || app.palette
+}
+
+/**
+ * What system back closes, in the order the entry/exit table gives
+ * (DESIGN.md §2): the detail first, then a push layer, then the palette.
+ *
+ * The palette is deliberately NOT registered with `systemBack.registerSheet`
+ * — sheets outrank the detail there, so a row tapped out of the palette
+ * would have back close the palette underneath and leave the Detail
+ * standing. Sheets keep their precedence for the surfaces that are sheets
+ * (the transition sheet over a Detail is right).
+ */
+export function closeTop(): void {
+  if (app.detail !== null) {
+    closeIssue()
+    return
+  }
+  if (app.layer !== null) {
+    app.layer = null
+    return
+  }
+  if (app.palette) app.palette = false
+}
+
+/**
+ * Lands on the list with nothing over it — the one navigation a deep link
+ * can ask for (GDK-873): the scheme carries no verb, so it can only mean
+ * "show me this issue over the owner's list".
+ */
+export function goToList(): void {
+  app.owner = 'list'
+  app.palette = false
+  app.layer = null
 }
 
 /** Picks a scope and remembers it — boot restores the last one used. Demo skips the write. */

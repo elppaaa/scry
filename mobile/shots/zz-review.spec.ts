@@ -41,13 +41,20 @@ async function shoot(page: Page, dir: string, name: string): Promise<void> {
 }
 
 async function waitPaired(page: Page): Promise<void> {
-  await page.locator('nav.safe-bottom').waitFor()
+  await page.locator('h1 button.scope').waitFor()
   await page.locator('.pane:not(.off) button.row').first().waitFor()
 }
 
 async function closeSheet(page: Page): Promise<void> {
   await page.locator('button.cancel').click()
   await page.locator('button.cancel').waitFor({ state: 'hidden' })
+}
+
+// GDK-902 2026-09-15: the scope picker is the palette in the list's body,
+// and its dismiss is its own control — `button.cancel` belongs to Sheet.
+async function closePalette(page: Page): Promise<void> {
+  await page.locator('button.palette-cancel').click()
+  await page.locator('.palette-field input').waitFor({ state: 'detached' })
 }
 
 test('gate', async ({ page }) => {
@@ -67,17 +74,17 @@ test('ko', async ({ page }) => {
   await waitPaired(page)
   await shoot(page, dir, '01-issues-ko')
   await page.locator('.pane:not(.off) h1 button.scope').click()
-  await page.locator('button.cancel').waitFor()
+  await page.locator('.palette-field input').waitFor()
   await shoot(page, dir, '02-scope-ko')
-  await closeSheet(page)
+  await closePalette(page)
   await page.locator('.pane:not(.off) button.row').first().click()
   await page.locator('button.back').waitFor()
   await shoot(page, dir, '03-detail-ko')
   await page.locator('button.back').first().click()
   await page.locator('.detail-layer').waitFor({ state: 'detached' }).catch(() => {})
-  const tabs = page.locator('nav.safe-bottom button.tab')
-  await tabs.last().click()
-  await page.locator('.pane:not(.off) h1').waitFor()
+  // GDK-902 2026-09-15: Pairing is the Settings push layer, from the gear.
+  await page.locator('button.gear').click()
+  await page.locator('.settings-layer h1').waitFor()
   await shoot(page, dir, '04-pairing-ko')
 })
 
@@ -91,17 +98,17 @@ test('writes', async ({ page }) => {
   await shoot(page, dir, '01-detail')
 
   await page.locator('button.status').first().click()
-  await page.locator('button.cancel').waitFor()
+  await page.locator('.palette-field input').waitFor()
   await shoot(page, dir, '02-transition-sheet')
   await closeSheet(page)
 
   const meta = page.locator('.meta button.m-btn')
   await meta.nth(0).click()
-  await page.locator('button.cancel').waitFor()
+  await page.locator('.palette-field input').waitFor()
   await shoot(page, dir, '03-priority-sheet')
   await closeSheet(page)
   await meta.nth(1).click()
-  await page.locator('button.cancel').waitFor()
+  await page.locator('.palette-field input').waitFor()
   await shoot(page, dir, '04-assignee-sheet')
   await closeSheet(page)
 
@@ -114,7 +121,7 @@ test('writes', async ({ page }) => {
   await page.locator('.summary-edit button.ghost').click()
 
   await page.locator('section.body button.edit').first().click()
-  await page.locator('button.cancel').waitFor()
+  await page.locator('.palette-field input').waitFor()
   await shoot(page, dir, '07-description-edit')
   await closeSheet(page)
 
@@ -129,7 +136,7 @@ test('writes', async ({ page }) => {
   await page.locator('.detail-layer').waitFor({ state: 'detached' }).catch(() => {})
 
   await page.locator('button.new').click()
-  await page.locator('button.cancel').waitFor()
+  await page.locator('.palette-field input').waitFor()
   await shoot(page, dir, '09-create-sheet')
   await page.locator('#create-summary').fill('Portal login loops when the IdP sends a lowercase domain')
   await shoot(page, dir, '10-create-filled')

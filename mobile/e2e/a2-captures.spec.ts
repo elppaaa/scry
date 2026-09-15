@@ -107,12 +107,12 @@ test('captures the A2 write surfaces for the vision round', async ({ page }) => 
   })
 
   await page.goto('/')
-  await page.locator('nav.safe-bottom').waitFor()
+  await page.locator('h1 button.scope').waitFor()
   await page.locator('.pane:not(.off) button.row').first().waitFor()
 
-  // Issue via search — the pane's own road to any key (a1's pattern).
-  const tabs = page.locator('nav.safe-bottom button.tab')
-  await tabs.nth(1).click()
+  // Issue via the palette — the pane's own road to any key (a1's pattern;
+  // GDK-902 2026-09-15 moved the field from a tab into the heading).
+  await page.locator('h1 button.scope').click()
   await page.locator('.pane:not(.off) input').first().fill(issueKey)
   await page.locator('.pane:not(.off) button.row', { hasText: issueKey }).first().click()
   await page.locator('button.back').waitFor()
@@ -189,7 +189,11 @@ test('captures the A2 write surfaces for the vision round', async ({ page }) => 
   // the sheet wears its one writes-off sentence and stays readable — wait
   // for that sentence before the photograph.
   await page.locator('button.back').first().click()
-  await tabs.nth(0).click()
+  await page.locator('.detail-layer').waitFor({ state: 'detached' })
+  // GDK-902 2026-09-15: back lands on the palette the issue was opened
+  // from, query intact; Cancel is the road to the owner's own rows.
+  await page.locator('button.palette-cancel').click()
+  await page.locator('.palette-field input').waitFor({ state: 'detached' })
   await page.locator('.pane:not(.off) button.row').first().waitFor()
   await expect(page.locator('.head button.new')).toBeVisible()
   await page.screenshot({

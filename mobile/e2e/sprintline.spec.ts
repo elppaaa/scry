@@ -68,16 +68,16 @@ test('the scope picker offers the sprint once, under the built-in section', asyn
   await page.locator(`.pane:not(.off) ${LINE}`).waitFor()
 
   await page.locator('.pane:not(.off) h1 button.scope').click()
-  await page.locator('button.cancel').waitFor()
+  await page.locator('.palette-field input').waitFor()
 
   // One row, wearing the desk's own name for this slice, with the sprint's
   // full count beside it. GDK-1542's defect was two built-in rows answering
   // one question; this one answers a question no other row asks.
-  const row = page.locator('.sheet button.row', { hasText: 'Active sprint' })
+  const row = page.locator('button.palette-row', { hasText: 'Active sprint' })
   await expect(row).toHaveCount(1)
   await expect(row.locator('.n')).toHaveText('20')
 
   await row.click()
-  await page.locator('button.cancel').waitFor({ state: 'hidden' })
+  await page.locator('.palette-field input').waitFor({ state: 'detached' })
   await expect(page.locator('.pane:not(.off) h1 button.scope .name')).toHaveText('Active sprint')
 })

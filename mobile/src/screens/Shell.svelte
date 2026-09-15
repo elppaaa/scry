@@ -19,7 +19,7 @@
   import KeyBar from '../ui/KeyBar.svelte'
   import Sheet from '../ui/Sheet.svelte'
   import { t } from '../lib/i18n'
-  import { app, terminalSession } from '../lib/store.svelte'
+  import { app, setOwner, terminalSession } from '../lib/store.svelte'
   import {
     createShellSession,
     TERMINAL_CURSOR_BLINK_FALLBACK,
@@ -664,7 +664,7 @@
 
   function onVisibility(): void {
     if (document.visibilityState !== 'visible') return
-    if (app.tab !== 'shell') return
+    if (app.owner !== 'shell') return
     reattachNow()
   }
 
@@ -892,7 +892,7 @@
   }
 
   $effect(() => {
-    if (app.tab !== 'shell') return
+    if (app.owner !== 'shell') return
     const el = hostEl
     if (!el) return
     // Non-passive touchmove: preventDefault is what keeps the webview's own
@@ -907,8 +907,8 @@
       el.removeEventListener('touchend', onTouchEnd)
       el.removeEventListener('touchcancel', onTouchCancel)
       stopMomentum()
-      // A tab switch inside the 550ms hide window would otherwise leave the
-      // indicator stuck visible when the tab comes back.
+      // Leaving the owner inside the 550ms hide window would otherwise
+      // leave the indicator stuck visible when the shell comes back.
       if (scrollHideTimer !== undefined) {
         clearTimeout(scrollHideTimer)
         scrollHideTimer = undefined
@@ -918,7 +918,7 @@
   })
 
   $effect(() => {
-    if (app.tab !== 'shell') return
+    if (app.owner !== 'shell') return
     if (!hostEl) return
     void activate()
     return () => {
@@ -938,12 +938,12 @@
     return () => clearInterval(timer)
   })
 
-  // A tab switch away closes the sheet. The condition reads app.tab only and
-  // never sheetOpen, which this writes: an effect that reads the state it
+  // Leaving the owner closes the sheet. The condition reads app.owner only
+  // and never sheetOpen, which this writes: an effect that reads the state it
   // sets is a loop waiting for a second writer, and the guard it would buy
   // is worth nothing — closeSheet is idempotent.
   $effect(() => {
-    if (app.tab === 'shell') return
+    if (app.owner === 'shell') return
     closeSheet()
   })
 
@@ -964,6 +964,14 @@
 <Screen>
   {#snippet header()}
     <div class="head">
+      <!-- The shell owns the whole column while it is the owner, so there is
+           no bar to return to: its exit is this control (GDK-902,
+           DESIGN.md §2/§10). Same word and same corner as Detail's. -->
+      <button class="back" onclick={() => setOwner('list')} aria-label={t('app.back')}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M15 18l-6-6 6-6" />
+        </svg>
+      </button>
       <h1 class="type-subject">{heading}</h1>
       <!-- The way into the roster, and the only place the pane says which
            shell it is showing. Absent until a list has come back, so it
@@ -1237,10 +1245,28 @@
 <style>
   .head {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 10px;
-    padding: 12px 0 10px;
+    padding: 4px 0;
     min-width: 0;
+  }
+  /* The owner's only exit, a 44pt square — the height comes from the global
+     button floor, the WIDTH has to be said here (the viewport gate reads
+     rect height only, so a narrow control passes it). Glyph alone: the
+     header also carries the session label and its count, and "Back" spelled
+     out beside a shell name runs the row into an ellipsis at 402px. */
+  .back {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--spacing-control);
+    margin-left: -12px;
+    color: var(--color-accent-text);
+  }
+  .back svg {
+    width: 22px;
+    height: 22px;
   }
   /* The roster's door. Reads as a label, not a button chrome: what it says
      is which shell is on screen, and the count is the only hint that there

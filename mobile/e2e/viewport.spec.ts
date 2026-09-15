@@ -22,6 +22,8 @@ type Measure = {
   buttonsUnder44pt: number
   under44: { h: number; cls: string }[]
   hasEscape: boolean
+  /** Which controls answered — the failure message's whole content. */
+  escapes: string[]
   /**
    * The open sheet's computed bottom padding and the --safe-bottom the
    * page reports — the GDK-907/GDK-911 axis. Null padding = no sheet open
@@ -48,8 +50,11 @@ async function measure(page: Page, label: string): Promise<Measure> {
     const inputs = [...document.querySelectorAll('input, textarea')]
       .filter((el) => el.getBoundingClientRect().height > 0)
       .map((el) => ({ tag: el.tagName.toLowerCase(), fs: getComputedStyle(el).fontSize }))
-    const nav = document.querySelector('nav.safe-bottom')
-    const navBox = nav ? nav.getBoundingClientRect() : null
+    // GDK-902 2026-09-15: there is no tab bar to measure flush against the
+    // home indicator. The column itself is what must reach the bottom edge
+    // now, so the same axis — "nothing is left floating above the
+    // indicator" — is read off the owner pane's own box.
+    const paneBox = pane ? pane.getBoundingClientRect() : null
     const main = pane?.querySelector('main')
     // GDK-1550: the row height is the MEDIAN of the painted rows, not
     // rows[0]. Sampling the first row tied the density reading to whichever
@@ -75,6 +80,14 @@ async function measure(page: Page, label: string): Promise<Measure> {
         return { h: r.height, cls: String(b.className).split(' ')[0] }
       })
       .filter((x) => x.h > 0 && x.h < 44)
+    // Named, not just counted (GDK-902 debuggability): when this axis
+    // fails, "which control is the way out" is the whole question, and a
+    // boolean makes it a hunt through a screenshot.
+    const escapes = ['button.back', 'button.cancel', 'button.palette-cancel'].flatMap((sel) =>
+      [...document.querySelectorAll(sel)]
+        .filter(isShown)
+        .map((el) => `${sel}@${el.closest('[class]')?.parentElement?.className ?? '?'}`),
+    )
     const sheet = document.querySelector('.sheet')
     const sheetInsetPx = sheet ? parseFloat(getComputedStyle(sheet).paddingBottom) : null
     const safeBottomPx =
@@ -84,7 +97,7 @@ async function measure(page: Page, label: string): Promise<Measure> {
     return {
       label,
       hOverflow: document.documentElement.scrollWidth - window.innerWidth,
-      navBottomFlush: navBox ? window.innerHeight - (navBox.y + navBox.height) : null,
+      navBottomFlush: paneBox ? Math.round(window.innerHeight - (paneBox.y + paneBox.height)) : null,
       rowCount: rows.length,
       rowH,
       rowHSpread,
@@ -93,10 +106,13 @@ async function measure(page: Page, label: string): Promise<Measure> {
       inputsUnder16: inputs.filter((i) => parseFloat(i.fs) < 16),
       buttonsUnder44pt: under44.length,
       under44,
-      hasEscape:
-        isShown(document.querySelector('nav.safe-bottom')) ||
-        [...document.querySelectorAll('button.back')].some(isShown) ||
-        [...document.querySelectorAll('button.cancel')].some(isShown),
+      // GDK-902 2026-09-15: the tab bar used to count as every screen's
+      // visible escape, which made the assertion vacuous on the root. The
+      // root has no exit by contract (DESIGN.md §2 entry/exit table) and
+      // the labels that measure it are exempted below; every other surface
+      // must still show one of its own.
+      hasEscape: escapes.length > 0,
+      escapes,
       sheetInsetPx,
       safeBottomPx,
     }
@@ -118,8 +134,18 @@ async function settleSheet(page: Page): Promise<void> {
 }
 
 async function waitPaired(page: Page): Promise<void> {
-  await page.locator('nav.safe-bottom').waitFor()
+  await page.locator('h1 button.scope').waitFor()
   await page.locator('.pane:not(.off) button.row').first().waitFor()
+}
+
+/**
+ * GDK-902 2026-09-15: the palette is not a sheet, so `settleSheet` has
+ * nothing to wait on. It rises with the body it replaces; what a
+ * measurement must not catch is the field mid-layout.
+ */
+async function openPalette(page: Page): Promise<void> {
+  await page.locator('.pane:not(.off) h1 button.scope').click()
+  await page.locator('.palette-field input').waitFor()
 }
 
 async function walkAll(page: Page): Promise<Measure[]> {
@@ -130,18 +156,15 @@ async function walkAll(page: Page): Promise<Measure[]> {
   const report: Measure[] = []
   report.push(await measure(page, 'issues'))
 
-  // GDK-885: the heading is the scope control. Open it, measure the sheet,
-  // and leave by Cancel — the picker is not a stack and must not be a dead
-  // end (DESIGN.md §2).
-  await page.locator('.pane:not(.off) h1 button.scope').click()
-  await page.locator('button.cancel').waitFor()
-  await settleSheet(page)
+  // GDK-885/GDK-902: the heading is the owner control. Open it, measure the
+  // owner list, and leave by Cancel — the picker is not a stack and must
+  // not be a dead end (DESIGN.md §2). The label stays `scope-sheet`: it is
+  // the same composition, measured at the same point in the walk, and the
+  // gate compares labels.
+  await openPalette(page)
   report.push(await measure(page, 'scope-sheet'))
-  // The scope sheet grew (five built-in views, GDK-1495): the role query
-  // resolves to the full-bleed scrim first, whose centre now sits behind the
-  // panel. button.cancel is what every other call site here already uses.
-  await page.locator('button.cancel').click()
-  await page.locator('button.cancel').waitFor({ state: 'hidden' })
+  await page.locator('button.palette-cancel').click()
+  await page.locator('.palette-field input').waitFor({ state: 'detached' })
 
   await page.locator('.pane:not(.off) button.row').first().click()
   await page.locator('button.back').waitFor()
@@ -178,15 +201,20 @@ async function walkAll(page: Page): Promise<Measure[]> {
   }
 
   await page.locator('button.back').first().click()
+  // Wait for the layer to LEAVE, not just for the list to be there — the
+  // list pane is always mounted, so its rows answer instantly while the
+  // detail is still flying out (200ms). Measuring in that window read the
+  // detail's own back control as the docs plate's escape (GDK-902
+  // 2026-09-15; the tab bar used to answer hasEscape for every screen, so
+  // this race could not surface before).
+  await page.locator('.detail-layer').waitFor({ state: 'detached' })
   await page.locator('.pane:not(.off) button.row').first().waitFor()
 
   // GDK-887: Updated (whole-mirror) documents plate, then one page detail.
-  await page.locator('.pane:not(.off) h1 button.scope').click()
-  await page.locator('button.cancel').waitFor()
-  await settleSheet(page)
-  await page.locator('.sheet .section', { hasText: 'Documents' }).waitFor()
-  await page.locator('.sheet button.row', { hasText: 'Updated' }).click()
-  await page.locator('button.cancel').waitFor({ state: 'hidden' })
+  await openPalette(page)
+  await page.locator('.palette-section', { hasText: 'Documents' }).waitFor()
+  await page.locator('button.palette-row', { hasText: 'Updated' }).click()
+  await page.locator('.palette-field input').waitFor({ state: 'detached' })
   await page.locator('.pane:not(.off) button.row[data-testid="doc-row"]').first().waitFor()
   report.push(await measure(page, 'docs'))
 
@@ -194,22 +222,27 @@ async function walkAll(page: Page): Promise<Measure[]> {
   await page.locator('.page-detail button.back').waitFor()
   report.push(await measure(page, 'page-detail'))
   await page.locator('.page-detail button.back').first().click()
+  await page.locator('.detail-layer').waitFor({ state: 'detached' })
   await page.locator('.pane:not(.off) button.row[data-testid="doc-row"]').first().waitFor()
 
-  const tabs = page.locator('nav.safe-bottom button.tab')
-  await tabs.nth(1).click()
-  await page.locator('.pane:not(.off) input').first().waitFor()
+  // GDK-902 2026-09-15: every label below survives — the gate compares
+  // them — but the road to each one changed. Search is the palette with a
+  // query, and Pairing is the Settings push layer behind the gear.
+  await openPalette(page)
   report.push(await measure(page, 'search-empty'))
 
-  await page.locator('.pane:not(.off) input').first().fill('tenant')
+  await page.locator('.palette-field input').fill('tenant')
   await page.locator('.pane:not(.off) button.row').first().waitFor()
   report.push(await measure(page, 'search-results'))
 
-  await tabs.nth(2).click()
+  await page.locator('button.palette-cancel').click()
+  await page.locator('.palette-field input').waitFor({ state: 'detached' })
+  await page.locator('button.gear').click()
   await page.getByRole('heading', { name: 'Pairing' }).waitFor()
   report.push(await measure(page, 'pairing'))
 
-  await tabs.nth(0).click()
+  await page.locator('.settings-layer button.back').click()
+  await page.locator('.settings-layer').waitFor({ state: 'detached' })
   await page.locator('.pane:not(.off) button.row').first().waitFor()
   await page.emulateMedia({ colorScheme: 'dark' })
   report.push(await measure(page, 'issues-dark'))
@@ -217,18 +250,29 @@ async function walkAll(page: Page): Promise<Measure[]> {
   return report
 }
 
-test('disarmed boot does not change tab or detail on its own', async ({ page }) => {
+test('disarmed boot does not change owner, palette, layer or detail', async ({ page }) => {
+  // GDK-902 2026-09-15: was "does not change tab or detail", read off the
+  // tab bar's aria-current. There are four pieces of navigation state now
+  // and all four must stay put — including the palette, whose whole
+  // contract is that it is dormant until the heading is tapped.
   await page.goto('/', { waitUntil: 'domcontentloaded' })
   await waitPaired(page)
-  const tab = page.locator('nav.safe-bottom button.tab[aria-current="page"]')
-  await expect(tab).toHaveText('Issues')
-  expect(await page.locator('.detail-layer, button.back').count()).toBe(0)
+  const state = async () => ({
+    // The list owns the column: its pane is the visible one and it draws
+    // rows, which only the list does.
+    listRows: await page.locator('.pane:not(.off) button.row').count(),
+    palette: await page.locator('.palette-field input').count(),
+    layers: await page.locator('.detail-layer, .settings-layer, button.back').count(),
+  })
+  const before = await state()
+  expect(before.listRows, 'the list is the owner and is drawing').toBeGreaterThan(0)
+  expect(before.palette, 'the palette is dormant on boot').toBe(0)
+  expect(before.layers, 'nothing is pushed over the list').toBe(0)
   const scroller = page.locator('.pane:not(.off) main')
   const y0 = await scroller.evaluate((el) => el.scrollTop)
   // Tour's first move is await wait(2200) then a scroll. Stay past that.
   await page.waitForTimeout(3500)
-  await expect(tab).toHaveText('Issues')
-  expect(await page.locator('.detail-layer, button.back').count()).toBe(0)
+  expect(await state()).toEqual(before)
   expect(await scroller.evaluate((el) => el.scrollTop)).toBe(y0)
 })
 
@@ -247,11 +291,26 @@ test('viewport geometry at 402×874', async ({ page }) => {
     'pairing',
     'issues-dark',
   ])
+  /*
+   * GDK-902 2026-09-15 — the root has no exit, and now it says so.
+   *
+   * Every screen used to pass `hasEscape` because the tab bar was on it,
+   * which made the assertion vacuous exactly where it mattered. DESIGN.md
+   * §2's entry/exit table has always ended "the root has no exit": the
+   * list, under whichever scope, IS the root. So the three root readings
+   * are named here and the assertion becomes real for the other eight —
+   * a palette, a layer or a detail that shipped without a visible way out
+   * now fails, where before nothing could.
+   */
+  const ROOT_LABELS = new Set(['issues', 'docs', 'issues-dark'])
   for (const row of report) {
     expect(row.hOverflow, `${row.label} horizontal overflow`).toBe(0)
-    expect(row.navBottomFlush, `${row.label} nav flush`).toBe(0)
+    expect(row.navBottomFlush, `${row.label} column flush to the bottom edge`).toBe(0)
     expect(row.inputsUnder16, `${row.label} inputs under 16px`).toEqual([])
-    expect(row.hasEscape, `${row.label} visible escape`).toBe(true)
+    expect(
+      row.hasEscape,
+      `${row.label} visible escape: ${JSON.stringify(row.escapes)}`,
+    ).toBe(!ROOT_LABELS.has(row.label))
   }
   const issues = report.find((r) => r.label === 'issues')
   expect(issues, 'issues measurement').toBeTruthy()
@@ -302,8 +361,13 @@ test('viewport geometry at 402×874', async ({ page }) => {
   // bound is one row short of the issues floor, 8, with 32px of slack
   // before it would fall to 7. A one-line answer still reads 12; 8 is the
   // all-two-line bound, not a number chosen to pass. If the field grows
-  // chrome, or the row grammar gets taller, this trips here first — before
-  // the issues floor, whose 3px slack is nearly gone.
+  // chrome, or the row grammar gets taller, this trips here first.
+  //
+  // GDK-902 2026-09-15 — the arithmetic moved, the floor did not. The two
+  // mains are one main now (the palette is the list's own body), and it
+  // grew to 822px when the tab bar left, so this run reads 9 where it read
+  // 8. The floor stays at 8: it is the bound this plate is allowed to
+  // reach, not a record of what it currently measures.
   // FAIL-first (asserting the issues floor's 9 here, same source):
   //   Error: search-results rows per screen … Expected: >= 9, Received: 8
   expect(search!.rowsPerScreen, 'search-results rows per screen').toBeGreaterThanOrEqual(8)
@@ -312,22 +376,30 @@ test('viewport geometry at 402×874', async ({ page }) => {
   // gives the tab bar — max(reported inset, floor), the number owned by
   // sheetBottomInset and pinned to app.css by inset.test.ts. The walk's
   // detail-sheet row is the assignee picker, a sheet actually open in that
-  // layer; the scope-sheet row is the same Sheet component inside .tabs,
-  // where the tab bar pays the inset — zero of its own is that layer's
-  // contract, so the difference below is the layer's, not the component's.
+  // layer. (GDK-902 2026-09-15: the scope-sheet row used to be the same
+  // Sheet component inside .tabs, exempt because the tab bar paid its
+  // inset. It is not a sheet at all now — see the null assertion below —
+  // and app.css gives every remaining sheet this same formula.)
   const detailSheet = report.find((r) => r.label === 'detail-sheet')
   expect(detailSheet, 'detail-sheet measurement').toBeTruthy()
   expect(detailSheet!.sheetInsetPx, 'detail-layer sheet bottom inset').toBe(
     sheetBottomInset(detailSheet!.safeBottomPx),
   )
+  // GDK-902 2026-09-15: the owner list is not a sheet any more — it is the
+  // list's own body — so there is no panel here to owe an inset. The claim
+  // that reading made ("a picker inside the column pays nothing of its
+  // own") is now structural: the column has no second surface to pay for.
+  // What is asserted instead is that no sheet is open at this step at all.
   const scopeSheet = report.find((r) => r.label === 'scope-sheet')
-  expect(scopeSheet!.sheetInsetPx, 'tabs sheet owes no inset of its own').toBe(0)
+  expect(scopeSheet!.sheetInsetPx, 'the owner list is the body, not a sheet').toBeNull()
   // Same debuggability stance as the rowH print above: the axis this gate
   // owns, printed every run so a moved number explains itself.
   console.log(
     `[viewport] detail-sheet inset ${detailSheet!.sheetInsetPx}px (safe-bottom ${detailSheet!.safeBottomPx}px, floor ${SHEET_INSET_FLOOR_PX}px)`,
   )
   // GDK-885: opening the picker must not cost the list its density.
+  // GDK-902 2026-09-15: and it is the same `main` now, so this also floors
+  // the restore — a palette that left the body a row shorter trips here.
   const afterSheet = report.find((r) => r.label === 'issues-dark')
   expect(afterSheet!.rowsPerScreen, 'rows per screen after the picker closed').toBeGreaterThanOrEqual(
     ISSUE_ROWS_PER_SCREEN,

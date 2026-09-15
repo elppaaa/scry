@@ -24,6 +24,7 @@ import { type Page } from '@playwright/test'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from './helpers'
+import { openPalette, waitPaired } from './nav'
 
 const ISSUE = 'NMB-110'
 
@@ -46,13 +47,16 @@ async function capture(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: join(dir, name) })
 }
 
-/** Search → row → detail, the pane's own road to any key (attach.spec.ts). */
+/**
+ * Palette → row → detail, the pane's own road to any key. GDK-902
+ * 2026-09-15: written against the tab bar the same day it was removed; the
+ * road is now the heading's palette with the key as the query (nav.ts).
+ */
 async function openIssue(page: Page, key: string): Promise<void> {
   await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await page.locator('nav.safe-bottom').waitFor()
-  await page.locator('.pane:not(.off) button.row').first().waitFor()
-  await page.locator('nav.safe-bottom button.tab').nth(1).click()
-  await page.locator('.pane:not(.off) input').first().fill(key)
+  await waitPaired(page)
+  await openPalette(page)
+  await page.locator('.palette-field input').fill(key)
   const row = page.locator('.pane:not(.off) button.row', { hasText: key }).first()
   await row.waitFor()
   await row.click()

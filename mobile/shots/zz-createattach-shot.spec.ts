@@ -76,7 +76,7 @@ async function armProbe(page: Page): Promise<void> {
 /** The Issues tab's + action opens the sheet; the demo's catalog is faked. */
 async function openCreateSheet(page: Page): Promise<void> {
   await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await page.locator('nav.safe-bottom').waitFor()
+  await page.locator('h1 button.scope').waitFor()
   await page.locator('.pane:not(.off) button.row').first().waitFor()
   await page.locator('.head button.new').click()
   await page.locator('.create input#create-summary').waitFor()
@@ -183,7 +183,7 @@ test('writes — the issue lands with the photo on it', async ({ page }) => {
   mkdirSync(outDir, { recursive: true })
 
   await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await page.locator('nav.safe-bottom').waitFor()
+  await page.locator('h1 button.scope').waitFor()
   await page.locator('.pane:not(.off) button.row').first().waitFor()
 
   await page.locator('.head button.new').click()

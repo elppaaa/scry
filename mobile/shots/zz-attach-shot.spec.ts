@@ -80,9 +80,9 @@ async function shootPair(page: Page, name: string): Promise<void> {
 /** Search → row → detail, the one road that does not depend on a scope. */
 async function openIssue(page: Page, key: string): Promise<void> {
   await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await page.locator('nav.safe-bottom').waitFor()
+  await page.locator('h1 button.scope').waitFor()
   await page.locator('.pane:not(.off) button.row').first().waitFor()
-  await page.locator('nav.safe-bottom button.tab').nth(1).click()
+  await page.locator('h1 button.scope').click()
   await page.locator('.pane:not(.off) input').first().fill(key)
   const hit = page.locator('.pane:not(.off) button.row', { hasText: key }).first()
   await hit.waitFor()

@@ -28,7 +28,7 @@
 // Environment the story assumes (the tour warns, never adapts — a take
 // with missing bits is a broken take, which the operator should see):
 //   - A reachable shell: the Shell tab exists only while app.terminal is
-//     set (App.svelte/TabBar.svelte). In DEV that no longer needs a QR
+//     set (App.svelte). In DEV that no longer needs a QR
 //     dance — with VITE_DEV_SHELL=1, loadTerminal() adopts the vite proxy
 //     the way boot() adopts it for the serve session (store.svelte.ts), so
 //     a dev server pointed at a live serve is the whole precondition. The
@@ -57,7 +57,7 @@
 // — the app follows the system appearance. The steady beat reserved for it
 // is the board return in bit 5 (window in the table below).
 
-import { app, openIssue, switchTab } from './store.svelte'
+import { app, openIssue, setOwner } from './store.svelte'
 import { openIssues, sortIssues, type FeedItem, type FeedResponse } from './domain'
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -207,7 +207,7 @@ async function tour(): Promise<void> {
   glide(560) // the one restrained glide — the old walk's four were too many
   await at(4200)
 
-  // Bit 3 — the terminal is a tab of the tracker. The warning belongs to
+  // Bit 3 — the terminal is an owner of the column (GDK-902). The warning belongs to
   // the beat it is about: by now the shell has either been adopted or it
   // has not, and the operator is told the take is broken exactly once.
   if (!app.terminal) {
@@ -215,7 +215,7 @@ async function tour(): Promise<void> {
       'gadak demo tour: no shell reachable — the shell bits will show a blank tab (is the dev proxy pointed at a live serve?)',
     )
   }
-  switchTab('shell')
+  setOwner('shell')
   await at(7000)
 
   // Bit 4 — one line by thumb, and it is the punchline's cause: the real
@@ -252,7 +252,7 @@ async function tour(): Promise<void> {
       })),
     { key, actor: '', event: 'status_changed', ageMs: 0 },
   ])
-  switchTab('issues')
+  setOwner('list')
   await at(12800)
   openIssue(key) // the issue itself, standing Done — hold to the end
   await at(15400)

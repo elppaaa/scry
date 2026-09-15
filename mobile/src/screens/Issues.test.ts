@@ -12,8 +12,19 @@ describe('GDK-905 Issues plates are catalog-backed and distinct', () => {
   })
 
   it('gates the offline banner on showOfflineBanner, not on offline alone', () => {
+    // GDK-902 2026-09-15: `{#if app.offline}` is legal in this file again —
+    // the offline dot moved here from the tab bar and is exactly that flag,
+    // raw and correct (a dot says "not reachable", a banner says "this is
+    // what you are reading instead", which is the judgement
+    // showOfflineBanner makes). So the negative is scoped to the banner's
+    // own paragraph rather than to the whole file.
     expect(src).toContain('showOfflineBanner')
-    expect(src).not.toMatch(/\{#if app\.offline\}/)
+    expect(src).toMatch(/\{#if offlineBanner\}/)
+    const banner = src.slice(src.indexOf("t('app.offlineBanner')"))
+    expect(src.slice(0, src.indexOf("t('app.offlineBanner')"))).not.toMatch(
+      /\{#if app\.offline\}[\s\S]{0,200}app\.offlineBanner/,
+    )
+    expect(banner).toBeTruthy()
   })
 
   it('uses list.emptyTitle for an empty mirror and list.noMatchTitle for an empty scope', () => {

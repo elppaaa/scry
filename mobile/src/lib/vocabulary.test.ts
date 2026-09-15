@@ -99,7 +99,14 @@ describe('GDK-884 the phone does not invent nouns', () => {
 })
 
 describe('GDK-885 the picker wears the desktop section headings', () => {
-  const sheet = code(join(srcDir, 'ui/ScopeSheet.svelte'))
+  // GDK-902 2026-09-15: the picker is the palette's owner list now, drawn
+  // in place of the list's rows instead of in a sheet. The headings are the
+  // same desktop keys in the same order, and they moved with the ordering
+  // rules into lib/palette.ts — the component reads `t(group.headingKey)`,
+  // so scanning only the markup would pass this file while the phone
+  // authored every word. Both halves are scanned as one text.
+  const sheet =
+    code(join(srcDir, 'ui/Palette.svelte')) + code(join(srcDir, 'lib/palette.ts'))
 
   it('uses the sidebar keys, not phone-authored section labels', () => {
     // `personal.myIssues` left this list with the section it headed (vision
@@ -115,12 +122,15 @@ describe('GDK-885 the picker wears the desktop section headings', () => {
       'sidebar.stanceMine',
       'sidebar.stanceTeam',
     ]) {
-      expect(sheet, `ScopeSheet is missing ${key}`).toContain(key)
+      expect(sheet, `the palette is missing ${key}`).toContain(key)
     }
   })
 
-  it('titles the tab and the sheet with the object, from the catalog', () => {
-    expect(code(join(srcDir, 'ui/TabBar.svelte'))).toContain("t('doc.issues')")
+  it('names the object with the desktop\'s word for it, from the catalog', () => {
+    // GDK-902 2026-09-15: the tab bar carried `doc.issues` as its first
+    // label and is gone. The word did not go with it — it heads the issue
+    // results in the palette's typed ranking, which is the one place the
+    // phone still has to say what those rows are.
     expect(sheet).toContain("t('doc.issues')")
   })
 

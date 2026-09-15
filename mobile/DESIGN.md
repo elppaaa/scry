@@ -16,15 +16,15 @@ edge that follows an issue from its row into its detail page.
 
 | Job | Screen | Budget |
 |---|---|---|
-| "What's on my plate?" | Issues (default tab), scope **My issues** | glance — no taps |
+| "What's on my plate?" | the list, owner **My issues** (boot default) | glance — no taps |
 | "What moved while I was away?" | Issues, glance strip above the queue (GDK-871) | 0 taps |
-| "Show me the view I named at the desk" | Issues, scope picker on the heading | 1 tap |
-| "What's in this space / what changed in the wiki?" | Issues, Documents section of the same picker | 1 tap |
-| "Where was that issue or page about X?" | Search | 2 taps + typing |
+| "Show me the view I named at the desk" | the palette, from the heading | 2 taps |
+| "What's in this space / what changed in the wiki?" | the palette, Documents section | 2 taps |
+| "Where was that issue or page about X?" | the palette with a query | 1 tap + typing |
 | "What happened here?" | Detail (comments-first) | 1 tap from any row |
 | "What does this page say?" | Page detail (body, then comments) | 1 tap from a doc row or a search hit |
 | "One-line reply / push the status" | Detail composer · transition sheet | thumb only |
-| "Is this thing still connected?" | Pairing tab | rarely visited, always honest |
+| "Is this thing still connected?" | Settings (gear) · the offline dot on the gear | rarely visited, always honest |
 
 **Where the phone stops** (rewritten 2026-09-14, user decision, GDK-1875).
 The old list here named creating issues, editing fields, attachments and
@@ -57,70 +57,99 @@ desk too.
 
 ## 2. Screen map & navigation model
 
-Three tabs + one push layer. No hamburger, no drawer, no nested stacks.
+**One column, one owner, and the heading is where the owner changes**
+(GDK-902, decided 2026-09-15 after the tab-bar research in
+`scratch/gdk-mobile/nav-research-*-2026-09-15.md`). No tab bar, no drawer,
+no nested stacks.
 
-> **This section is being replaced — GDK-902.** The tab model below is what
-> the code does today and is described here honestly for that reason, but it
-> has been decided against: tabs are a *fixed* set of column owners, and
-> gadak's owners are ones the user makes (saved views, Jira filters, spaces,
-> dashboards, a shell). The replacement is the desktop's own model — one
-> column, one owner at a time, the palette changes the owner
-> (`web/src/lib/commands.ts:140`) — with the palette as the list's head
-> rather than a separate screen. Do not extend the tab model; do not write
-> new copy against it.
+The desktop already works this way: its main column has one owner at a
+time — a view, a filter, a space, a dashboard, a shell — and the palette is
+the device that changes the owner (`web/src/lib/commands.ts:140`). The phone
+is a device whose whole screen is that one column, so it adopts the model
+rather than inventing one. Tabs were wrong for a specific reason, not for
+taste: a tab bar is a *fixed* set of owners, and gadak's owners are made by
+the user (saved views, Jira filters, spaces, a shell). An unbounded set does
+not fit fixed slots, which is why Pairing ended up a peer of Issues and the
+shell tab appeared and disappeared.
 
-**The tab is the object, the heading is the scope.** The desktop has no name
-for its list screen — its main column is titled by the current view's name.
-The phone adopts that model exactly: the tab says *Issues*, and the `<h1>`
-says whichever scope is showing (My issues, All open, or a name the
-developer typed at the desk). Linear, Gmail and Apple Mail all title the list
-with the current scope; none of them names it after a metaphor. That is why
-there is no "Queue" and no Mine/All toggle: both were words the phone
-invented, and the heading tells the truth without either.
+What the research settled, so it is not re-argued: the tab bar cost 87px
+(1.55 issue rows), not a layout; of 39 navigation complaints about the
+vendor apps none said "too many tabs" — all said "I cannot get to the thing"
+— and the only composition that closes that is the one where the owner list
+*is* the palette. A drawer needs an edge gesture Tauri iOS does not have.
+User-owned tabs (Linear, 2026-01) keep the fixed-slot disease. A bottom
+trigger would spend ~78px back; the heading slot spends none.
 
 ```
 ┌────────────────────────────┐
-│ PairGate (only when        │  not a tab — replaces the app
+│ PairGate (only when        │  not an owner — replaces the app
 │ unpaired / token rejected) │  until pairing succeeds
 └────────────────────────────┘
-┌─────────┬─────────┬────────┬────────┐
-│ Issues  │ Search  │ Shell  │ Pairing│  tab bar, bottom, always visible
-└────┬────┴────┬────┴────────┴────────┘  (Shell only once paired, §10)
-     ├─► Scope picker (bottom sheet, opened by the heading)
-     │     Built-in views · My views · Jira filters · Documents
-     └────► Detail (push, slides over tabs) — issue or page
-                └─► Transition sheet (issues only)
-                └─► linked issue / mentioned issue (replaces, back → list)
+┌────────────────────────────┐
+│ My issues · 42 ▾      ⚙ ↻  │  heading = owner's name = the palette's trigger
+├────────────────────────────┤
+│ (what the owner draws)     │  scope list · documents plate · shell
+└────────────────────────────┘
+     ├─► Palette (in place: the list body becomes the ranking)
+     │     empty query: recent issues · Built-in views · My views ·
+     │                  Jira filters · Documents · Terminal
+     │     typed query: matching owners · issues (local, then server) · pages
+     ├─► Settings (push layer, from the gear) — pairing · hosts · terminal
+     └─► Detail (push layer) — issue or page
+            └─► Transition sheet (issues only)
+            └─► linked issue / mentioned issue (replaces, back → owner)
 ```
 
+**The palette is the heading, dormant on boot.** The 44pt control that is
+the list's `<h1>` is the trigger; tapping it turns the list body into the
+palette and focuses a field at the head. It never focuses on boot — the
+first paint is the owner's rows, so "what's on my plate" stays a glance
+with no taps (both research tracks: an autofocused field puts the keyboard
+over the first screen and kills the glance). The body swapping in place is
+the point: switching owners is not a screen change but a change in what the
+list shows. Search is not a screen any more — it is the palette with a
+query, drawing the same `Row`/`DocRow` into the same body and opening the
+same Detail.
+
+**Owners.** A scope (the desk's built-in views, My views, Jira filters,
+Documents — the whole-mirror plate named **Updated** (`docs.tabUpdated`),
+then one row per space) or the shell (present in the palette only once a
+terminal pairing is stored, §10). The shell owns the whole column when it is
+the owner — full screen is not a compromise but the model, since the
+keyboard covers the screen anyway. Its exit is its own header's back
+control; there is no bar to return to.
+
+**Settings is not an owner.** It is a push layer opened from the gear in the
+heading (pairing for the mirror and for the shell, hosts, terminal options).
+The offline dot lives on the gear. §1 calls pairing "rarely visited, always
+honest" — that is the description of a settings screen, and it now has one.
+
 **Entry / exit contract** (dead-end rule: every screen has an explicit way
-out; system back = the same edge):
+out; system back = the same edge; the root has no exit):
 
 | Screen | Enter from | Exit |
 |---|---|---|
-| PairGate | boot (no pairing) · token rejected | successful pair → Issues |
-| Issues | tab · boot default | tab bar |
-| Search | tab | tab bar |
-| Pairing | tab | tab bar |
-| Shell | tab (present only once a terminal pairing is stored, §10) | tab bar |
-| Scope picker | the Issues heading (44pt) | scrim tap · Cancel · picking a name |
-| Detail | issue-row tap (Issues/Search) · linked-issue tap | ← back button (top-left, 44pt) → the tab that opened it |
-| Page detail | doc-row tap (Issues/Search) · search page hit | ← back button (top-left, 44pt) → the tab that opened it |
+| PairGate | boot (no pairing) · token rejected | successful pair → the list |
+| List (owner = scope) | boot default · palette pick | — (root) |
+| Palette | the heading (44pt) | Cancel (44pt) · system back · picking an owner or a row |
+| Shell (owner) | palette row *Terminal* | ← back in its header → the last scope |
+| Settings | gear in the heading (44pt) | ← back button (top-left, 44pt) → the list |
+| Detail | row tap (list or palette results) · linked-issue tap · deep link | ← back button (top-left, 44pt) → what opened it |
+| Page detail | doc-row tap · palette page hit | ← back button (top-left, 44pt) → what opened it |
 | Transition sheet | status chip in Detail | scrim tap · Cancel · apply |
 
-The picker's sections are the desk's own, in the desk's order: Built-in views
-(the desk's five — My issues, Handed off, All open, Unassigned new, Reopened,
-under the desk's two stance sub-labels) · My views · Jira filters ·
-Documents. Documents is a section in this same sheet, never a fourth tab:
-the whole-mirror plate is named **Updated** (`docs.tabUpdated`) — the desk's
-all-documents surface is tabbed Viewed / Updated / Authors, and the phone
-plate is `updated_at` desc, so that word is the honest name, not a second
-"Documents" under the Documents heading. Then one row per `space_key`
-(`space_name`, falling back to the key).
+The palette's sections are the desk's own, in the desk's order: recent
+issues (the visit ledger, at most five) · Built-in views (the desk's five —
+My issues, Handed off, All open, Unassigned new, Reopened, under the desk's
+two stance sub-labels) · My views · Jira filters · Documents · Terminal.
+Every heading and both hardcoded scope names come from the desktop catalog;
+the phone owns none of the vocabulary here (§3.6).
 
-Tabs keep their scroll/query state across switches. Detail is a single layer:
-opening a linked issue swaps the key in place (back still returns to the
-originating tab — one tap out from anywhere, matching "put the phone away").
+The heading must never wear a name the list is not showing (the fallback
+rule in `Issues.svelte` stays). The list keeps its scroll position across a
+palette open-and-cancel. Detail is a single layer: opening a linked issue
+swaps the key in place (back still returns to the owner — one tap out from
+anywhere, matching "put the phone away").
 
 ## 3. Design language
 
@@ -532,7 +561,7 @@ apologize, never quote server internals.
   (`http:default` → ts.net + loopback) was already narrow; this closes the
   gap where the CSP alone would have let the webview fetch any origin.
 
-## 10. Shell — the terminal tab (GDK-865)
+## 10. Shell — the terminal owner (GDK-865)
 
 The phone attaches to a PTY session running on the paired `gadak serve`.
 Not a new capability on the phone: the same shell the desktop pane opens
@@ -540,15 +569,14 @@ Not a new capability on the phone: the same shell the desktop pane opens
 be — the phone dials the endpoint it paired with, directly, over whatever
 network already carries the mirror (a tailnet, usually).
 
-**Where it lives is being decided — GDK-902.** It ships today as a tab that
-is **absent until a terminal pairing is stored** (absence, not a greyed-out
-tab, matching how PairGate replaces the app rather than disabling it). That
-was reasoned from §2's "the tab is the object", and a shell is an object.
-The tab model itself is what is being replaced: the shell becomes one of the
-things that can *own the column*, entered from the palette, full-screen —
-which is what the keyboard forces anyway, and therefore not a compromise but
-the model. Everything below this line is independent of that choice and
-survives it.
+**Where it lives (GDK-902, 2026-09-15): the shell is an owner of the column.**
+It is entered from the palette's *Terminal* row, which is **absent until a
+terminal pairing is stored** (absence, not a greyed-out row, matching how
+PairGate replaces the app rather than disabling it), and it owns the whole
+screen while it is the owner — which is what the keyboard forces anyway, and
+therefore not a compromise but the model. Its exit is the back control in its
+own header. Everything below this line is independent of that and survives
+it.
 
 ### 10.1 Its own token, and why
 

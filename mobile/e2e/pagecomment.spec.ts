@@ -31,14 +31,14 @@ async function openFirstPage(page: import('@playwright/test').Page): Promise<voi
     })
   })
   await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await page.locator('nav.safe-bottom').waitFor()
+  await page.locator('h1 button.scope').waitFor()
   await page.locator('.pane:not(.off) button.row').first().waitFor()
   await page.locator('.pane:not(.off) h1 button.scope').click()
   // The scrim carries aria-label="Cancel" too, so the labelled button inside
   // the panel is what every call site here clicks.
-  await page.locator('button.cancel').waitFor()
-  await page.locator('.sheet button.row', { hasText: 'Updated' }).click()
-  await page.locator('button.cancel').waitFor({ state: 'hidden' })
+  await page.locator('.palette-field input').waitFor()
+  await page.locator('button.palette-row', { hasText: 'Updated' }).click()
+  await page.locator('.palette-field input').waitFor({ state: 'detached' })
   await reopenFirstPage(page)
 }
 
@@ -123,7 +123,7 @@ test('a page comment typed on the phone survives leaving the page', async ({ pag
 
   // Closing the app, as this webview experiences it.
   await page.reload({ waitUntil: 'domcontentloaded' })
-  await page.locator('nav.safe-bottom').waitFor()
+  await page.locator('h1 button.scope').waitFor()
   await reopenFirstPage(page)
   await expect(page.locator('.page-detail .composer input')).toHaveValue(`${TYPED}!`)
   await expect(page.locator('.page-detail .composer .draft-note')).toBeVisible()

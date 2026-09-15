@@ -169,7 +169,7 @@ test('captures the A4 awareness surfaces for the vision round', async ({ page })
   })
 
   await page.goto('/')
-  await page.locator('nav.safe-bottom').waitFor()
+  await page.locator('h1 button.scope').waitFor()
   await page.locator('.pane:not(.off) button.row').first().waitFor()
 
   // (a) The Issues list: the session strip on its first line, and the work
@@ -241,32 +241,32 @@ test('captures the A4 awareness surfaces for the vision round', async ({ page })
   })
   console.log(`[a4] shot ${join(SHOT_DIR, 'a4-issues-session-and-age.png')}`)
 
-  // (b) The scope sheet: the built-in set — Assigned to me and the desk's
-  // five — under one heading, split only by the desk's two stance labels.
+  // (b) The owner list: the built-in set — the desk's five — under one
+  // heading, split only by the desk's two stance labels. GDK-902
+  // 2026-09-15: it is the palette's empty-query ranking now, drawn in the
+  // list's own body instead of a sheet; the composition it captures is
+  // unchanged, so the capture keeps its name.
   await page.locator('.head button.scope').click()
-  await page.locator('.sheet button.row').first().waitFor()
-  const names = await page.locator('.sheet button.row').allInnerTexts()
-  console.log(`[a4] scope sheet rows: ${JSON.stringify(names)}`)
+  await page.locator('button.palette-row').first().waitFor()
+  const names = await page.locator('button.palette-row').allInnerTexts()
+  console.log(`[a4] owner list rows: ${JSON.stringify(names)}`)
   // Headings and sub-labels in document order: one section heading before
   // the built-in set, not two (vision FIX 2026-09-07).
   const headings = await page
-    .locator('.sheet .section, .sheet .stance')
+    .locator('.palette-section, .stance')
     .evaluateAll((els) => els.map((el) => `${el.className}:${el.textContent?.trim()}`))
-  console.log(`[a4] scope sheet headings: ${JSON.stringify(headings)}`)
-  await expect(page.locator('.sheet')).toContainText('Team flow')
+  console.log(`[a4] owner list headings: ${JSON.stringify(headings)}`)
+  await expect(page.locator('.pane:not(.off) main')).toContainText('Team flow')
   await page.screenshot({
     path: join(SHOT_DIR, 'a4-scope-sheet.png'),
     fullPage: true,
     animations: 'disabled',
   })
   console.log(`[a4] shot ${join(SHOT_DIR, 'a4-scope-sheet.png')}`)
-  await page.locator('.sheet button.cancel').click()
-  await page.locator('.sheet').waitFor({ state: 'hidden' })
 
-  // (c) The detail with the resume card. Reached by search — the pane's own
-  // road to any key (a1/a2's pattern).
-  const tabs = page.locator('nav.safe-bottom button.tab')
-  await tabs.nth(1).click()
+  // (c) The detail with the resume card. Reached through the palette — the
+  // pane's own road to any key (a1/a2's pattern), and the palette is
+  // already open, so the field is right there.
   await page.locator('.pane:not(.off) input').first().fill(resume.key)
   await page.locator('.pane:not(.off) button.row', { hasText: resume.key }).first().click()
   await page.locator('button.back').waitFor()

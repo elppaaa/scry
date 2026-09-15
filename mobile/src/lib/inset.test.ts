@@ -34,10 +34,16 @@ describe('app.css composes the same floor the function owns', () => {
   // The artifact/code divergence detector: the number exists in exactly
   // one place (SHEET_INSET_FLOOR_PX) and the stylesheet must compose it.
   // Mutation-tested: 12px → 8px in app.css makes this red.
-  it('.safe-bottom and .detail-layer .sheet share one padding-bottom formula with this floor', () => {
+  it('.safe-bottom and every .sheet share one padding-bottom formula with this floor', () => {
+    // GDK-902 2026-09-15: the selector was `.detail-layer .sheet`, which
+    // exempted a sheet in the column because the tab bar stood under it.
+    // With no tab bar the exemption became a gap, so the rule covers every
+    // sheet — and this assertion is narrowed with it: a re-added
+    // `.detail-layer` qualifier fails here, which is the regression that
+    // would otherwise only show as a control under the home indicator.
     const css = readFileSync(join(srcDir, 'app.css'), 'utf8')
     const formula = new RegExp(
-      `\\.safe-bottom,\\s*\\.detail-layer\\s+\\.sheet\\s*\\{[\\s\\S]*?padding-bottom:\\s*max\\(var\\(--safe-bottom\\),\\s*${SHEET_INSET_FLOOR_PX}px\\)`,
+      `\\.safe-bottom,\\s*\\.sheet\\s*\\{[\\s\\S]*?padding-bottom:\\s*max\\(var\\(--safe-bottom\\),\\s*${SHEET_INSET_FLOOR_PX}px\\)`,
     )
     expect(css).toMatch(formula)
   })

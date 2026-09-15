@@ -50,11 +50,11 @@ test('sprint line, before and after the tap', async ({ page }) => {
 
   // The scope picker, so the sprint row can be read beside the built-ins.
   await page.locator('.pane:not(.off) h1 button.scope').click()
-  await page.locator('button.cancel').waitFor()
+  await page.locator('.palette-field input').waitFor()
   await settle(page)
   await page.screenshot({ path: join(outDir, '04-scope-sheet.png') })
-  await page.locator('button.cancel').click()
-  await page.locator('button.cancel').waitFor({ state: 'hidden' })
+  await page.locator('button.palette-cancel').click()
+  await page.locator('.palette-field input').waitFor({ state: 'detached' })
   await settle(page)
 
   // Dark, still scoped to the sprint.
@@ -64,9 +64,9 @@ test('sprint line, before and after the tap', async ({ page }) => {
 
   // And the landing list in dark, for the line's contrast beside the rows.
   await page.locator('.pane:not(.off) h1 button.scope').click()
-  await page.locator('button.cancel').waitFor()
-  await page.locator('.sheet button.row', { hasText: 'All open' }).click()
-  await page.locator('button.cancel').waitFor({ state: 'hidden' })
+  await page.locator('.palette-field input').waitFor()
+  await page.locator('button.palette-row', { hasText: 'All open' }).click()
+  await page.locator('.palette-field input').waitFor({ state: 'detached' })
   await page.locator('.pane:not(.off) button.row').first().waitFor()
   await settle(page)
   await page.screenshot({ path: join(outDir, '06-issues-dark.png') })

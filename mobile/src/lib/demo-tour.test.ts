@@ -3,12 +3,12 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 // The tour module imports the store only so tour() can call openIssue /
-// switchTab. This suite asserts arming, not the walk, so the store is a stub.
+// setOwner. This suite asserts arming, not the walk, so the store is a stub.
 vi.mock('./store.svelte', () => ({
   app: { tab: 'issues', detail: null },
   openIssue: vi.fn(),
   closeIssue: vi.fn(),
-  switchTab: vi.fn(),
+  setOwner: vi.fn(),
 }))
 
 import { armDemoTourInDev, isDemoTourArmed } from './demo-tour'
@@ -65,13 +65,15 @@ describe('demo-tour arming', () => {
     expect(isDemoTourArmed()).toBe(false)
   })
 
-  it('leaves tab and detail unchanged when nothing is armed', () => {
+  it('leaves owner and detail unchanged when nothing is armed', () => {
+    // GDK-902 2026-09-15: the tab became the column's owner; the claim —
+    // a disarmed boot navigates nothing — is unchanged.
     vi.stubGlobal('location', { search: '' })
     const info = vi.spyOn(console, 'info').mockImplementation(() => {})
-    const tab = app.tab
+    const owner = app.owner
     const detail = app.detail
     armDemoTourInDev()
-    expect(app.tab).toBe(tab)
+    expect(app.owner).toBe(owner)
     expect(app.detail).toBe(detail)
     expect(info).not.toHaveBeenCalled()
   })
@@ -83,15 +85,19 @@ describe('demo-tour arming', () => {
 // its shape is asserted, not just its arming.
 describe('demo-tour timeline (the story, not the feature walk)', () => {
   const src = readFileSync(srcPath, 'utf8')
+  // GDK-902 2026-09-15: switchTab became setOwner, and the owner vocabulary
+  // is 'list' | 'shell' — there is no 'pairing' owner to exclude any more,
+  // so that claim moved to "the tour never opens the Settings layer".
   const tabCalls = () =>
-    [...src.matchAll(/switchTab\(\s*['"]([a-z]+)['"]\s*\)/g)].map((m) => m[1])
+    [...src.matchAll(/setOwner\(\s*['"]([a-z]+)['"]\s*\)/g)].map((m) => m[1])
 
-  it('keeps the pairing tab out of the timeline — plumbing earns no seconds', () => {
-    expect(src).not.toMatch(/switchTab\(\s*['"]pairing['"]\s*\)/)
+  it('keeps the settings layer out of the timeline — plumbing earns no seconds', () => {
+    expect(src).not.toMatch(/openSettings\(/)
   })
 
-  it('has a shell bit — the terminal is a tab of the tracker, never a fullscreen cut', () => {
-    expect(src).toMatch(/switchTab\(\s*['"]shell['"]\s*\)/)
+  it('has a shell bit — the terminal is an owner of the column, reached and left', () => {
+    expect(src).toMatch(/setOwner\(\s*['"]shell['"]\s*\)/)
+    expect(src).toMatch(/setOwner\(\s*['"]list['"]\s*\)/)
   })
 
   // GDK-1118, the first armed take: tour() read app.issues and app.terminal
@@ -117,10 +123,12 @@ describe('demo-tour timeline (the story, not the feature walk)', () => {
     }
   })
 
-  it('carries the t≈ bit table and ends the story on the Issues tab', () => {
+  it('carries the t≈ bit table and ends the story on the list', () => {
     // The table is the input the desktop camera cuts against (task spec).
     expect(src).toMatch(/t≈/)
     // Shell (catch-up), then the board — and nothing else in between.
-    expect(tabCalls()).toEqual(['shell', 'issues'])
+    // GDK-902 2026-09-15: 'issues' is spelled 'list' now (the owner, not
+    // the tab); the sequence and the claim are unchanged.
+    expect(tabCalls()).toEqual(['shell', 'list'])
   })
 })

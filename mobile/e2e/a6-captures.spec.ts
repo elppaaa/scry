@@ -33,20 +33,26 @@ function makeTerminalOffer(label: string): string {
 }
 
 async function waitPaired(page: Page): Promise<void> {
-  await page.locator('nav.safe-bottom').waitFor()
+  await page.locator('h1 button.scope').waitFor()
   await page.locator('.pane:not(.off) button.row').first().waitFor()
 }
 
+// GDK-902 2026-09-15: pairing is the Settings layer behind the gear, and
+// the shell is entered from the palette's Terminal row (DESIGN.md §2/§10).
 async function pairShell(page: Page, label = 'This Mac (dev)'): Promise<void> {
-  await page.locator('nav.safe-bottom button.tab', { hasText: 'Pairing' }).click()
+  await page.locator('button.gear').click()
   await page.getByRole('heading', { name: 'Pairing' }).waitFor()
   await page.locator('#term-offer').fill(makeTerminalOffer(label))
   await page.getByRole('button', { name: 'Pair', exact: true }).click()
-  await expect(page.locator('nav.safe-bottom button.tab', { hasText: 'Terminal' })).toBeVisible()
+  await expect(page.locator('#term-offer')).toHaveCount(0)
+  await page.locator('.settings-layer button.back').click()
+  await page.locator('h1 button.scope').waitFor()
 }
 
 async function openShell(page: Page): Promise<void> {
-  await page.locator('nav.safe-bottom button.tab', { hasText: 'Terminal' }).click()
+  await page.locator('h1 button.scope').click()
+  await page.locator('.palette-field input').waitFor()
+  await page.locator('button.palette-row', { hasText: 'Terminal' }).click()
   await expect(page.getByTestId('terminal-pane')).toBeVisible()
   await expect(page.getByTestId('terminal-pane')).toHaveAttribute('data-attached', 'true', {
     timeout: 20_000,

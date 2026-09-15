@@ -18,7 +18,7 @@ import { SERVE_ORIGIN } from '../playwright.config'
 
 test('the phone records the issues it opens, and the serve reads them back', async ({ page }) => {
   await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await page.locator('nav.safe-bottom').waitFor()
+  await page.locator('h1 button.scope').waitFor()
   const firstRow = page.locator('.pane:not(.off) button.row').first()
   await firstRow.waitFor()
 

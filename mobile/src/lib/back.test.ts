@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
@@ -202,10 +202,33 @@ describe('systemBack is the singleton the UI wires', () => {
 })
 
 describe('recurrence — the owner stays the owner', () => {
-  it('App.svelte binds the singleton with closeIssue', () => {
+  it('App.svelte binds the singleton with the store\'s ordered closer', () => {
+    // GDK-902 2026-09-15: the bind used to name closeIssue directly, when
+    // the detail was the only thing back could close. There are three now
+    // — detail, the settings layer, the palette — and their order is the
+    // entry/exit table's, so the predicate and the closer are one named
+    // pair in the store (hasBackTarget / closeTop) rather than a lambda
+    // here. The claim is unchanged: App is the only binder.
     const app = read('App.svelte')
     expect(app).toContain('systemBack.bind')
-    expect(app).toContain('closeIssue')
+    expect(app).toContain('hasBackTarget')
+    expect(app).toContain('closeTop')
+  })
+
+  it('the palette is not a sheet — back closes a Detail opened from it first', () => {
+    // GDK-902 2026-09-15. peekBack ranks sheets ABOVE the detail, which is
+    // right for a transition sheet over a Detail and exactly wrong for the
+    // palette: a row tapped out of the palette opens a Detail *over* it, so
+    // registering the palette as a sheet would have back close the palette
+    // underneath and leave the Detail standing. closeTop is therefore the
+    // owner of this order, and no component registers the palette.
+    const store = read('lib/store.svelte.ts')
+    const closer = store.slice(store.indexOf('export function closeTop'))
+    const body = closer.slice(0, closer.indexOf('\n}'))
+    expect(body.indexOf('app.detail')).toBeLessThan(body.indexOf('app.layer'))
+    expect(body.indexOf('app.layer')).toBeLessThan(body.indexOf('app.palette'))
+    expect(read('ui/Palette.svelte')).not.toContain('registerSheet')
+    expect(read('screens/Issues.svelte')).not.toContain('registerSheet')
   })
 
   it('popstate / pushState live only in back.ts', () => {
@@ -234,17 +257,25 @@ describe('recurrence — the owner stays the owner', () => {
     expect(sheet).not.toMatch(/class="scrim"[^>]*aria-hidden/)
   })
 
-  it('TabBar dismisses sheets when the visible tab actually changes', () => {
-    const tab = read('ui/TabBar.svelte')
-    expect(tab).toContain('dismissSheets')
-    expect(tab).toContain('switchTab')
+  it('the heading is the only owner control, and it opens the palette', () => {
+    // GDK-902 2026-09-15: replaces "TabBar dismisses sheets when the visible
+    // tab actually changes". There is no tab bar (DESIGN.md §2) — the owner
+    // changes at the heading, and it changes through the store's one setter,
+    // so a second road to it cannot be written without this failing.
+    const issues = read('screens/Issues.svelte')
+    expect(issues).toMatch(/class="scope"[^>]*onclick=\{showPalette\}/)
+    expect(read('ui/Palette.svelte')).toContain('setOwner')
+    expect(existsSync(join(srcDir, 'ui/TabBar.svelte'))).toBe(false)
   })
 
-  it('TabBar active and offline states are not color-only', () => {
-    const tab = read('ui/TabBar.svelte')
-    expect(tab).toMatch(/\.tab\.active[\s\S]*font-weight:\s*600/)
-    expect(tab).toContain('.dot::after')
-    expect(tab).toContain('var(--color-text-primary)')
+  it('the offline state is not color-only where it now lives — the gear', () => {
+    // GDK-902 2026-09-15: the dot moved from the Pairing tab to the gear
+    // that opens the same screen. Same markup, same claim: a slashed square,
+    // never a hue on its own.
+    const issues = read('screens/Issues.svelte')
+    expect(issues).toContain('.dot::after')
+    expect(issues).toContain('var(--color-text-primary)')
+    expect(issues).toMatch(/class="dot"[^>]*aria-label=\{t\('app\.offline'\)\}/)
   })
 
   it('main.ts error overlay consumes tokens, not hex', () => {

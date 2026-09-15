@@ -1,4 +1,4 @@
-// Shell tab (GDK-865). Playwright at 402×874 against `gadak demo` on
+// The shell owner (GDK-865, GDK-902). Playwright at 402×874 against `gadak demo` on
 // 127.0.0.1:7899 and vite on 127.0.0.1:5182 — same fixture as viewport.spec.ts.
 // Each test names the user behaviour it protects (release-audit.md axis 5).
 import { type Page } from '@playwright/test'
@@ -114,7 +114,7 @@ async function shootShell(page: Page, file: string): Promise<void> {
 }
 
 async function waitPaired(page: Page): Promise<void> {
-  await page.locator('nav.safe-bottom').waitFor()
+  await page.locator('h1 button.scope').waitFor()
   await page.locator('.pane:not(.off) button.row').first().waitFor()
 }
 
@@ -129,16 +129,25 @@ function makeTerminalOffer(label: string): string {
   return Buffer.from(doc).toString('base64url')
 }
 
+/*
+ * GDK-902 2026-09-15: pairing is the Settings push layer behind the gear,
+ * and the shell is entered from the palette's Terminal row — there is no
+ * tab bar to click through (DESIGN.md §2/§10).
+ */
 async function pairShell(page: Page, label = 'This Mac (dev)'): Promise<void> {
-  await page.locator('nav.safe-bottom button.tab', { hasText: 'Pairing' }).click()
+  await page.locator('button.gear').click()
   await page.getByRole('heading', { name: 'Pairing' }).waitFor()
   await page.locator('#term-offer').fill(makeTerminalOffer(label))
   await page.getByRole('button', { name: 'Pair', exact: true }).click()
-  await expect(page.locator('nav.safe-bottom button.tab', { hasText: 'Terminal' })).toBeVisible()
+  await expect(page.locator('#term-offer')).toHaveCount(0)
+  await page.locator('.settings-layer button.back').click()
+  await page.locator('h1 button.scope').waitFor()
 }
 
 async function openShell(page: Page): Promise<void> {
-  await page.locator('nav.safe-bottom button.tab', { hasText: 'Terminal' }).click()
+  await page.locator('h1 button.scope').click()
+  await page.locator('.palette-field input').waitFor()
+  await page.locator('button.palette-row', { hasText: 'Terminal' }).click()
   await expect(page.getByTestId('terminal-pane')).toBeVisible()
   await expect(page.getByTestId('terminal-pane')).toHaveAttribute('data-attached', 'true', {
     timeout: 20_000,
@@ -168,27 +177,35 @@ async function drainSessions(page: Page): Promise<void> {
   }
 }
 
-test.describe('shell tab', () => {
+test.describe('shell owner', () => {
   test.afterEach(async ({ page }) => {
     await drainSessions(page)
   })
 
-  test('the Shell tab is absent with no terminal pairing, and present with one', async ({
+  test('the palette offers no Terminal row without a pairing, and one with it', async ({
     page,
   }) => {
-    // Protects: a default install shows three tabs; a stored terminal
-    // pairing is what makes the fourth tab exist, never a greyed-out one.
+    // GDK-902 2026-09-15. Was: "a default install shows three tabs; a
+    // stored terminal pairing is what makes the fourth tab exist". There is
+    // no tab bar (DESIGN.md §2) — the shell is an owner, reached from the
+    // palette's Terminal row — but the claim the count was making is the
+    // one that matters and is unchanged: absence until a pairing is stored,
+    // never a greyed-out row.
     await page.goto('/', { waitUntil: 'domcontentloaded' })
     await waitPaired(page)
-    await expect(page.locator('nav.safe-bottom button.tab')).toHaveCount(3)
-    await expect(page.locator('nav.safe-bottom button.tab', { hasText: 'Terminal' })).toHaveCount(0)
+    await expect(page.locator('nav.safe-bottom')).toHaveCount(0)
+    await page.locator('h1 button.scope').click()
+    await page.locator('.palette-field input').waitFor()
+    await expect(page.locator('button.palette-row', { hasText: 'Terminal' })).toHaveCount(0)
+    await page.locator('button.palette-cancel').click()
 
     await pairShell(page)
-    await expect(page.locator('nav.safe-bottom button.tab')).toHaveCount(4)
-    await expect(page.locator('nav.safe-bottom button.tab', { hasText: 'Terminal' })).toBeVisible()
+    await page.locator('h1 button.scope').click()
+    await page.locator('.palette-field input').waitFor()
+    await expect(page.locator('button.palette-row', { hasText: 'Terminal' })).toBeVisible()
   })
 
-  test('opening the Shell tab attaches and a typed echo round-trips through a real PTY', async ({
+  test('entering the shell owner attaches and a typed echo round-trips through a real PTY', async ({
     page,
   }) => {
     // Protects: first activation creates a session, attaches, and typed
@@ -284,21 +301,22 @@ test.describe('shell tab', () => {
 
     const geo = await page.evaluate(() => {
       const bar = document.querySelector('[data-testid="key-bar"]')
-      const nav = document.querySelector('nav.safe-bottom')
       const barBox = bar?.getBoundingClientRect()
-      const navBox = nav?.getBoundingClientRect()
       return {
         hOverflow: document.documentElement.scrollWidth - window.innerWidth,
         barBottom: barBox ? barBox.y + barBox.height : null,
-        navTop: navBox ? navBox.y : null,
+        // GDK-902 2026-09-15: the key bar used to be floored against the
+        // tab bar above it. The shell owns the whole column now
+        // (DESIGN.md §10), so the surface the bar must not overrun is the
+        // viewport's own bottom edge — a stricter floor, not a dropped one.
+        floor: window.innerHeight,
         barVisible: !!(barBox && barBox.height > 0),
       }
     })
     expect(geo.hOverflow, 'horizontal overflow').toBe(0)
     expect(geo.barVisible, 'key bar visible').toBe(true)
     expect(geo.barBottom, 'key bar bottom').not.toBeNull()
-    expect(geo.navTop, 'nav top').not.toBeNull()
-    expect(geo.barBottom! <= geo.navTop! + 1, 'key bar above the tab bar').toBe(true)
+    expect(geo.barBottom! <= geo.floor + 1, 'key bar inside the column').toBe(true)
 
     // The keyboard-up capture needs the bar translated out of frame for one
     // shot; the whole dance is skipped when no round asked for captures.

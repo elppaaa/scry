@@ -74,7 +74,7 @@ async function settle(page: Page): Promise<void> {
 /** The Issues tab's + action, which is the sheet's own front door. */
 async function openCreateSheet(page: Page): Promise<void> {
   await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await page.locator('nav.safe-bottom').waitFor()
+  await page.locator('h1 button.scope').waitFor()
   await page.locator('.pane:not(.off) button.row').first().waitFor()
   await page.locator('.head button.new').click()
   await page.locator('.create input#create-summary').waitFor()
@@ -84,9 +84,9 @@ async function openCreateSheet(page: Page): Promise<void> {
 /** Search → row → detail, the pane's own road to any key (a7-captures). */
 async function openIssue(page: Page, key: string): Promise<void> {
   await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await page.locator('nav.safe-bottom').waitFor()
+  await page.locator('h1 button.scope').waitFor()
   await page.locator('.pane:not(.off) button.row').first().waitFor()
-  await page.locator('nav.safe-bottom button.tab').nth(1).click()
+  await page.locator('h1 button.scope').click()
   await page.locator('.pane:not(.off) input').first().fill(key)
   const row = page.locator('.pane:not(.off) button.row', { hasText: key }).first()
   await row.waitFor()

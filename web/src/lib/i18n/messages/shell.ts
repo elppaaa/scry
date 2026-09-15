@@ -1264,11 +1264,6 @@ export const shell = {
     ko: '페어링',
     ja: 'ペアリング',
   },
-  'app.tabs': {
-    en: 'Tabs',
-    ko: '탭',
-    ja: 'タブ',
-  },
   'app.offline': {
     en: 'Offline',
     ko: '오프라인',

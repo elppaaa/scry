@@ -124,10 +124,24 @@ body {
   padding-top: var(--safe-top);
 }
 .safe-bottom,
-.detail-layer .sheet {
-  /* A sheet inside .detail-layer is the bottom-most painted layer and
-     owes the same inset. A sheet inside .tabs already ends at the tab
-     bar — it does not compose this. */
+.sheet {
+  /* GDK-902, 2026-09-15 — the selector widened from `.detail-layer .sheet`
+     to every `.sheet`, and the reason is that the old one was never about
+     the layer.
+
+     It read "a sheet inside .tabs already ends at the tab bar — it does
+     not compose this", which was true only while a 65px bar stood between
+     that sheet and the home indicator. The tab bar is gone, so the create
+     sheet and the shell's session sheet became the bottom-most painted
+     surface in the column with nothing paying their clearance. Rather than
+     name the new container, the rule now says what was always meant: a
+     sheet is a bottom-most surface, and a bottom-most surface owes the
+     inset. There is no longer a place a sheet can be moved to where this
+     is wrong.
+
+     FAIL-first (this file with the old selector, measured 2026-09-15 by
+     mobile/e2e/palette.spec.ts): create sheet padding-bottom 0px,
+     expected 12. */
   padding-bottom: max(var(--safe-bottom), 12px);
 }
 /*

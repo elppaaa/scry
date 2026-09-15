@@ -46,13 +46,13 @@ async function expectDeskRow(page: Page, testid: string, label: string): Promise
 
 async function bootIssues(page: Page): Promise<void> {
   await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await page.locator('nav.safe-bottom').waitFor()
+  await page.locator('h1 button.scope').waitFor()
   await page.locator('.pane:not(.off) button.row').first().waitFor()
 }
 
 async function openPicker(page: Page): Promise<void> {
   await page.locator('.pane:not(.off) h1 button.scope').click()
-  await page.locator('button.cancel').waitFor()
+  await page.locator('.palette-field input').waitFor()
   await settle(page)
 }
 
@@ -64,7 +64,7 @@ test('the scope picker names view authoring and dashboards', async ({ page }) =>
   // draws even with nothing saved, because that is exactly when someone
   // goes looking for where a view is made. The fixture saves none, so the
   // heading here stands over this row alone.
-  await expect(page.locator('.sheet .section', { hasText: 'Saved views' })).toHaveCount(1)
+  await expect(page.locator('.palette-section', { hasText: 'Saved views' })).toHaveCount(1)
   await expectDeskRow(page, 'desk-row-views', 'View settings')
 
   // Dashboards, last in the list: the one scope-shaped surface the phone
@@ -79,8 +79,8 @@ test('the scope picker names view authoring and dashboards', async ({ page }) =>
 
   // Neither is a way out of the sheet: it is still cancellable, and the
   // scope did not change under them.
-  await page.locator('button.cancel').click()
-  await page.locator('button.cancel').waitFor({ state: 'hidden' })
+  await page.locator('button.palette-cancel').click()
+  await page.locator('.palette-field input').waitFor({ state: 'detached' })
 })
 
 test('the sprint band names the board, on the line that reads it', async ({ page }) => {
@@ -112,8 +112,8 @@ test('the sprint band names the board, on the line that reads it', async ({ page
 test('a page detail says its content is edited on the desk', async ({ page }) => {
   await bootIssues(page)
   await openPicker(page)
-  await page.locator('.sheet button.row', { hasText: 'Updated' }).click()
-  await page.locator('button.cancel').waitFor({ state: 'hidden' })
+  await page.locator('button.palette-row', { hasText: 'Updated' }).click()
+  await page.locator('.palette-field input').waitFor({ state: 'detached' })
   const row = page.locator('.pane:not(.off) button.row[data-testid="doc-row"]').first()
   await row.waitFor()
   await row.click()
@@ -146,7 +146,7 @@ test('an issue with no configured custom field draws no Fields desk row', async 
   expect(boot.field_specs ?? [], 'demo fixture configures no custom field').toEqual([])
 
   await bootIssues(page)
-  await page.locator('nav.safe-bottom button.tab').nth(1).click()
+  await page.locator('h1 button.scope').click()
   await page.locator('.pane:not(.off) input').first().fill('NMB-105')
   const hit = page.locator('.pane:not(.off) button.row', { hasText: 'NMB-105' }).first()
   await hit.waitFor()

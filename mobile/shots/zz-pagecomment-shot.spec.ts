@@ -46,9 +46,9 @@ test('page comment composer, armed, light and dark', async ({ page }) => {
   // Documents → Updated, then the first page. The labelled button inside the
   // panel closes the sheet; the scrim carries the same aria-label.
   await page.locator('.pane:not(.off) h1 button.scope').click()
-  await page.locator('button.cancel').waitFor()
-  await page.locator('.sheet button.row', { hasText: 'Updated' }).click()
-  await page.locator('button.cancel').waitFor({ state: 'hidden' })
+  await page.locator('.palette-field input').waitFor()
+  await page.locator('button.palette-row', { hasText: 'Updated' }).click()
+  await page.locator('.palette-field input').waitFor({ state: 'detached' })
   // Not the first row: the most recently updated page has a short body and
   // no comments, so the composer would be photographed over nothing twice.
   // This one carries two comments (examples/demo.db: confluence:622707), so

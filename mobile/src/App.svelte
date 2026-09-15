@@ -3,26 +3,27 @@
   import { initLocale } from './lib/i18n'
   import { t } from './lib/i18n'
   import { systemBack } from './lib/back'
-  import { app, boot, closeIssue, exitDemo, openIssue, startClock, switchTab } from './lib/store.svelte'
+  import { app, boot, closeTop, exitDemo, goToList, hasBackTarget, openIssue, startClock } from './lib/store.svelte'
   import { bindOsDeepLinks, createDeepLinkRouter, exposeForTests } from './lib/deeplink-entry'
   import PairGate from './screens/PairGate.svelte'
   import Issues from './screens/Issues.svelte'
-  import Search from './screens/Search.svelte'
-  import PairingTab from './screens/PairingTab.svelte'
+  import Settings from './screens/PairingTab.svelte'
   import Shell from './screens/Shell.svelte'
   import Detail from './screens/Detail.svelte'
   import PageDetail from './screens/PageDetail.svelte'
-  import TabBar from './ui/TabBar.svelte'
   import ToastHost from './ui/ToastHost.svelte'
 
   // Vocabulary has one owner (DESIGN.md §3.6): pick the locale once, before
   // the first render, so every t() below reads the same catalog table.
   initLocale()
 
-  // Navigation shell (DESIGN.md §2): Issues/Search/Pairing always-mounted
-  // (query and scroll survive switches). The Shell tab mounts only once a
-  // terminal pairing is stored (DESIGN.md §10) and boots a PTY on first
-  // activation, not at app boot. One Detail push layer above them.
+  // Navigation shell (DESIGN.md §2, GDK-902): one column, one owner. The
+  // list is always mounted (its scroll survives every excursion); the Shell
+  // mounts on the latch that says it has been the owner at least once, so a
+  // phone with a stored terminal pairing does not boot a PTY it was never
+  // asked for — and stays mounted afterwards, hidden, so the session
+  // survives a switch back. Two push layers above them, never both: the
+  // Settings screen and the Detail.
   $effect(() => {
     void boot()
     return startClock()
@@ -31,21 +32,27 @@
   // One owner for system back (DESIGN.md §2). Sheets register themselves;
   // this bind is the only history listener in the app.
   $effect(() => {
+    // The order is the entry/exit table's: detail, then a push layer, then
+    // the palette. Both live in the store so the order is one statement and
+    // a unit can read it (GDK-902).
     return systemBack.bind(
       window.history,
       window,
-      () => app.detail !== null,
-      closeIssue,
+      hasBackTarget,
+      closeTop,
     )
   })
 
   // gadak:// deep links (GDK-873). The decision is entirely in lib/deeplink
   // — this is the connection to the OS on one side and the store on the
-  // other. A link that lands on the Issues tab is the only navigation the
-  // scheme can ask for; the scheme carries no verb.
+  // other. A link that lands on the list is the only navigation the scheme
+  // can ask for; the scheme carries no verb.
   const deepLinks = createDeepLinkRouter({
     openIssue: (key) => {
-      switchTab('issues')
+      // The detail must land on the list with nothing over it: a link that
+      // arrived while the palette or Settings was open would otherwise put
+      // the issue on top of a surface the back gesture closes first.
+      goToList()
       openIssue(key)
     },
     // A detail screen over a booting or unpaired app has nothing behind it,
@@ -103,15 +110,23 @@
       </div>
     </div>
   {/if}
-  <div class="tabs">
-    <div class="pane" class:off={app.tab !== 'issues'}><Issues /></div>
-    <div class="pane" class:off={app.tab !== 'search'}><Search /></div>
-    {#if app.terminal}
-      <div class="pane" class:off={app.tab !== 'shell'}><Shell /></div>
+  <div class="column">
+    <div class="pane" class:off={app.owner !== 'list'}><Issues /></div>
+    {#if app.terminal && app.shellEntered}
+      <div class="pane" class:off={app.owner !== 'shell'}><Shell /></div>
     {/if}
-    <div class="pane" class:off={app.tab !== 'pairing'}><PairingTab /></div>
   </div>
-  <TabBar />
+  {#if app.layer === 'settings'}
+    <!-- Same layer class and z-order as the detail, and never both: the
+         store refuses to open this one over a Detail, and a Detail cannot
+         be opened from here. -->
+    <div
+      class="detail-layer settings-layer"
+      transition:fly={{ x: reduceMotion ? 0 : 80, duration: reduceMotion ? 0 : 200, opacity: 0.4 }}
+    >
+      <Settings />
+    </div>
+  {/if}
   {#if app.detail}
     <div
       class="detail-layer"
@@ -137,7 +152,7 @@
     flex: 1 1 auto;
     background: var(--color-bg-base);
   }
-  .tabs {
+  .column {
     position: relative;
     flex: 1 1 auto;
     min-height: 0;
@@ -146,7 +161,7 @@
   .demo-strip {
     flex: none;
   }
-  .demo-strip + .tabs :global(.safe-top) {
+  .demo-strip + .column :global(.safe-top) {
     /* The strip above already paid the top safe-area inset — composing
        .safe-top again in the screen header would double the gap. */
     padding-top: 0;

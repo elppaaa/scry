@@ -41,10 +41,11 @@ import { stripComments } from './source-scan'
  * punctuation — is copy, and copy comes from the catalog.
  *
  * Honest limits (documented here, not in the allowlist):
- *   - single words and fragments in .ts are not scanned: the
- *     §8-documented tab labels ('Search', 'Pairing') live in TabBar's
- *     script array and read as identifiers as often as copy. The template
- *     gate covers their rendered form.
+ *   - single words and fragments in .ts are not scanned: a noun in a
+ *     script-side array reads as an identifier as often as copy. (The
+ *     example this limit was written for — the tab bar's label array —
+ *     went with the tab bar in GDK-902.) The template gate covers the
+ *     rendered form.
  *   - a sentence assembled from pieces at runtime is invisible to both.
  */
 

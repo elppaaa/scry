@@ -38,7 +38,7 @@ async function deliver(page: import('@playwright/test').Page, url: string): Prom
 /** Boots the app and returns an issue key this serve really has. */
 async function bootAndPickKey(page: import('@playwright/test').Page): Promise<string> {
   await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await page.locator('nav.safe-bottom').waitFor()
+  await page.locator('h1 button.scope').waitFor()
   const firstRow = page.locator('.pane:not(.off) button.row').first()
   await firstRow.waitFor()
   await firstRow.click()

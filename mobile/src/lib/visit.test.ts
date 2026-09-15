@@ -27,7 +27,7 @@ import {
   openPage,
   recordVisit,
   resetVisitDebounce,
-  switchTab,
+  setOwner,
 } from './store.svelte'
 
 const mockRequest = vi.mocked(request)
@@ -110,16 +110,18 @@ describe('GDK-1527 the last viewed issue survives closeIssue', () => {
     app.lastViewedIssueKey = null
   })
 
-  it('open → close → Terminal tab: the key is still there to prime the session sheet', () => {
+  it('open → close → the shell owner: the key is still there to prime the session sheet', () => {
+    // GDK-902 2026-09-15: the Terminal tab became the shell owner; the
+    // claim — the remembered key survives the trip — is unchanged.
     openIssue('STD-30')
     // A page read records too, but must not eat the remembered issue —
     // the session sheet binds issues, not pages.
     openPage('9912')
     closeIssue()
-    switchTab('shell')
+    setOwner('shell')
 
     expect(app.detail).toBeNull()
-    expect(app.tab).toBe('shell')
+    expect(app.owner).toBe('shell')
     expect(app.lastViewedIssueKey).toBe('STD-30')
   })
 

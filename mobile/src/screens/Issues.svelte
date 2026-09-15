@@ -5,19 +5,22 @@
   import EmptyState from '../ui/EmptyState.svelte'
   import GlanceStrip from '../ui/GlanceStrip.svelte'
   import Skeleton from '../ui/Skeleton.svelte'
-  import ScopeSheet from '../ui/ScopeSheet.svelte'
+  import Palette from '../ui/Palette.svelte'
   import CreateSheet from '../ui/CreateSheet.svelte'
   import SprintLine from '../ui/SprintLine.svelte'
   import { t } from '../lib/i18n'
   import {
     app,
+    closePalette,
     dismissSessionStrip,
     issuesBootKind,
+    openPalette,
+    openSettings,
     setScope,
     showOfflineBanner,
     sync,
-    switchTab,
   } from '../lib/store.svelte'
+  import { tick } from 'svelte'
   import {
     buildList,
     buildScopes,
@@ -35,10 +38,35 @@
   import { pickActiveSprint } from '../lib/sprint'
 
   // The desktop has no name for its list screen: its main column is titled by
-  // the current view's name. The phone adopts that — the tab is the object
-  // (Issues), the heading is the current scope, and the heading is the
-  // control that changes it (DESIGN.md §2, GDK-885).
-  let pickerOpen = $state(false)
+  // the current view's name. The phone adopts that — the heading is the
+  // current owner's name, and the heading is the control that changes it
+  // (DESIGN.md §2, GDK-885/GDK-902).
+  //
+  // The open flag lives in the store, not here: a deep link has to close the
+  // palette (App.svelte's router), system back has to close it in order
+  // behind the detail and the settings layer, and a test has to be able to
+  // read it. This screen owns only the scroll position it lends out.
+  let scroller = $state<HTMLElement | null>(null)
+  let savedScroll: number | null = null
+
+  /*
+   * "The list keeps its scroll position across a palette open-and-cancel"
+   * (DESIGN.md §2). One effect closes both roads out — the Cancel control
+   * and system back — because both end at app.palette going false; a
+   * restore hung off the Cancel handler would leave back landing at the
+   * top. Picking a scope clears the memory first, so that road scrolls to
+   * the top instead, which is what a new owner wants.
+   */
+  $effect(() => {
+    if (app.palette) return
+    const target = savedScroll
+    savedScroll = null
+    const el = scroller
+    if (!el || target === null) return
+    void tick().then(() => {
+      el.scrollTop = target
+    })
+  })
 
   /* ── Create sheet (GDK-1497 A2), a component of its own since GDK-1871:
    *  an epic's detail opens the same sheet to file a child, so this screen
@@ -74,16 +102,21 @@
   // fallback fires it says All open, and the note below says why.
   const heading = $derived(view.fellBack ? t('view.allOpen.name') : scope.name)
 
-  // GDK-886: counts are one pass per row, taken when the sheet opens — never
-  // on the list's scroll path.
+  // GDK-886: counts are one pass per row, taken when the palette opens —
+  // never on the list's scroll path.
   let counts = $state(new Map<string, number | null>())
-  function openPicker(): void {
+  function showPalette(): void {
     counts = new Map(scopes.map((s) => [s.id, scopeCount(app.issues, app.me, s, app.pages)]))
-    pickerOpen = true
+    savedScroll = scroller?.scrollTop ?? 0
+    openPalette()
   }
   function pick(id: string): void {
     setScope(id)
-    pickerOpen = false
+    // A new owner draws from the top; the remembered position belonged to
+    // the owner being left.
+    savedScroll = null
+    closePalette()
+    if (scroller) scroller.scrollTop = 0
   }
 
   /*
@@ -130,11 +163,11 @@
   )
 </script>
 
-<Screen>
+<Screen bind:scroller>
   {#snippet header()}
     <div class="head">
       <h1>
-        <button class="scope" onclick={openPicker} aria-haspopup="dialog" aria-expanded={pickerOpen}>
+        <button class="scope" onclick={showPalette} aria-expanded={app.palette}>
           <span class="name type-subject">{heading}</span>
           <span class="count">·{view.total}</span>
           <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -155,6 +188,19 @@
           <path d="M12 5v14" />
         </svg>
       </button>
+      <!-- Settings is a push layer, not an owner (DESIGN.md §2), and the
+           gear is its only door. The offline dot moved here from the tab
+           that used to carry it: the honest place for "is this thing still
+           connected" is the control that opens the screen which answers. -->
+      <button class="gear" onclick={openSettings} aria-label={t('app.pairingTitle')}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6 1.65 1.65 0 0 0 10 3.09V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+        {#if app.offline}
+          <span class="dot" aria-label={t('app.offline')}></span>
+        {/if}
+      </button>
       <button class="fresh" onclick={() => void sync()} aria-label={t('sync.now')}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class:spin={app.syncing} aria-hidden="true">
           <path d="M21 12a9 9 0 1 1-2.6-6.3" /><path d="M21 3v6h-6" />
@@ -171,6 +217,13 @@
     {/if}
   {/snippet}
 
+  {#if app.palette}
+    <!-- The body IS the palette (DESIGN.md §2): switching owners is not a
+         screen change but a change in what the list shows. The bands above
+         the rows go with the rows — a glance strip over a search ranking
+         describes a list that is not on screen. -->
+    <Palette {scopes} {counts} current={scope.id} onpickScope={pick} />
+  {:else}
   {#if sessionText}
     <button class="session" data-testid="session-strip" onclick={dismissSessionStrip}>
       {sessionText}
@@ -219,7 +272,7 @@
       title={app.issues.length === 0 ? t('list.emptyTitle') : t('list.noMatchTitle')}
       body={app.issues.length === 0 ? t('list.emptyHint') : t('list.noMatchHint')}
     >
-      <button class="link" onclick={() => switchTab('search')}>{t('palette.entryLabel')}</button>
+      <button class="link" onclick={showPalette}>{t('palette.entryLabel')}</button>
     </EmptyState>
   {:else}
     {#each view.sections as section (section.rank)}
@@ -233,17 +286,8 @@
     {/each}
     <div class="foot" aria-hidden="true"></div>
   {/if}
+  {/if}
 </Screen>
-
-{#if pickerOpen}
-  <ScopeSheet
-    {scopes}
-    {counts}
-    current={scope.id}
-    onpick={pick}
-    onclose={() => (pickerOpen = false)}
-  />
-{/if}
 
 {#if createOpen}
   <CreateSheet open={createOpen} onclose={() => (createOpen = false)} />
@@ -325,6 +369,45 @@
   .new svg {
     width: 20px;
     height: 20px;
+  }
+  /* Same 44pt square as the create action, drawn in the muted weight the
+     sync state wears: it opens a screen, it does not act on the tracker. */
+  .gear {
+    position: relative;
+    flex: none;
+    align-self: center;
+    width: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-muted);
+  }
+  .gear svg {
+    width: 19px;
+    height: 19px;
+  }
+  /* The offline dot, moved from the tab bar with its shape intact: a square
+     with a slash, so the state is never color-only. */
+  .dot {
+    position: absolute;
+    top: 6px;
+    right: 4px;
+    width: 7px;
+    height: 7px;
+    border-radius: 1px;
+    background: var(--color-status-stale);
+    box-shadow: 0 0 0 1px var(--color-text-primary);
+  }
+  .dot::after {
+    content: '';
+    position: absolute;
+    left: -1px;
+    right: -1px;
+    top: 50%;
+    height: 1.5px;
+    margin-top: -0.75px;
+    background: var(--color-text-primary);
+    transform: rotate(-45deg);
   }
 
   .fresh svg.spin {

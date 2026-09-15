@@ -4,11 +4,22 @@
   // The one screen frame: owns the safe-top inset and the scroll region.
   // Screens author content into an already-inset frame, so a touch target
   // under the status bar cannot be written (DESIGN.md §4.1).
+  //
+  // `scroller` is the scroll region, lent out (GDK-902): the list has to
+  // save and restore its position across a palette open-and-cancel, and the
+  // element that scrolls is this component's, not the caller's. Bindable
+  // and defaulted, so every screen that does not care is unchanged.
   let {
     header,
     children,
     footer,
-  }: { header?: Snippet; children: Snippet; footer?: Snippet } = $props()
+    scroller = $bindable(null),
+  }: {
+    header?: Snippet
+    children: Snippet
+    footer?: Snippet
+    scroller?: HTMLElement | null
+  } = $props()
 </script>
 
 <div class="screen">
@@ -17,7 +28,7 @@
       {@render header()}
     </header>
   {/if}
-  <main>
+  <main bind:this={scroller}>
     {@render children()}
   </main>
   {#if footer}

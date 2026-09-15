@@ -30,7 +30,7 @@ test('a comment typed on the phone survives leaving the issue and reloading the 
   })
 
   await page.goto('/', { waitUntil: 'domcontentloaded' })
-  await page.locator('nav.safe-bottom').waitFor()
+  await page.locator('h1 button.scope').waitFor()
   const firstRow = page.locator('.pane:not(.off) button.row').first()
   await firstRow.waitFor()
   await firstRow.click()
@@ -74,7 +74,7 @@ test('a comment typed on the phone survives leaving the issue and reloading the 
 
   // Closing the app, as this webview experiences it.
   await page.reload({ waitUntil: 'domcontentloaded' })
-  await page.locator('nav.safe-bottom').waitFor()
+  await page.locator('h1 button.scope').waitFor()
   const rowAgain = page.locator('.pane:not(.off) button.row').first()
   await rowAgain.waitFor()
   await rowAgain.click()

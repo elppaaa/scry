@@ -222,7 +222,10 @@ describe('GDK-887 document rows and page detail', () => {
   })
 
   it('search paints pages in a Documents section below issues', () => {
-    const search = read('screens/Search.svelte')
+    // GDK-902 2026-09-15: Search stopped being a screen — it is the palette
+    // with a query in the field (DESIGN.md §2), drawing the same rows into
+    // the same body. The contract this asserts is unchanged.
+    const search = read('ui/Palette.svelte')
     expect(search).toContain('serverPages')
     expect(search).toContain("t('sidebar.docs')")
     expect(search).toContain('DocRow')
@@ -237,12 +240,13 @@ describe('GDK-867 tap floor owner', () => {
   it('does not use --spacing-control-sm as a button tap size', () => {
     const files = [
       'screens/Issues.svelte',
-      'screens/Search.svelte',
       'screens/Detail.svelte',
       'screens/PageDetail.svelte',
       'screens/PairingTab.svelte',
       'ui/Sheet.svelte',
-      'ui/ScopeSheet.svelte',
+      // GDK-902 2026-09-15: the Search screen and the scope sheet are one
+      // component now — the palette.
+      'ui/Palette.svelte',
       'ui/DocRow.svelte',
     ]
     for (const rel of files) {
@@ -451,12 +455,16 @@ describe('GDK-875 due date on the meta line, recently viewed on the idle plate',
     expect(reset.slice(0, reset.indexOf('\n}'))).toMatch(/app\.recentVisits = \[\]/)
   })
 
-  it('joins the ledger to the pool on the Search idle plate, capped like query recents', () => {
-    const search = read('screens/Search.svelte')
-    expect(search).toContain("t('palette.recent')")
-    expect(search).toMatch(/recentIssueRows/)
+  it('joins the ledger to the pool on the palette\'s empty plate, capped like query recents', () => {
+    // GDK-902 2026-09-15: the idle plate is the palette's empty-query
+    // ranking, and the join moved into lib/palette.ts with it (the cap is
+    // a default argument there, which is why the slice is asserted in the
+    // module rather than in the markup).
+    const palette = read('ui/Palette.svelte')
+    expect(palette).toContain("t('palette.recent')")
+    expect(palette).toMatch(/recentIssueRows/)
     // 5 is the query-recents cap (rememberSearch): one grammar for the plate.
-    expect(search).toMatch(/\.slice\(0, 5\)/)
+    expect(read('lib/palette.ts')).toMatch(/cap = 5/)
   })
 })
 
@@ -722,7 +730,11 @@ describe('GDK-1495 A4 vision FIX — the five points the blind judge sent back',
   const issuesSrc = read('screens/Issues.svelte')
   const detail = markup('screens/Detail.svelte')
   const detailSrc = read('screens/Detail.svelte')
-  const sheet = read('ui/ScopeSheet.svelte')
+  // GDK-902 2026-09-15: the sheet's rows are the palette's owner list now,
+  // and the section order that used to sit in the component's script moved
+  // into lib/palette.ts with the rest of the ranking rules. Both halves
+  // read as one text, so neither can drop a heading the other still claims.
+  const sheet = read('ui/Palette.svelte') + read('lib/palette.ts')
   const domain = read('lib/domain.ts')
 
   it('① the age rides the meta line beside the key, not the title baseline', () => {
@@ -845,7 +857,11 @@ describe('GDK-1495 A4 vision FIX — the five points the blind judge sent back',
     expect(domain).not.toMatch(/ScopeSection = 'me'/)
     // The picker no longer draws a heading of its own for it.
     expect(sheet).not.toMatch(/personal\.myIssues/)
-    expect(sheet).toMatch(/ORDER: ScopeSection\[\] = \['builtin', 'views', 'filters', 'docs'\]/)
+    // GDK-902 2026-09-15: `ORDER` is `SECTION_ORDER`, exported from
+    // lib/palette.ts. Same four, same order.
+    expect(sheet).toMatch(
+      /SECTION_ORDER: ScopeSection\[\] = \['builtin', 'views', 'filters', 'docs'\]/,
+    )
   })
 })
 

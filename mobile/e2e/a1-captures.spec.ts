@@ -113,12 +113,12 @@ test('captures the ADF issue and page bodies for the vision round', async ({ pag
   console.log(`[a1] page ${wiki.key} — ${wiki.kinds} body node kinds`)
 
   await page.goto('/')
-  await page.locator('nav.safe-bottom').waitFor()
+  await page.locator('h1 button.scope').waitFor()
   await page.locator('.pane:not(.off) button.row').first().waitFor()
 
-  // Issue via search — the pane's own road to any key.
-  const tabs = page.locator('nav.safe-bottom button.tab')
-  await tabs.nth(1).click()
+  // Issue via the palette — the pane's own road to any key (GDK-902
+  // 2026-09-15: the Search tab became the heading's palette, same field).
+  await page.locator('h1 button.scope').click()
   await page.locator('.pane:not(.off) input').first().fill(issue.key)
   const row = page.locator('.pane:not(.off) button.row', { hasText: issue.key }).first()
   await row.waitFor()
@@ -147,16 +147,21 @@ test('captures the ADF issue and page bodies for the vision round', async ({ pag
   console.log(`[a1] shot ${join(SHOT_DIR, 'a1-issue-description.png')}`)
   console.log(`[a1] shot ${join(SHOT_DIR, 'a1-issue.png')}`)
 
-  // Back, then to the Issues pane (back from a searched issue lands on the
-  // Search pane, which has no scope button), and the page through Documents.
+  // Back, then out of the palette, and the page through Documents.
+  // GDK-902 2026-09-15: back from an issue opened out of the palette
+  // returns to the palette with its query intact (DESIGN.md §2) — that is
+  // the contract, not a bug — so the road to the owner list is Cancel,
+  // where it used to be the Issues tab.
   await page.locator('button.back').first().click()
-  await tabs.nth(0).click()
+  await page.locator('.detail-layer').waitFor({ state: 'detached' })
+  await page.locator('button.palette-cancel').click()
+  await page.locator('.palette-field input').waitFor({ state: 'detached' })
   await page.locator('.pane:not(.off) button.row').first().waitFor()
   await page.locator('.pane:not(.off) h1 button.scope').click()
-  await page.locator('button.cancel').waitFor()
-  await page.locator('.sheet .section', { hasText: 'Documents' }).waitFor()
-  await page.locator('.sheet button.row', { hasText: 'Updated' }).click()
-  await page.locator('button.cancel').waitFor({ state: 'hidden' })
+  await page.locator('.palette-field input').waitFor()
+  await page.locator('.palette-section', { hasText: 'Documents' }).waitFor()
+  await page.locator('button.palette-row', { hasText: 'Updated' }).click()
+  await page.locator('.palette-field input').waitFor({ state: 'detached' })
   const docRow = page.locator(
     `.pane:not(.off) button.row[data-testid="doc-row"][data-doc-key="${wiki.key}"]`,
   )

@@ -11,10 +11,15 @@
 // replaces the detail key in the store (DESIGN.md §2) — this module does
 // not push a frame for it, so one back still returns to the list.
 //
-// At the root (no sheet, no detail) back is a no-op. The visible edge
-// on a tab is the tab bar, which does not leave the app; Unpair is the
-// explicit way out of a pairing. Consuming the gesture is what stops
-// the activity from finishing.
+// At the root (no sheet, no push layer, no detail) back is a no-op —
+// the list under its owner IS the root and DESIGN.md §2 gives it no exit.
+// Unpair is the explicit way out of a pairing. Consuming the gesture is
+// what stops the activity from finishing.
+//
+// GDK-902: the palette is a fourth thing back can close, and it is NOT
+// registered here as a sheet — sheets outrank the detail in peekBack, and
+// a row tapped out of the palette opens a Detail over it. Its order lives
+// in the store's closeTop (detail → layer → palette), which App binds.
 //
 // History is an injectable seam so a unit test can fire a pop without
 // a browser (same shape as ime.ts / keys.ts).
@@ -130,5 +135,5 @@ export function createBackStack(): BackStack {
   }
 }
 
-/** The process-wide owner App / Sheet / TabBar share. Tests use createBackStack. */
+/** The process-wide owner App and Sheet share. Tests use createBackStack. */
 export const systemBack = createBackStack()

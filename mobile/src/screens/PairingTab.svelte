@@ -8,6 +8,7 @@
     pair,
     pairTerminal,
     unpairTerminal,
+    closeSettings,
     exitDemo,
     switchHost,
     removeRosterHost,
@@ -270,6 +271,16 @@
 <Screen>
   {#snippet header()}
     <div class="head">
+      <!-- Settings is a push layer now, not a tab (GDK-902, DESIGN.md §2):
+           every screen has an explicit way out, and for a layer that way is
+           a back control in its own header — the same one Detail wears, in
+           the same corner, from the same catalog word. -->
+      <button class="back" onclick={closeSettings} aria-label={t('app.back')}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M15 18l-6-6 6-6" />
+        </svg>
+        <span>{t('app.back')}</span>
+      </button>
       <h1 class="type-subject">{t('app.pairingTitle')}</h1>
     </div>
   {/snippet}
@@ -469,13 +480,31 @@
 <style>
   .head {
     display: flex;
-    align-items: baseline;
-    padding: 12px 0 10px;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 4px 0 10px;
   }
   h1 {
     margin: 0;
     font-size: var(--text-heading);
     line-height: var(--text-heading--line-height);
+  }
+  /* The layer's exit, in the corner Detail puts it and at the same 44pt.
+     Above the heading rather than beside it: the ledger heading is 26px and
+     a back control on its baseline would push the title into an ellipsis on
+     a 402px screen. */
+  .back {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    min-height: var(--spacing-control);
+    padding-right: 12px;
+    margin-left: -6px;
+    color: var(--color-accent-text);
+  }
+  .back svg {
+    width: 22px;
+    height: 22px;
   }
   .page {
     position: relative;

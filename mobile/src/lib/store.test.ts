@@ -84,7 +84,12 @@ function resetApp(): void {
   app.offline = false
   app.lastSyncAt = null
   app.detail = null
-  app.tab = 'issues'
+  // GDK-902 2026-09-15: the tab became the column's owner, and the palette
+  // and the settings layer joined it as resettable navigation state.
+  app.owner = 'list'
+  app.shellEntered = false
+  app.palette = false
+  app.layer = null
   app.session = { boundary: null, delta: null, computed: false, dismissed: false }
 }
 

@@ -50,7 +50,9 @@ function code(path: string): string {
 const CALL_SITES = [
   'screens/PageDetail.svelte',
   'screens/Detail.svelte',
-  'ui/ScopeSheet.svelte',
+  // GDK-902 2026-09-15: the scope sheet became the palette's body, in
+  // place of the list's rows (DESIGN.md §2). Same rows, same dialect.
+  'ui/Palette.svelte',
   'ui/SprintLine.svelte',
 ] as const
 
@@ -143,9 +145,12 @@ describe('GDK-1874 one component owns the desk row, and five places use it', () 
 
   it('names all five verbs — the sheet carries three of them', () => {
     const count = (rel: string) => (code(join(srcDir, rel)).match(/<DeskRow/g) ?? []).length
-    // The scope sheet is three: a blocked scope (the dialect's origin), view
-    // authoring at the end of the saved views, and dashboards at the end.
-    expect(count('ui/ScopeSheet.svelte')).toBe(3)
+    // The palette is four (GDK-902 2026-09-15, was three in the sheet): a
+    // blocked scope in the owner list — the dialect's origin — view
+    // authoring at the end of the saved views, dashboards at the end, and
+    // the same blocked-scope row again in the typed ranking, which draws
+    // matching owners and must refuse the same ones.
+    expect(count('ui/Palette.svelte')).toBe(4)
     expect(count('screens/PageDetail.svelte')).toBe(1)
     expect(count('screens/Detail.svelte')).toBe(1)
     expect(count('ui/SprintLine.svelte')).toBe(1)

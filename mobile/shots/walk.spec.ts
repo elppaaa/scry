@@ -44,7 +44,7 @@ async function shoot(page: Page, label: string, note: string): Promise<void> {
 }
 
 async function waitPaired(page: Page): Promise<void> {
-  await page.locator('nav.safe-bottom').waitFor()
+  await page.locator('h1 button.scope').waitFor()
   await page.locator('.pane:not(.off) button.row').first().waitFor()
 }
 
@@ -80,12 +80,12 @@ test('walk', async ({ page }) => {
   await shoot(page, 'issues', 'landing: the list a person sees first')
 
   await page.locator('.pane:not(.off) h1 button.scope').click()
-  await page.locator('button.cancel').waitFor()
+  await page.locator('.palette-field input').waitFor()
   await shoot(page, 'scope-sheet', 'the heading is the scope control')
   // button.cancel, not the role query: the scrim shares the aria-label and
   // a taller sheet (the sprint row) puts the panel over the scrim's centre.
-  await page.locator('button.cancel').click()
-  await page.locator('button.cancel').waitFor({ state: 'hidden' })
+  await page.locator('button.palette-cancel').click()
+  await page.locator('.palette-field input').waitFor({ state: 'detached' })
 
   await page.locator('.pane:not(.off) button.row').first().click()
   await page.locator('button.back').waitFor()
@@ -111,9 +111,9 @@ test('walk', async ({ page }) => {
   await page.locator('.pane:not(.off) button.row').first().waitFor()
 
   await page.locator('.pane:not(.off) h1 button.scope').click()
-  await page.locator('button.cancel').waitFor()
-  await page.locator('.sheet button.row', { hasText: 'Updated' }).click()
-  await page.locator('button.cancel').waitFor({ state: 'hidden' })
+  await page.locator('.palette-field input').waitFor()
+  await page.locator('button.palette-row', { hasText: 'Updated' }).click()
+  await page.locator('.palette-field input').waitFor({ state: 'detached' })
   await page.locator('.pane:not(.off) button.row[data-testid="doc-row"]').first().waitFor()
   await shoot(page, 'docs', 'documents plate')
 
@@ -123,17 +123,21 @@ test('walk', async ({ page }) => {
   await page.locator('.page-detail button.back').first().click()
   await page.locator('.pane:not(.off) button.row[data-testid="doc-row"]').first().waitFor()
 
-  const tabs = page.locator('nav.safe-bottom button.tab')
-  await tabs.filter({ hasText: 'Search' }).click()
+  // GDK-902 2026-09-15: search is the palette with a query, and the shell
+  // is a row in the same palette rather than a tab beside it.
+  await page.locator('h1 button.scope').click()
   await page.locator('.pane:not(.off) input').first().waitFor()
   await shoot(page, 'search-empty', 'search before a query')
   await page.locator('.pane:not(.off) input').first().fill('tenant')
   await page.locator('.pane:not(.off) button.row').first().waitFor()
   await shoot(page, 'search-results', 'search results')
 
-  const shellTab = tabs.filter({ hasText: /Terminal|Shell/ })
-  if ((await shellTab.count()) === 0) throw new Error('shots: no Shell tab — the seed did not take')
-  await shellTab.click()
+  await page.locator('.pane:not(.off) input').first().fill('')
+  const shellRow = page.locator('button.palette-row', { hasText: /Terminal|Shell/ })
+  if ((await shellRow.count()) === 0) {
+    throw new Error('shots: no Terminal row in the palette — the seed did not take')
+  }
+  await shellRow.click()
   // Wait for the real attachment, not a timeout: a picture of a pane that
   // had not connected yet is a picture of nothing, and it photographs
   // identically to a pane that failed.
@@ -175,26 +179,37 @@ test('walk', async ({ page }) => {
     await bar.click()
   }
 
-  await tabs.filter({ hasText: 'Pairing' }).click()
+  // GDK-902 2026-09-15: the shell owns the whole column, so the way to
+  // anything else is its own back control; Pairing is then the Settings
+  // push layer behind the gear in the list's heading.
+  await page.locator('.pane:not(.off) .head button.back').click()
+  await page.locator('h1 button.scope').waitFor()
+  await page.locator('button.gear').click()
   await page.getByRole('heading', { name: 'Pairing' }).waitFor()
-  await shoot(page, 'pairing', 'pairing tab — two pairings, one screen')
+  await shoot(page, 'pairing', 'pairing — two pairings, one screen')
 
-  await tabs.first().click()
+  await page.locator('.settings-layer button.back').click()
+  await page.locator('.settings-layer').waitFor({ state: 'detached' })
   // Put the scope back. The Documents pick above is sticky, so without this
   // the two dark frames photograph the *docs* list and its page detail —
   // cycle 1 shipped exactly that, and the reviewer correctly reported that
   // the light landing had no dark pair at all.
   await page.locator('.pane:not(.off) h1 button.scope').click()
-  await page.locator('button.cancel').waitFor()
-  await page.locator('.sheet button.row', { hasText: 'All open' }).click()
-  await page.locator('button.cancel').waitFor({ state: 'hidden' })
+  await page.locator('.palette-field input').waitFor()
+  await page.locator('button.palette-row', { hasText: 'All open' }).click()
+  await page.locator('.palette-field input').waitFor({ state: 'detached' })
   await page.locator('.pane:not(.off) button.row:not([data-testid="doc-row"])').first().waitFor()
   await page.emulateMedia({ colorScheme: 'dark' })
   await shoot(page, 'issues-dark', 'the same landing, dark')
   await page.locator('.pane:not(.off) button.row').first().click()
-  await page.locator('button.back').waitFor()
+  // GDK-902 2026-09-15: scoped to the layer. Once the shell has been the
+  // owner its pane stays mounted (hidden) with a back control of its own in
+  // the header, so a bare `button.back` resolves to two elements and
+  // Playwright's strict mode refuses it. The detail's back is the one this
+  // walk means.
+  await page.locator('.detail-layer button.back').waitFor()
   await shoot(page, 'detail-dark', 'issue detail, dark')
-  await page.locator('button.back').first().click()
+  await page.locator('.detail-layer button.back').first().click()
   await page.emulateMedia({ colorScheme: 'light' })
 
   // No PairGate shot. In dev the app is paired by construction (the vite

@@ -30,7 +30,7 @@ import { decideDeepLink, type ParseFailure, type ResolveRefusal } from './deepli
 export type DeepLinkRefusal = ParseFailure | ResolveRefusal
 
 export interface DeepLinkSink {
-  /** Open this issue now. Wired to store.openIssue + switchTab('issues'). */
+  /** Open this issue now. Wired to store.goToList + openIssue (GDK-902). */
   openIssue: (key: string) => void
   /** True once the app can actually show a detail screen. */
   ready: () => boolean
