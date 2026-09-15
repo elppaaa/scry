@@ -96,6 +96,51 @@ export function sprintDaysLeft(
 }
 
 /**
+ * The rows of the sprint list screen (GDK-1827), in the order a person
+ * reads them: what is running, what is coming, what is finished. The wire
+ * answers in the same three bands (personal.go: active, then future, then
+ * closed), but the phone owns its own ordering — the rows outlive the
+ * answer that delivered them (the snapshot principle the counts follow), so
+ * the order cannot be an accident of the last sync either.
+ *
+ * Within the bands: future by start_at ascending (the soonest first),
+ * closed by end_at descending (the most recently finished first) — the same
+ * directions the desk's sprint picker uses. A row with no date in its band
+ * goes last; ties keep mirror order (the sort is stable), like the tie in
+ * `pickActiveSprint` does. A state the three words do not know is neither
+ * running nor coming nor finished, and goes after them, mirror order.
+ *
+ * Pure: returns a new array, never reorders the caller's.
+ */
+export function sortSprints(rows: SprintRow[]): SprintRow[] {
+  const rank = (s: SprintRow): number =>
+    s.state === 'active' ? 0 : s.state === 'future' ? 1 : s.state === 'closed' ? 2 : 3
+  const time = (iso: string | null | undefined): number | null => {
+    if (!iso) return null
+    const ts = Date.parse(iso)
+    return Number.isNaN(ts) ? null : ts
+  }
+  /** One comparator shape, both directions: undated last either way. (The
+   *  descending case cannot just swap the two arguments — swapped, the null
+   *  guards would put the undated row first, which is how this file's own
+   *  test first caught it.) */
+  const byTime = (a: number | null, b: number | null, dir: 1 | -1): number => {
+    if (a === null && b === null) return 0
+    if (a === null) return 1
+    if (b === null) return -1
+    return (a - b) * dir
+  }
+  return [...rows].sort((x, y) => {
+    const rx = rank(x)
+    const ry = rank(y)
+    if (rx !== ry) return rx - ry
+    if (rx === 1) return byTime(time(x.start_at), time(y.start_at), 1)
+    if (rx === 2) return byTime(time(x.end_at), time(y.end_at), -1)
+    return 0
+  })
+}
+
+/**
  * The sprint rows the origin answered with, or null when it did not answer.
  *
  * The two outcomes are different facts and the caller treats them

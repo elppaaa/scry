@@ -77,7 +77,7 @@ const RECENTS_KEY = 'gadak.search.recents'
  * unbounded list that never fitted fixed slots. `list` means "the current
  * scope draws the column" — which scope stays `app.scopeId`.
  */
-export type Owner = 'list' | 'shell'
+export type Owner = 'list' | 'shell' | 'sprints'
 /** Push layers above the column. Settings is one; it is not an owner. */
 export type Layer = 'settings'
 export type Phase = 'boot' | 'unpaired' | 'paired'
@@ -177,6 +177,14 @@ export const app = $state({
    * switch back to the list.
    */
   shellEntered: false,
+  /**
+   * True once the sprints screen has been the owner at least once (GDK-1827)
+   * — the same latch `shellEntered` is: the pane mounts on it rather than on
+   * `app.sprints.length > 0`, so a workspace without sprints pays no mount
+   * cost, and a screen already entered does not blank its column when the
+   * cache empties underneath it (the empty state is reachable, not skipped).
+   */
+  sprintsEntered: false,
   /**
    * The palette, in place of the list body (GDK-902). Dormant on boot and
    * never focused until the heading is tapped — an autofocused field puts
@@ -911,6 +919,7 @@ function resetSessionState(): void {
   app.recentVisits = []
   app.owner = 'list'
   app.shellEntered = false
+  app.sprintsEntered = false
   app.palette = false
   app.layer = null
   app.terminal = null
@@ -1246,6 +1255,7 @@ export function closeIssue(): void {
 export function setOwner(owner: Owner): void {
   app.owner = owner
   if (owner === 'shell') app.shellEntered = true
+  if (owner === 'sprints') app.sprintsEntered = true
   app.palette = false
 }
 
@@ -1274,7 +1284,7 @@ export function closeSettings(): void {
 
 /** True when system back has something to close — App binds this. */
 export function hasBackTarget(): boolean {
-  return app.detail !== null || app.layer !== null || app.palette || app.owner === 'shell'
+  return app.detail !== null || app.layer !== null || app.palette || app.owner !== 'list'
 }
 
 /**
@@ -1310,7 +1320,9 @@ export function closeTop(): void {
     app.palette = false
     return
   }
-  if (app.owner === 'shell') setOwner('list')
+  // An owner that is not the list — the shell since GDK-902 R3, the sprints
+  // screen since GDK-1827 — exits the same way its header control does.
+  if (app.owner !== 'list') setOwner('list')
 }
 
 /**

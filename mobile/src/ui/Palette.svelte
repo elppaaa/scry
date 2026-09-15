@@ -232,6 +232,18 @@
     {/if}
   {/each}
 
+  {#if app.sprints.length > 0}
+    <!-- The sprint list is an owner of the column too (GDK-1827), and like
+         the Terminal row it is absent — not disabled — until there is
+         something to show: the row exists only while the snapshot holds
+         sprint rows, so a kanban workspace never offers it. Under its own
+         section label for the same reason the Terminal row wears one. -->
+    <p class="palette-section">{t('sprints.title')}</p>
+    <button class="palette-row" onclick={() => setOwner('sprints')}>
+      <span class="name">{t('sprints.title')}</span>
+    </button>
+  {/if}
+
   {#if offersTerminal(app.terminal)}
     <!-- The shell is an owner of the column (DESIGN.md §10), so it is a row
          in the owner list — and it is absent, not disabled, until a

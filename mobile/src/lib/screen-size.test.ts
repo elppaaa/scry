@@ -39,6 +39,9 @@ const CEILINGS: Record<string, { lines: number; state: number }> = {
   'Settings.svelte': { lines: 765, state: 14 },
   'PageDetail.svelte': { lines: 522, state: 8 },
   'Issues.svelte': { lines: 482, state: 3 },
+  // Measured 2026-09-16 at birth (GDK-1827): the sprint list is the first
+  // screen with no local state at all — every row is derived from the store.
+  'Sprints.svelte': { lines: 262, state: 0 },
   'PairGate.svelte': { lines: 247, state: 4 },
 }
 

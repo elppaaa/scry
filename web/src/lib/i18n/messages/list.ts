@@ -817,6 +817,37 @@ export const list = {
     ko: '스프린트 목표',
     ja: 'スプリントの目標',
   },
+  // The phone's sprint list screen (GDK-1827). The board cluster above is
+  // the desk's sprint vocabulary; these five are the phone's own surface —
+  // a list of every sprint, not one active sprint's strip. The state words
+  // are badges on rows, one word each: sprint.active/sprint.closed in
+  // fields.ts are the filter axis' fuller labels ("Active sprint") and
+  // never fit a badge.
+  'sprints.title': {
+    en: 'Sprints',
+    ko: '스프린트',
+    ja: 'スプリント',
+  },
+  'sprints.none': {
+    en: 'No sprints in this workspace',
+    ko: '이 워크스페이스에는 스프린트가 없습니다',
+    ja: 'このワークスペースにスプリントはありません',
+  },
+  'sprints.state.active': {
+    en: 'Active',
+    ko: '진행 중',
+    ja: '進行中',
+  },
+  'sprints.state.closed': {
+    en: 'Closed',
+    ko: '완료',
+    ja: '完了',
+  },
+  'sprints.state.future': {
+    en: 'Planned',
+    ko: '예정',
+    ja: '予定',
+  },
   // The burn-up sparkline the strip reserves room for (GDK-1710/1752). The
   // title is the hover/AT reading of the two lines — scope and completed on
   // the newest day — because a 200×36 box has no room for a legend and the

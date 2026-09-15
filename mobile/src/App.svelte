@@ -9,6 +9,7 @@
   import Issues from './screens/Issues.svelte'
   import Settings from './screens/Settings.svelte'
   import Shell from './screens/Shell.svelte'
+  import Sprints from './screens/Sprints.svelte'
   import Detail from './screens/Detail.svelte'
   import PageDetail from './screens/PageDetail.svelte'
   import ToastHost from './ui/ToastHost.svelte'
@@ -114,6 +115,12 @@
     <div class="pane" class:off={app.owner !== 'list'}><Issues /></div>
     {#if app.terminal && app.shellEntered}
       <div class="pane" class:off={app.owner !== 'shell'}><Shell /></div>
+    {/if}
+    <!-- The sprint list (GDK-1827), on the shell's own latch pattern: mounted
+         only once the palette has sent the column there, hidden with `.off`
+         afterwards — a workspace without sprints never pays for this pane. -->
+    {#if app.sprintsEntered}
+      <div class="pane" class:off={app.owner !== 'sprints'}><Sprints /></div>
     {/if}
   </div>
   {#if app.layer === 'settings'}

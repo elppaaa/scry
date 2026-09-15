@@ -148,6 +148,11 @@ function webCitedKeys(includeTests = true): Set<string> {
  */
 const ALLOWED_PHONE_ONLY = new Map<string, string>([
   // ── phone affordances wearing a shared prefix; eventual home app.* ──
+  ['sprints.title', 'sprints screen title + palette row (phone); the desk has a board'],
+  ['sprints.none', 'sprints screen empty state (phone); the desk has a board'],
+  ['sprints.state.active', 'sprint state badge (phone Sprints screen); the desk has a board'],
+  ['sprints.state.closed', 'sprint state badge (phone Sprints screen); the desk has a board'],
+  ['sprints.state.future', 'sprint state badge (phone Sprints screen); the desk has a board'],
   ['common.applying', 'inline transition feedback (Detail meta line); the desk applies transitions with no inline state'],
   ['list.nothingOpenAssigned', 'assigned-scope empty state (Issues); the desk list renders its own empty states'],
   ['list.noIdentityFilter', 'no-identity-on-serve note (Issues), pair of the row above'],

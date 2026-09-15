@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { loadSprints, pickActiveSprint, sprintCounts, sprintDaysLeft } from './sprint'
+import { loadSprints, pickActiveSprint, sortSprints, sprintCounts, sprintDaysLeft } from './sprint'
 import { utcZone } from '../../../web/src/lib/calendar'
 import { ApiError } from './api'
 import {
@@ -218,6 +218,76 @@ describe('loadSprints — an answer is adopted, a refusal is not', () => {
       throw new ApiError('not_found', 404)
     })
     expect(pickActiveSprint(rows ?? [], [])).toBeNull()
+  })
+})
+
+describe('sortSprints — the sprint list screen’s order (GDK-1827)', () => {
+  // The demo fixture's shape: 41 closed, 42 active, 43 future — arrived in
+  // id order but sorted by reading order.
+  it('active first, then future, then closed — whatever order the mirror sent', () => {
+    const rows = [
+      sprint({ id: 43, state: 'future' }),
+      sprint({ id: 41, state: 'closed' }),
+      sprint({ id: 42, state: 'active' }),
+    ]
+    expect(sortSprints(rows).map((r) => r.id)).toEqual([42, 43, 41])
+  })
+
+  it('future sprints sort by start ascending — the soonest first', () => {
+    const rows = [
+      sprint({ id: 44, state: 'future', start_at: '2026-10-01T00:00:00Z' }),
+      sprint({ id: 43, state: 'future', start_at: '2026-09-17T00:00:00Z' }),
+    ]
+    expect(sortSprints(rows).map((r) => r.id)).toEqual([43, 44])
+  })
+
+  it('closed sprints sort by end descending — the most recently finished first', () => {
+    const rows = [
+      sprint({ id: 39, state: 'closed', end_at: '2026-08-06T00:00:00Z' }),
+      sprint({ id: 41, state: 'closed', end_at: '2026-09-03T00:00:00Z' }),
+    ]
+    expect(sortSprints(rows).map((r) => r.id)).toEqual([41, 39])
+  })
+
+  it('a row with no date in its band goes last, not first', () => {
+    const rows = [
+      sprint({ id: 45, state: 'future' }),
+      sprint({ id: 43, state: 'future', start_at: '2026-09-17T00:00:00Z' }),
+      sprint({ id: 38, state: 'closed' }),
+      sprint({ id: 41, state: 'closed', end_at: '2026-09-03T00:00:00Z' }),
+    ]
+    expect(sortSprints(rows).map((r) => r.id)).toEqual([43, 45, 41, 38])
+  })
+
+  it('ties keep mirror order, so two same-day sprints do not swap between syncs', () => {
+    const rows = [
+      sprint({ id: 43, state: 'future', start_at: '2026-09-17T00:00:00Z' }),
+      sprint({ id: 44, state: 'future', start_at: '2026-09-17T00:00:00Z' }),
+    ]
+    expect(sortSprints(rows).map((r) => r.id)).toEqual([43, 44])
+    expect(sortSprints([...rows].reverse()).map((r) => r.id)).toEqual([44, 43])
+  })
+
+  it('a state the three words do not know goes after closed, mirror order', () => {
+    const rows = [
+      sprint({ id: 46, state: 'paused' }),
+      sprint({ id: 41, state: 'closed' }),
+      sprint({ id: 45, state: 'paused' }),
+    ]
+    expect(sortSprints(rows).map((r) => r.id)).toEqual([41, 46, 45])
+  })
+
+  it('is pure: the caller’s array is not reordered', () => {
+    const rows = [
+      sprint({ id: 42, state: 'active' }),
+      sprint({ id: 41, state: 'closed' }),
+    ]
+    sortSprints(rows)
+    expect(rows.map((r) => r.id)).toEqual([42, 41])
+  })
+
+  it('an empty workspace is an empty screen — no rows, no bands', () => {
+    expect(sortSprints([])).toEqual([])
   })
 })
 
