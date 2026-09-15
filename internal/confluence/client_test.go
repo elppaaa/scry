@@ -126,6 +126,63 @@ func TestSpacesPagesComments(t *testing.T) {
 	}
 }
 
+// TestCommentsSetsParentID is the GDK-1888 comment-half wire gate: Comments
+// walks top-level comments then each one's replies, and every returned row
+// must say which it was — ParentID empty on a top-level comment, the parent's
+// id on a reply. The field is json:"-": it is gadak's own threading, filled
+// from the walk, not a value the REST payload carries.
+func TestCommentsSetsParentID(t *testing.T) {
+	c := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/wiki/rest/api/content/9/child/comment":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"results": []map[string]any{
+					commentJSON("t1", "first top", "2026-08-01T11:00:00.000Z"),
+					commentJSON("t2", "second top", "2026-08-01T11:10:00.000Z"),
+				},
+				"size": 2, "limit": 100,
+			})
+		case "/wiki/rest/api/content/t1/child/comment":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"results": []map[string]any{
+					commentJSON("t1r1", "reply to first", "2026-08-01T11:30:00.000Z"),
+				},
+				"size": 1, "limit": 100,
+			})
+		case "/wiki/rest/api/content/t2/child/comment":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"results": []map[string]any{}, "size": 0, "limit": 100,
+			})
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			http.NotFound(w, r)
+		}
+	}))
+
+	cms, err := c.Comments(context.Background(), "9")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cms) != 3 {
+		t.Fatalf("comments = %d, want 3 (t1, t1r1, t2)", len(cms))
+	}
+	for _, tc := range []struct {
+		i        int
+		id, want string
+	}{
+		{0, "t1", ""},
+		{1, "t1r1", "t1"},
+		{2, "t2", ""},
+	} {
+		if cms[tc.i].ID != tc.id {
+			t.Errorf("cms[%d].ID = %q, want %q", tc.i, cms[tc.i].ID, tc.id)
+		}
+		if cms[tc.i].ParentID != tc.want {
+			t.Errorf("cms[%d] (%s) ParentID = %q, want %q", tc.i, tc.id, cms[tc.i].ParentID, tc.want)
+		}
+	}
+}
+
 // TestPageParsesMetadataLabels is FAIL-first for expand=metadata.labels:
 // Confluence REST v1 returns metadata.labels.results[{name,...}].
 // Only the first page of labels is expanded (≤25); real pages have few labels.

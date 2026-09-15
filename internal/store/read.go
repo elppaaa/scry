@@ -1133,6 +1133,56 @@ func (db *DB) PageAttachmentIDs(ctx context.Context, sourceID, spaceKey string) 
 	return out, err
 }
 
+// PageTopCommentIDs returns, for one space's mirrored pages, the external-id
+// set of each page's top-level comments and the set of pages whose parent is
+// still unknown — the comparison base for the search-side children.comment
+// expansion (GDK-1888): deleting a comment bumps no page version, so the
+// top-level id set is the only thing that can disagree. Every mirrored page
+// of the space has a top entry (an empty set is "no top-level comments", not
+// absence); replies stay out of the sets — the expansion lists top-level ids
+// only, so a reply in the set would make every reply-bearing page compare
+// unequal forever. A page with any NULL parent_id row lands in unknown: its
+// set cannot be trusted, and the scan's answer is one comments-backfill
+// fetch that heals the column (schemaV52) rather than a guess.
+func (db *DB) PageTopCommentIDs(ctx context.Context, sourceID, spaceKey string) (top map[string]map[string]bool, unknown map[string]bool, err error) {
+	top, unknown = map[string]map[string]bool{}, map[string]bool{}
+	if sourceID == "" || spaceKey == "" {
+		return top, unknown, nil
+	}
+	err = each(ctx, db.sql, `
+			SELECT COALESCE(it.external_id, ''), COALESCE(c.external_id, ''),
+			       COALESCE(c.parent_id, ''),
+			       c.item_id IS NOT NULL AND c.parent_id IS NULL
+		FROM pages p
+		JOIN items it ON it.id = p.item_id
+		LEFT JOIN comments c ON c.item_id = p.item_id
+		WHERE it.source_id = ? AND it.kind = 'page' AND p.space_key = ?`,
+		func(rows *sql.Rows) error {
+			var pageID, cmID, parent string
+			var nullParent bool
+			if err := rows.Scan(&pageID, &cmID, &parent, &nullParent); err != nil {
+				return err
+			}
+			if pageID == "" {
+				return nil
+			}
+			set, ok := top[pageID]
+			if !ok {
+				set = map[string]bool{}
+				top[pageID] = set
+			}
+			if nullParent {
+				unknown[pageID] = true
+				return nil
+			}
+			if cmID != "" && parent == "" {
+				set[cmID] = true
+			}
+			return nil
+		}, sourceID, spaceKey)
+	return top, unknown, err
+}
+
 // PageLites returns every mirrored page, ordered by space then title.
 func (db *DB) PageLites(ctx context.Context) ([]PageLite, error) {
 	out := []PageLite{}

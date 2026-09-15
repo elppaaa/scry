@@ -3,7 +3,7 @@ package store
 // migrations are applied in order and the index+1 is the schema version. A
 // released migration is never edited; a schema change is a new entry at the end
 // plus a documented row in specs/000-product/data-model.md.
-var migrations = []string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14, schemaV15, schemaV16, schemaV17, schemaV18, schemaV19, schemaV20, schemaV21, schemaV22, schemaV23, schemaV24, schemaV25, schemaV26, schemaV27, schemaV28, schemaV29, schemaV30, schemaV31, schemaV32, schemaV33, schemaV34, schemaV35, schemaV36, schemaV37, schemaV38, schemaV39, schemaV40, schemaV41, schemaV42, schemaV43, schemaV44, schemaV45, schemaV46, schemaV47, schemaV48, schemaV49, schemaV50, schemaV51}
+var migrations = []string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14, schemaV15, schemaV16, schemaV17, schemaV18, schemaV19, schemaV20, schemaV21, schemaV22, schemaV23, schemaV24, schemaV25, schemaV26, schemaV27, schemaV28, schemaV29, schemaV30, schemaV31, schemaV32, schemaV33, schemaV34, schemaV35, schemaV36, schemaV37, schemaV38, schemaV39, schemaV40, schemaV41, schemaV42, schemaV43, schemaV44, schemaV45, schemaV46, schemaV47, schemaV48, schemaV49, schemaV50, schemaV51, schemaV52}
 
 // itemsFTSCreate is the canonical items_fts DDL, spliced into schemaV1 so a
 // fresh database is born matching it (GDK-444: an inline copy in V1 lagged at
@@ -1078,4 +1078,20 @@ const schemaV51 = `
 ALTER TABLE issues_raw ADD COLUMN blocked_hours REAL;
 ALTER TABLE issues_raw ADD COLUMN blocked_since TEXT;
 CREATE INDEX issues_blocked ON issues_raw(blocked_since);
+`
+
+// schemaV52 (GDK-1888) adds comments.parent_id, the wiki thread parent. NULL
+// means the parent is unknown: every row written before this version, and
+// every comment from an origin with no thread parent (Jira, Linear — flat
+// lists — and the agent's own printouts). An empty string means a known
+// top-level wiki comment; any other value is a wiki reply and names the
+// parent comment's external id. The distinction is load-bearing in one
+// direction only: NULL must never read as top-level, or a pre-v52 reply row
+// masquerades as a top-level comment forever. There is no migration-time
+// backfill for the same reason as v51's hold: no origin-side parent is
+// knowable from the mirror alone. The reconcile scan heals it — a page whose
+// rows are NULL is flagged unknown by PageTopCommentIDs and re-fetched once
+// (needsBody's comments-backfill), and the re-fetch writes real values.
+const schemaV52 = `
+ALTER TABLE comments ADD COLUMN parent_id TEXT;
 `

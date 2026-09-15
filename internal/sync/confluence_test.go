@@ -273,8 +273,15 @@ func (f *confFixture) serveSearch(w http.ResponseWriter, r *http.Request) {
 				"by": map[string]any{"accountId": "acc-1", "displayName": "Ada Example"},
 			},
 		}
+		children := map[string]any{}
 		if ca := f.searchChildrenAttachment(r, p); ca != nil {
-			hit["children"] = map[string]any{"attachment": ca}
+			children["attachment"] = ca
+		}
+		if cc := f.searchChildrenComment(r, p); cc != nil {
+			children["comment"] = cc
+		}
+		if len(children) > 0 {
+			hit["children"] = children
 		}
 		results = append(results, hit)
 	}
@@ -532,6 +539,32 @@ func (f *confFixture) searchChildrenAttachment(r *http.Request, p *confPage) map
 	results := make([]map[string]any, 0, len(atts))
 	for _, a := range atts {
 		results = append(results, map[string]any{"id": a.ID})
+	}
+	return map[string]any{"results": results, "start": 0, "limit": limit, "size": len(results)}
+}
+
+// searchChildrenComment renders the expand=children.comment payload for one
+// page hit — top-level comment ids only, the shape the search returns (a
+// reply lives under its parent's own child listing, not here). It honours
+// the same searchAttachLimit knob as the attachment expansion, so one knob
+// pins the truncated listing: size == limit. Nil when the request did not
+// ask for the expansion or omitSearchChildren is set (issuetap). Called
+// under the fixture lock.
+func (f *confFixture) searchChildrenComment(r *http.Request, p *confPage) map[string]any {
+	if f.omitSearchChildren || !strings.Contains(r.URL.Query().Get("expand"), "children.comment") {
+		return nil
+	}
+	limit := f.searchAttachLimit
+	if limit <= 0 {
+		limit = 25
+	}
+	tops := p.Comments
+	if len(tops) > limit {
+		tops = tops[:limit]
+	}
+	results := make([]map[string]any, 0, len(tops))
+	for _, c := range tops {
+		results = append(results, map[string]any{"id": c.ID})
 	}
 	return map[string]any{"results": results, "start": 0, "limit": limit, "size": len(results)}
 }
@@ -2485,6 +2518,224 @@ func TestConfluenceReconcileAttachmentChangesReachCache(t *testing.T) {
 	})
 }
 
+// TestConfluenceReconcileCommentChangesReachCache is the GDK-1888 comment
+// half — the attachment test's exact mirror on the comment axis. Deleting a
+// comment leaves no search hit and bumps no page version, so before this
+// every stamp the gate checked matched and the cache kept the deleted
+// comment indefinitely. The scan's children.comment expansion (top-level
+// ids only) is what closes it. The shapes that must NOT close it are pinned
+// here too, tally and all: a listing truncated at the search limit
+// (comments-unchecked), an origin that carries no children at all (issuetap
+// — nothing changes, the stale row stays), and pre-v52 rows whose parent_id
+// is NULL, which the scan answers with one comments-backfill fetch that
+// also heals the column (the migration deliberately does not).
+func TestConfluenceReconcileCommentChangesReachCache(t *testing.T) {
+	// Static-old stamps: every comment sits outside any incremental CQL
+	// window, so only the scan's expansion can see these move — the same
+	// discipline the attachment test keeps.
+	when := "2026-08-01T11:00:00.000Z"
+	cms := func(ids ...string) []confComment {
+		out := make([]confComment, len(ids))
+		for i, id := range ids {
+			out[i] = confComment{ID: id, Text: id + " text", When: when}
+		}
+		return out
+	}
+	atts := func(ids ...string) []confAttachment {
+		out := make([]confAttachment, len(ids))
+		for i, id := range ids {
+			out[i] = confAttachment{
+				ID: id, Title: id + ".png", MimeType: "image/png",
+				FileSize: "1000", When: "2026-08-01T12:00:00.000Z",
+			}
+		}
+		return out
+	}
+	// prepare mirrors space AAA once with page 1001 carrying the given
+	// comments, then resets the cost recorders so the test measures one
+	// reconcile run.
+	prepare := func(t *testing.T, comments []confComment) (*confFixture, *confluence.Client, *mirror, *config.Config) {
+		t.Helper()
+		f := newConfFixture(t)
+		f.pages["1001"].Comments = comments
+		client := f.start()
+		db := newMirror(t)
+		cfg := confCfg([]string{"AAA"})
+		if _, err := RunConfluence(context.Background(), cfg, db.DB, Options{Full: true, ConfluenceClient: client}); err != nil {
+			t.Fatal(err)
+		}
+		f.resetCounters()
+		return f, client, db, cfg
+	}
+	commentRows := func(t *testing.T, db *mirror, extID string) int {
+		t.Helper()
+		var n int
+		if err := db.raw(t).QueryRow(`SELECT COUNT(*) FROM comments WHERE external_id = ?`, extID).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	parentOf := func(t *testing.T, db *mirror, extID string) sql.NullString {
+		t.Helper()
+		var p sql.NullString
+		if err := db.raw(t).QueryRow(`SELECT parent_id FROM comments WHERE external_id = ?`, extID).Scan(&p); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	reconcile := func(t *testing.T, f *confFixture, client *confluence.Client, db *mirror, cfg *config.Config) (logs, bodies []string) {
+		t.Helper()
+		var lines []string
+		if _, err := RunConfluence(context.Background(), cfg, db.DB, Options{Reconcile: true, ConfluenceClient: client,
+			Log: func(line string) { lines = append(lines, line) }}); err != nil {
+			t.Fatal(err)
+		}
+		return lines, f.bodyFetches()
+	}
+
+	t.Run("comment deleted, version unchanged", func(t *testing.T) {
+		f, client, db, cfg := prepare(t, cms("c1", "c2"))
+		f.mu.Lock()
+		f.pages["1001"].Comments = cms("c1")
+		f.mu.Unlock()
+		logs, bodies := reconcile(t, f, client, db, cfg)
+		if got := commentRows(t, db, "c2"); got != 0 {
+			t.Fatalf("deleted comment row survived the reconcile: %d rows for c2", got)
+		}
+		if got := commentRows(t, db, "c1"); got != 1 {
+			t.Fatalf("kept comment row = %d, want 1", got)
+		}
+		if !containsString(bodies, "1001") {
+			t.Errorf("reconcile fetched no body for 1001: %v", bodies)
+		}
+		if !containsString(logs, "confluence: reconcile scan refetch reasons comments=1") {
+			t.Errorf("log lines have no comments=1 reason:\n%s", strings.Join(logs, "\n"))
+		}
+	})
+
+	t.Run("comment added, version unchanged", func(t *testing.T) {
+		f, client, db, cfg := prepare(t, cms("c1"))
+		f.mu.Lock()
+		f.pages["1001"].Comments = cms("c1", "c2")
+		f.mu.Unlock()
+		logs, _ := reconcile(t, f, client, db, cfg)
+		if got := commentRows(t, db, "c2"); got != 1 {
+			t.Fatalf("new comment row missing after the reconcile: %d rows for c2", got)
+		}
+		if !containsString(logs, "confluence: reconcile scan refetch reasons comments=1") {
+			t.Errorf("log lines have no comments=1 reason:\n%s", strings.Join(logs, "\n"))
+		}
+	})
+
+	t.Run("top comment with reply unchanged fetches no body", func(t *testing.T) {
+		f, client, db, cfg := prepare(t, []confComment{
+			{ID: "c1", Text: "top", When: when, Replies: []confComment{{ID: "c1r", Text: "reply", When: when}}},
+		})
+		logs, bodies := reconcile(t, f, client, db, cfg)
+		if containsString(bodies, "1001") {
+			t.Errorf("unchanged comments still fetched 1001's body: %v", bodies)
+		}
+		if containsString(logs, "reconcile scan refetch reasons") {
+			t.Errorf("unexpected refetch reasons on an unchanged corpus:\n%s", strings.Join(logs, "\n"))
+		}
+		if got := commentRows(t, db, "c1"); got != 1 {
+			t.Errorf("top comment row = %d, want 1", got)
+		}
+		if got := commentRows(t, db, "c1r"); got != 1 {
+			t.Errorf("reply row = %d, want 1", got)
+		}
+	})
+
+	t.Run("pre-v52 NULL parent rows backfill in one fetch", func(t *testing.T) {
+		f, client, db, cfg := prepare(t, []confComment{
+			{ID: "c1", Text: "top", When: when, Replies: []confComment{{ID: "c1r", Text: "reply", When: when}}},
+		})
+		// Age the page's rows to the pre-v52 shape: parent unknown.
+		if _, err := db.raw(t).Exec(`UPDATE comments SET parent_id = NULL WHERE item_id = 'confluence:1001'`); err != nil {
+			t.Fatal(err)
+		}
+		logs, bodies := reconcile(t, f, client, db, cfg)
+		if !containsString(bodies, "1001") {
+			t.Fatalf("NULL parent rows fetched no body: %v", bodies)
+		}
+		if !containsString(logs, "confluence: reconcile scan refetch reasons comments-backfill=1") {
+			t.Errorf("log lines have no comments-backfill=1 tally:\n%s", strings.Join(logs, "\n"))
+		}
+		// The fetch healed the column: top-level reads '' (a known no-parent),
+		// the reply reads its parent's external id.
+		if p := parentOf(t, db, "c1"); !p.Valid || p.String != "" {
+			t.Errorf("top-level parent_id = %v, want '' (known top-level)", p)
+		}
+		if p := parentOf(t, db, "c1r"); !p.Valid || p.String != "c1" {
+			t.Errorf("reply parent_id = %v, want the parent's external id c1", p)
+		}
+		// And the repair is one-shot: with the column healed, the next scan
+		// has nothing to backfill.
+		f.resetCounters()
+		logs, bodies = reconcile(t, f, client, db, cfg)
+		if containsString(bodies, "1001") {
+			t.Fatalf("second reconcile refetched 1001 after the backfill: %v", bodies)
+		}
+		if containsString(logs, "reconcile scan refetch reasons") {
+			t.Errorf("second reconcile still reports reasons:\n%s", strings.Join(logs, "\n"))
+		}
+	})
+
+	t.Run("truncated comment listing is not compared and says so", func(t *testing.T) {
+		f, client, db, cfg := prepare(t, cms("c1", "c2"))
+		f.mu.Lock()
+		f.searchAttachLimit = 1 // size == limit on the comment expansion
+		f.mu.Unlock()
+		logs, bodies := reconcile(t, f, client, db, cfg)
+		if containsString(bodies, "1001") {
+			t.Errorf("a truncated listing must not fetch 1001's body: %v", bodies)
+		}
+		if !containsString(logs, "confluence: reconcile scan refetch reasons comments-unchecked=1") {
+			t.Errorf("log lines have no comments-unchecked=1 tally:\n%s", strings.Join(logs, "\n"))
+		}
+	})
+
+	t.Run("both listings truncated name both", func(t *testing.T) {
+		f, client, db, cfg := prepare(t, cms("c1", "c2"))
+		f.mu.Lock()
+		f.pages["1001"].Attachments = atts("a1", "a2")
+		f.searchAttachLimit = 1
+		f.mu.Unlock()
+		logs, bodies := reconcile(t, f, client, db, cfg)
+		if containsString(bodies, "1001") {
+			t.Errorf("truncated listings must not fetch 1001's body: %v", bodies)
+		}
+		if !containsString(logs, "confluence: reconcile scan refetch reasons attachments-unchecked+comments-unchecked=1") {
+			t.Errorf("log lines have no attachments-unchecked+comments-unchecked=1 tally:\n%s", strings.Join(logs, "\n"))
+		}
+	})
+
+	t.Run("origin without the expansion changes nothing", func(t *testing.T) {
+		f, client, db, cfg := prepare(t, cms("c1", "c2"))
+		f.mu.Lock()
+		f.pages["1001"].Comments = cms("c1")
+		f.omitSearchChildren = true
+		f.mu.Unlock()
+		logs, bodies := reconcile(t, f, client, db, cfg)
+		if containsString(bodies, "1001") {
+			t.Errorf("an origin without children must not fetch 1001's body: %v", bodies)
+		}
+		if containsString(logs, "reconcile scan refetch reasons") {
+			t.Errorf("no tally on an origin without the expansion:\n%s", strings.Join(logs, "\n"))
+		}
+		// The documented gap, asserted so a silent "fix" of the degrade cannot
+		// pass this test unnoticed: with nothing to compare, the stale row
+		// stays until a Full pass.
+		if got := commentRows(t, db, "c2"); got != 1 {
+			t.Fatalf("c2 rows = %d, want the stale row kept (no expansion → no comparison)", got)
+		}
+	})
+}
+
+// TestConfluenceReconcileKeepsPageOmittedBySearchPagination: search pagination
+// holes are not deletions. The reconcile scan confirms a candidate by direct
+// GET before deleting, so a page the listing omitted only because the cursor
+// clipped it survives.
 func TestConfluenceReconcileKeepsPageOmittedBySearchPagination(t *testing.T) {
 	f := newConfFixture(t)
 	client := f.start()

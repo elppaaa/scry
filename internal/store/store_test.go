@@ -71,7 +71,7 @@ var documentedColumns = map[string][]string{
 	"versions": {"id", "project_key", "name", "released", "archived", "release_date"},
 	"comments": {"id", "item_id", "external_id", "author", "author_id",
 		"body_adf", "body_text", "created_at", "updated_at",
-		"visibility_type", "visibility_value", "jsd_public"},
+		"visibility_type", "visibility_value", "jsd_public", "parent_id"},
 	"attachments":    {"id", "item_id", "external_id", "filename", "mime_type", "size", "author", "created_at", "author_id", "url"},
 	"changelog":      {"id", "item_id", "at", "author", "field", "from_value", "from_id", "to_value", "to_id", "author_id"},
 	"links":          {"item_id", "type", "direction", "target_key"},

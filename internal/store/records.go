@@ -122,7 +122,12 @@ type DevLinksUpdate struct {
 	Links []DevLink
 }
 
-// Comment is stored flat: the source API exposes no thread parent.
+// Comment is stored flat for origins that expose no thread parent (Jira,
+// Linear). Wiki comments are threaded, so ParentID says which it is:
+// nil = parent unknown (pre-v52 rows, flat origins), pointer to "" = a
+// top-level wiki comment, pointer to an external id = a wiki reply. NULL must
+// never fold into "" — an unknown parent is the scan's cue to re-fetch, not a
+// claim of top-level (schemaV52).
 type Comment struct {
 	ID         string // "<source_id>:<comment_id>"
 	ExternalID string
@@ -132,6 +137,7 @@ type Comment struct {
 	BodyText   string
 	CreatedAt  string
 	UpdatedAt  string
+	ParentID   *string
 	// VisibilityType/VisibilityValue are the origin restriction (Jira
 	// visibility.type/value). Empty means unrestricted. Linear and wiki
 	// comments have no such field and stay empty.

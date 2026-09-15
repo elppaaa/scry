@@ -299,11 +299,13 @@ func runConfluencePass(ctx context.Context, c *confluence.Client, cfg *config.Co
 					// OUT of the gate's fetched set so the comments-only pass can
 					// still reach it if only a comment moved.
 					//
-					// The one no-fetch verdict that carries a reason is
-					// attachments-unchecked (GDK-1888): the hit's attachment
-					// expansion came back truncated at the search limit, so the
-					// scan could not compare it. It rides the same reasons tally
-					// as the fetch reasons so the gap is visible in the log.
+					// The no-fetch verdicts that carry a reason are the
+					// unchecked ones (GDK-1888): a children.attachment or
+					// children.comment expansion that came back truncated at the
+					// search limit, so the scan could not compare it — the two
+					// names join with a + when both were truncated. They ride
+					// the same reasons tally as the fetch reasons so the gap is
+					// visible in the log.
 					if why != "" {
 						cp.reasons[why]++
 					}
@@ -519,7 +521,7 @@ func runConfluencePass(ctx context.Context, c *confluence.Client, cfg *config.Co
 			// (CQL lastModified) pass cannot list an unbumped moved page at
 			// all — a Full or Reconcile pass is what catches it.
 			gate := &pageFetchGate{have: map[string]store.PageStamp{}, spaceOf: map[string]string{}, fetched: map[string]struct{}{},
-				attachments: map[string]map[string]bool{}}
+				attachments: map[string]map[string]bool{}, comments: map[string]map[string]bool{}, commentsUnknown: map[string]bool{}}
 			gates := map[string]*pageFetchGate{}
 			for _, key := range chunk.keys {
 				seen[key] = map[string]bool{}
@@ -543,6 +545,21 @@ func runConfluencePass(ctx context.Context, c *confluence.Client, cfg *config.Co
 				for id, set := range held {
 					gate.attachments[id] = set
 				}
+				// GDK-1888 comment half: the same base for top-level comment
+				// ids, plus the pages whose comment rows predate parent_id
+				// (NULL — unknown). needsBody heals those with one
+				// comments-backfill fetch instead of comparing a set it
+				// cannot trust.
+				tops, unknownParents, err := db.PageTopCommentIDs(ctx, ConfluenceSourceID, key)
+				if err != nil {
+					return err
+				}
+				for id, set := range tops {
+					gate.comments[id] = set
+				}
+				for id := range unknownParents {
+					gate.commentsUnknown[id] = true
+				}
 			}
 			cp := newChunkPass(gates)
 			// listedSpace remembers the space each hit was listed under, so a
@@ -551,13 +568,14 @@ func runConfluencePass(ctx context.Context, c *confluence.Client, cfg *config.Co
 			// the listing that predates it.
 			listedSpace := map[string]string{}
 			cql := fmt.Sprintf(`%s AND type=page order by lastmodified asc`, cqlSpaceSet(chunk.keys))
-			// The scan expands children.attachment so needsBody can compare the
-			// listed attachment ids against the mirror (GDK-1888): an attachment
-			// added or removed bumps no page version, so without this every
-			// stamp matches and the cache keeps a deleted attachment
-			// indefinitely. The expansion rides the scan only — the incremental
-			// and full passes keep the default payload.
-			if err := c.SearchPagesExpand(ctx, cql, "version,space,children.attachment", func(hits []confluence.Page) error {
+			// The scan expands children.attachment and children.comment so
+			// needsBody can compare the listed ids against the mirror
+			// (GDK-1888): an attachment or comment added or removed bumps no
+			// page version, so without this every stamp matches and the cache
+			// keeps a deleted attachment or comment indefinitely. The
+			// expansions ride the scan only — the incremental and full passes
+			// keep the default payload.
+			if err := c.SearchPagesExpand(ctx, cql, "version,space,children.attachment,children.comment", func(hits []confluence.Page) error {
 				for _, hit := range hits {
 					key := hit.Space.Key
 					if key == "" && len(chunk.keys) == 1 {
@@ -585,10 +603,13 @@ func runConfluencePass(ctx context.Context, c *confluence.Client, cfg *config.Co
 				// The scan's own tally, same shape as syncChunk's: space= is a
 				// move between scoped spaces, new= a page no scanned space had
 				// ever held, version/stamp= a change the incremental pass had
-				// not yet seen, attachments= an attachment set the mirror holds
-				// differently — an add or delete that bumped no version
-				// (GDK-1888) — and attachments-unchecked= a listing truncated
-				// at the search limit, where no comparison was possible.
+				// not yet seen, attachments=/comments= an id set the mirror
+				// holds differently — an add or delete that bumped no version
+				// (GDK-1888) — comments-backfill= comment rows whose parent_id
+				// predates schemaV52, healed by the fetch itself — and
+				// attachments-unchecked=/comments-unchecked= (alone or joined
+				// with a +) a listing truncated at the search limit, where no
+				// comparison was possible.
 				opts.logf("confluence: reconcile scan refetch reasons %s", formatReasons(cp.reasons))
 			}
 			for key, ids := range seen {
@@ -1090,6 +1111,17 @@ type pageFetchGate struct {
 	// an entry (empty set = no attachments); a page missing here is one the
 	// mirror does not hold — "new" above has already answered it.
 	attachments map[string]map[string]bool
+	// comments is the same comparison base for top-level comment external ids
+	// (page external id → top-level comment external ids, replies excluded),
+	// and commentsUnknown holds the pages with any pre-schemaV52 comment row
+	// (parent_id NULL — the set cannot be trusted). Both are loaded per space
+	// by the reconcile scan only, nil on every other gate. needsBody answers
+	// comments-backfill for an unknown page — one fetch rewrites the rows with
+	// real parents — and otherwise compares the hit's children.comment
+	// expansion (top-level ids only, the shape the search returns) against the
+	// set (GDK-1888 comment half).
+	comments        map[string]map[string]bool
+	commentsUnknown map[string]bool
 }
 
 // newPageFetchGate loads one space's mirrored stamps. backfill returns a nil
@@ -1127,15 +1159,28 @@ func (g *pageFetchGate) commentCurrent(hit confluence.Page) bool {
 // claims (a gate covering several spaces also knows which one it files the id
 // under): a number alone can be reused after a restore, a stamp alone is
 // minute-coarse in CQL, and a space move bumps neither. When the gate carries
-// an attachment comparison base (the reconcile scan) and the hit carries the
-// children.attachment expansion, a set difference in either direction also
-// says fetch — attachments bump no version (GDK-1888). Anything missing, zero
+// the reconcile scan's comparison bases and the hit carries the children.*
+// expansions, a set difference in either direction also says fetch —
+// attachments and comments bump no version (GDK-1888). Anything missing, zero
 // or different is fetched — the mirror is a disposable cache, so the safe
 // answer is always "fetch". The reason is a log tally: a page that is re-read
-// on every unchanged tick names its own cause in the sync output. One no-fetch
-// verdict still carries a reason: attachments-unchecked, a hit whose expansion
-// came back truncated at the search limit so no comparison was possible — the
-// caller tallies it so the gap rides the log instead of aging silently.
+// on every unchanged tick names its own cause in the sync output.
+//
+// The no-fetch verdicts that still carry a reason are the unchecked ones: a
+// children.* expansion truncated at the search limit proves neither set
+// direction, so the scan refuses to compare and returns the name (the two
+// names join with a + when both listings were truncated) — the caller tallies
+// it so the gap rides the log instead of aging silently. A truncated listing
+// no longer ends the question: attachments truncated still falls through to
+// the comment check, on purpose — one truncated axis must not blind the
+// other.
+//
+// Documented gaps, on purpose and visible in the reasons tally: a deleted
+// reply is not detected (the expansion carries top-level ids only — the
+// parent's id still lists, so the set compares equal); and a page whose
+// comment container 404s on fetch (restricted child content, the ErrNotFound
+// branch in fetchPageRecord) while the listing still shows ids re-fetches on
+// every reconcile — that page is the comments= line in the tally.
 func (g *pageFetchGate) needsBody(hit confluence.Page) (bool, string) {
 	if g == nil {
 		return true, "" // backfill: every body, not a gate decision
@@ -1175,29 +1220,61 @@ func (g *pageFetchGate) needsBody(hit confluence.Page) (bool, string) {
 	if st.UpdatedAt != jira.ISOTime(hit.Version.When) {
 		return true, "stamp"
 	}
-	// GDK-1888: every stamp matches, but attachments do not bump the page
-	// version — the last word belongs to the hit's own attachment listing,
-	// which only the reconcile scan's expansion carries (attachments is nil
-	// on every other gate, and a hit with no expansion — issuetap — changes
-	// nothing). A complete listing (size < limit) is compared as a set, both
-	// directions: an origin add the cache misses and a cache row the origin
-	// dropped both fetch. A truncated listing (size >= limit) proves neither
-	// direction, so it does not fetch — the caller tallies it as
-	// attachments-unchecked instead.
+	// GDK-1888: every stamp matches, but attachments and comments do not bump
+	// the page version — the last word belongs to the hit's own child
+	// listings, which only the reconcile scan's expansions carry (the
+	// comparison maps are nil on every other gate, and a hit with no
+	// expansion — issuetap — changes nothing). A complete listing
+	// (size < limit) is compared as a set, both directions: an origin add the
+	// cache misses and a cache row the origin dropped both fetch. A truncated
+	// listing (size >= limit) proves neither direction, so it does not fetch
+	// — the name is remembered below and both unchecked names ride the no
+	// verdict joined with a +.
+	var unchecked []string
 	if g.attachments != nil && hit.Children.Attachment != nil {
 		ca := hit.Children.Attachment
 		if ca.Size >= ca.Limit {
-			return false, "attachments-unchecked"
-		}
-		listed := make(map[string]bool, len(ca.Results))
-		for _, r := range ca.Results {
-			if r.ID != "" {
-				listed[r.ID] = true
+			unchecked = append(unchecked, "attachments-unchecked")
+		} else {
+			listed := make(map[string]bool, len(ca.Results))
+			for _, r := range ca.Results {
+				if r.ID != "" {
+					listed[r.ID] = true
+				}
+			}
+			if !sameIDSet(listed, g.attachments[hit.ID]) {
+				return true, "attachments"
 			}
 		}
-		if !sameIDSet(listed, g.attachments[hit.ID]) {
-			return true, "attachments"
+	}
+	// The comment half, top-level ids only (the shape the expansion carries):
+	// a pre-schemaV52 page (any NULL parent_id row) is healed by one fetch
+	// rather than compared against a set that cannot be trusted — checked
+	// before truncation, because a truncated listing with unknown parents
+	// still wants the heal. On the comments= difference itself, the store's
+	// unchanged-compare reads parent_id (NULL ≠ ''), so the backfill fetch
+	// commits instead of skipping as unchanged.
+	if g.comments != nil && hit.Children.Comment != nil {
+		if g.commentsUnknown[hit.ID] {
+			return true, "comments-backfill"
 		}
+		cc := hit.Children.Comment
+		if cc.Size >= cc.Limit {
+			unchecked = append(unchecked, "comments-unchecked")
+		} else {
+			listed := make(map[string]bool, len(cc.Results))
+			for _, r := range cc.Results {
+				if r.ID != "" {
+					listed[r.ID] = true
+				}
+			}
+			if !sameIDSet(listed, g.comments[hit.ID]) {
+				return true, "comments"
+			}
+		}
+	}
+	if len(unchecked) > 0 {
+		return false, strings.Join(unchecked, "+")
 	}
 	return false, ""
 }
@@ -1371,6 +1448,11 @@ func fetchPageRecord(ctx context.Context, c *confluence.Client, cfg *config.Conf
 	for _, cm := range cms {
 		cmADF := cm.Body.ADFRaw()
 		cmWhen := jira.ISOTime(cm.Version.When)
+		// ParentID always has a value here — a pointer to it, so a top-level
+		// comment writes '' (known no-parent) and a reply writes its parent's
+		// external id; NULL stays reserved for rows that predate schemaV52
+		// and the origins with no thread parent at all (GDK-1888).
+		parent := cm.ParentID
 		rec.Comments = append(rec.Comments, store.Comment{
 			ID:         pageNS(cfg) + ":" + cm.ID,
 			ExternalID: cm.ID,
@@ -1380,6 +1462,7 @@ func fetchPageRecord(ctx context.Context, c *confluence.Client, cfg *config.Conf
 			BodyText:   adf.PlainText(cmADF),
 			CreatedAt:  cmWhen,
 			UpdatedAt:  cmWhen,
+			ParentID:   &parent,
 		})
 	}
 	for _, at := range attRows {

@@ -888,7 +888,9 @@ func upsertPageRecord(tx *sql.Tx, r PageRecord, knownProjects map[string]bool) (
 //	       external_id, key
 //	pages: space_key, parent_id, version, status, body_adf, labels
 //	comments: id, external_id, author, author_id, body_adf, body_text,
-//	          created_at, updated_at (order-independent, keyed by id)
+//	          created_at, updated_at, parent_id (order-independent, keyed by
+//	          id; NULL does not compare equal to '' — an unknown parent must
+//	          stay a mismatch or the backfill fetch would skip forever)
 //	attachments: id, external_id, filename, mime_type, size, author,
 //	             author_id, created_at, url (order-independent, keyed by id)
 //
@@ -937,21 +939,25 @@ func pageRecordUnchanged(tx *sql.Tx, r PageRecord) (bool, error) {
 	rows, err := tx.Query(`
 		SELECT id, COALESCE(external_id,''), COALESCE(author,''), COALESCE(author_id,''),
 		       COALESCE(body_adf,''), COALESCE(body_text,''),
-		       COALESCE(created_at,''), COALESCE(updated_at,'')
+		       COALESCE(created_at,''), COALESCE(updated_at,''), parent_id
 		FROM comments WHERE item_id = ?`, it.ID)
 	if err != nil {
 		return false, err
 	}
 	type snap struct {
 		id, ext, author, authorID, adf, body, created, updated string
+		parent                                                 string
+		parentNull                                             bool // NULL parent_id — unknown, not top-level
 	}
 	var have []snap
 	for rows.Next() {
 		var s snap
-		if err := rows.Scan(&s.id, &s.ext, &s.author, &s.authorID, &s.adf, &s.body, &s.created, &s.updated); err != nil {
+		var p sql.NullString
+		if err := rows.Scan(&s.id, &s.ext, &s.author, &s.authorID, &s.adf, &s.body, &s.created, &s.updated, &p); err != nil {
 			rows.Close()
 			return false, err
 		}
+		s.parent, s.parentNull = p.String, !p.Valid
 		have = append(have, s)
 	}
 	if err := rows.Err(); err != nil {
@@ -966,9 +972,14 @@ func pageRecordUnchanged(tx *sql.Tx, r PageRecord) (bool, error) {
 		if len(c.BodyADF) > 0 {
 			adf = string(c.BodyADF)
 		}
+		var parent string
+		if c.ParentID != nil {
+			parent = *c.ParentID
+		}
 		want = append(want, snap{
 			id: c.ID, ext: c.ExternalID, author: c.Author, authorID: c.AuthorID,
 			adf: adf, body: c.BodyText, created: c.CreatedAt, updated: c.UpdatedAt,
+			parent: parent, parentNull: c.ParentID == nil,
 		})
 	}
 	if len(have) != len(want) {
@@ -1221,16 +1232,19 @@ func (db *DB) purgeIDsOutsideNamespace(ctx context.Context, sourceID, ns, kind s
 
 // insertComment writes one comments row. visibility_type/value are NOT NULL
 // and store the empty string (unrestricted); jsd_public is NULL when the
-// origin omitted the marker.
+// origin omitted the marker; parent_id is NULL when the parent is unknown
+// (c.ParentID nil) and otherwise written as-is — no nz(), so a top-level
+// wiki comment keeps its empty-parent value distinct from a pre-v52 NULL
+// (schemaV52).
 func insertComment(tx *sql.Tx, itemID string, c Comment) error {
 	_, err := tx.Exec(`
 		INSERT INTO comments (id, item_id, external_id, author, author_id,
 		                      body_adf, body_text, created_at, updated_at,
-		                      visibility_type, visibility_value, jsd_public)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+		                      visibility_type, visibility_value, jsd_public, parent_id)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		c.ID, itemID, nz(c.ExternalID), nz(c.Author), nz(c.AuthorID),
 		jsonRaw(c.BodyADF), nz(c.BodyText), nz(c.CreatedAt), nz(c.UpdatedAt),
-		c.VisibilityType, c.VisibilityValue, jsdPublicSQL(c.JsdPublic),
+		c.VisibilityType, c.VisibilityValue, jsdPublicSQL(c.JsdPublic), c.ParentID,
 	)
 	return err
 }

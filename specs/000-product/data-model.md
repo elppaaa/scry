@@ -369,12 +369,15 @@ A failed history fetch is logged and the rest of the pass continues.
 | `visibility_type` | TEXT NOT NULL DEFAULT `''` | Origin restriction type (`role` or `group`). Empty when unrestricted. Linear and wiki comments have no such field and stay empty. |
 | `visibility_value` | TEXT NOT NULL DEFAULT `''` | Origin restriction name (Jira `visibility.value`). Empty when unrestricted. |
 | `jsd_public` | INTEGER | JSM `jsdPublic`. NULL when the origin omitted the key; `0` is internal, `1` is customer-visible. Absence and `false` are distinct. |
+| `parent_id` | TEXT | Wiki comment threads (v52, GDK-1888). `''` is a top-level page comment; a value is the parent comment's origin id (a reply). NULL means the parent is unknown: every Jira, Linear and agent comment, and wiki rows written before v52 — the hourly reconcile re-fetches such a page once and fills it. |
 
 Index: `(item_id, created_at)`.
 
 Jira's REST API exposes comments as a flat list with no thread parent, so gadak
 stores them flat. Reply affordances in the UI are a mention convention, not a
-tree.
+tree. Confluence comments do have a parent, and `parent_id` keeps it only so the
+reconcile can compare a page's top-level comment ids with the origin's listing;
+no surface renders a tree from it.
 
 ## `dev_links`
 

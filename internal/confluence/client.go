@@ -208,8 +208,9 @@ type Page struct {
 	// Metadata is present when expand includes metadata.labels (full Page fetch).
 	Metadata PageMetadata `json:"metadata"`
 	// Children is present when the search's expand asked for children.* —
-	// today only the sync pass's reconcile scan asks (children.attachment,
-	// GDK-1888). The zero value reads as "no expansion came back".
+	// today only the sync pass's reconcile scan asks (children.attachment and
+	// children.comment, GDK-1888). The zero value reads as "no expansion came
+	// back".
 	Children PageChildren `json:"children"`
 	// Ancestors, when expanded, lists the parent chain; the last entry is the direct parent.
 	Ancestors []struct {
@@ -221,20 +222,23 @@ type Page struct {
 }
 
 // PageChildren is the expand=children.* object on a search hit. Only
-// children.attachment is decoded today: the reconcile scan compares the
-// listed attachment ids against the mirror without paying a per-page
-// listing. Attachment is nil when the response carried no expansion
-// (issuetap's wiki) — absent, not "no attachments" (GDK-1888).
+// children.attachment and children.comment are decoded today: the reconcile
+// scan compares the listed ids against the mirror without paying a per-page
+// listing. A member is nil when the response carried no expansion
+// (issuetap's wiki) — absent, not "none" (GDK-1888).
 type PageChildren struct {
 	Attachment *ChildAttachments `json:"attachment"`
+	// Comment lists top-level comment ids only — replies live under their
+	// parent's own child listing, which the search never expands (GDK-1888).
+	Comment *ChildComments `json:"comment"`
 }
 
-// ChildAttachments is one children.* expansion: the first results page only.
-// Size is the row count in Results (at most Limit); Size < Limit means the
-// list is complete, Size == Limit means it may be truncated — a caller
-// comparing ids must refuse the truncated shape (GDK-1888). Measured on a
-// real Cloud site: default limit 25.
-type ChildAttachments struct {
+// ChildList is one children.* expansion: the first results page only. Size
+// is the row count in Results (at most Limit); Size < Limit means the list
+// is complete, Size == Limit means it may be truncated — a caller comparing
+// ids must refuse the truncated shape (GDK-1888). Measured on a real Cloud
+// site: default limit 25.
+type ChildList struct {
 	Results []struct {
 		ID string `json:"id"`
 	} `json:"results"`
@@ -242,6 +246,14 @@ type ChildAttachments struct {
 	Limit int `json:"limit"`
 	Size  int `json:"size"`
 }
+
+// ChildAttachments and ChildComments are the same envelope — every
+// children.<kind> expansion the search offers has this shape — so one struct
+// carries both names rather than two identical copies drifting apart.
+type (
+	ChildAttachments = ChildList
+	ChildComments    = ChildList
+)
 
 // LabelNames returns label names from metadata.labels.results in API order.
 // Always returns a non-nil empty slice when none are present. Does not sort —
@@ -261,12 +273,16 @@ func (p Page) LabelNames() []string {
 	return out
 }
 
-// Comment is a child comment (or reply) on a page.
+// Comment is a child comment (or reply) on a page. ParentID says which it
+// is — empty for a top-level comment, the parent's id for a reply. It is not
+// on the wire: Comments fills it from its own walk (json:"-"), the same
+// threading the caller stores (GDK-1888).
 type Comment struct {
-	ID      string      `json:"id"`
-	Title   string      `json:"title"`
-	Body    ContentBody `json:"body"`
-	Version Version     `json:"version"`
+	ID       string      `json:"id"`
+	Title    string      `json:"title"`
+	Body     ContentBody `json:"body"`
+	Version  Version     `json:"version"`
+	ParentID string      `json:"-"`
 }
 
 // Attachment is one row of a page's child/attachment listing (GDK-1541).
@@ -368,12 +384,13 @@ func (c *Client) SearchPages(ctx context.Context, cql string, fn func([]Page) er
 
 // SearchPagesExpand is SearchPages with a caller-chosen expand list. The one
 // caller that needs more than the default is the sync pass's reconcile scan,
-// which adds children.attachment (GDK-1888): an attachment added or deleted
-// does not bump the page's version, so the hourly scan compares the listed
-// attachment ids against the mirror and refetches the body on a difference —
-// the incremental and full passes keep the default and carry no extra
-// payload. expand is an in-repo constant token list, not user input, so it
-// rides the query unescaped exactly the way the default always has.
+// which adds children.attachment and children.comment (GDK-1888): an
+// attachment or comment added or deleted does not bump the page's version,
+// so the hourly scan compares the listed ids against the mirror and
+// refetches the body on a difference — the incremental and full passes keep
+// the default and carry no extra payload. expand is an in-repo constant
+// token list, not user input, so it rides the query unescaped exactly the
+// way the default always has.
 func (c *Client) SearchPagesExpand(ctx context.Context, cql, expand string, fn func([]Page) error) error {
 	path := fmt.Sprintf("%s/content/search?cql=%s&limit=50&expand=%s",
 		apiPath, url.QueryEscape(cql), expand)
@@ -505,7 +522,9 @@ func (c *Client) PageVersions(ctx context.Context, id string) ([]Version, error)
 }
 
 // Comments returns every comment on a page plus one level of replies
-// (start/limit paging on each parent).
+// (start/limit paging on each parent), tagging each row with its thread
+// parent: ParentID empty on a top-level comment, the parent's id on a
+// reply (GDK-1888).
 func (c *Client) Comments(ctx context.Context, pageID string) ([]Comment, error) {
 	top, err := c.childComments(ctx, pageID)
 	if err != nil {
@@ -513,12 +532,16 @@ func (c *Client) Comments(ctx context.Context, pageID string) ([]Comment, error)
 	}
 	out := make([]Comment, 0, len(top))
 	for _, cm := range top {
+		cm.ParentID = ""
 		out = append(out, cm)
 		replies, err := c.childComments(ctx, cm.ID)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, replies...)
+		for _, r := range replies {
+			r.ParentID = cm.ID
+			out = append(out, r)
+		}
 	}
 	return out, nil
 }
