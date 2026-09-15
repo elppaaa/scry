@@ -14,6 +14,8 @@ Jira 필터, 스페이스, 페어링해 둔 터미널 — 거기에 글자를 �
 쓰기가 실제로 반영된 뒤에만 지워집니다 ([GDK-1863]). 머리 아래에는 진행 중인
 스프린트가 한 줄로 붙습니다 — 이름, 완료/전체, 남은 일수, 그 아래 목표 — 탭하면
 목록이 그 스프린트로 좁혀집니다. 폰은 스프린트를 읽고, 데스크가 돌립니다 ([GDK-1867]).
+그 뒤에는 팔레트의 스프린트 행이 캐시가 가진 스프린트 전부를 엽니다 — 진행 중·예정·완료,
+각각 기간과 완료/전체와 목표를 달고 ([GDK-1827]).
 
 캐시에 있는 것은 폰에도 보이고, 한 줄로 말할 수 있는 것은 폰에서 씁니다. 상세에
 필드 섹션이 생겨 라벨·컴포넌트·수정 버전·상위 이슈·에픽과 커스텀 필드 전부를 그
@@ -1560,6 +1562,7 @@ FlagSet에서 생성되어 어긋날 수 없습니다. 즐겨찾기가 미러에
 [GDK-1753]: https://gadak.dev/backlog/#/?ks=GDK-1753
 [GDK-1798]: https://gadak.dev/backlog/#/?ks=GDK-1798
 [GDK-1822]: https://gadak.dev/backlog/#/?ks=GDK-1822
+[GDK-1827]: https://gadak.dev/backlog/#/?ks=GDK-1827
 [GDK-1833]: https://gadak.dev/backlog/#/?ks=GDK-1833
 [GDK-1837]: https://gadak.dev/backlog/#/?ks=GDK-1837
 [GDK-1839]: https://gadak.dev/backlog/#/?ks=GDK-1839

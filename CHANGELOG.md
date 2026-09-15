@@ -16,7 +16,9 @@ type, restored into the same composer after a relaunch or a token refresh, and
 forgotten only once the write has landed ([GDK-1863]). Under the heading, an
 active sprint is one line — name, done over total, days left, the goal
 beneath — and tapping it scopes the list to that sprint; the phone reads the
-sprint, the desk runs it ([GDK-1867]).
+sprint, the desk runs it ([GDK-1867]). Behind it, a Sprints row in the palette
+opens every sprint the cache holds — active, planned, closed — each with its
+window, its done-over-total and its goal ([GDK-1827]).
 
 Whatever the cache holds, the phone shows, and what is one line to say, the
 phone writes. The detail has a Fields section — labels, components, fix
@@ -1643,6 +1645,7 @@ priority sorting keyed on `priority_rank`.
 [GDK-1753]: https://gadak.dev/backlog/#/?ks=GDK-1753
 [GDK-1798]: https://gadak.dev/backlog/#/?ks=GDK-1798
 [GDK-1822]: https://gadak.dev/backlog/#/?ks=GDK-1822
+[GDK-1827]: https://gadak.dev/backlog/#/?ks=GDK-1827
 [GDK-1833]: https://gadak.dev/backlog/#/?ks=GDK-1833
 [GDK-1837]: https://gadak.dev/backlog/#/?ks=GDK-1837
 [GDK-1839]: https://gadak.dev/backlog/#/?ks=GDK-1839
