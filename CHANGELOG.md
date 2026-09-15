@@ -89,6 +89,8 @@ agent that can write a dashboard can write a page for one issue. Expand it,
 or download the file; on Jira and Linear the same attachment is just a file,
 which is the point — nothing new has to live in the body. The phone lists
 the same attachment as a row that says it renders on the desk ([GDK-1897]).
+A dashboard opened outside the app, its URL pasted into a tab, is held the
+same way and still cannot reach gadak's own storage ([GDK-1898]).
 
 ## v0.22.1 — 2026-09-14
 
@@ -1704,4 +1706,5 @@ priority sorting keyed on `priority_rank`.
 [GDK-1887]: https://gadak.dev/backlog/#/?ks=GDK-1887
 [GDK-1889]: https://gadak.dev/backlog/#/?ks=GDK-1889
 [GDK-1897]: https://gadak.dev/backlog/#/?ks=GDK-1897
+[GDK-1898]: https://gadak.dev/backlog/#/?ks=GDK-1898
 [GDK-1900]: https://gadak.dev/backlog/#/?ks=GDK-1900
