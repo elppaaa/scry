@@ -243,8 +243,10 @@ type Comment struct {
 }
 
 // Attachment is one row of a page's child/attachment listing (GDK-1541).
-// Title is the filename. The extensions object carries the type and size as
-// strings — REST v1 has no numeric fields for either.
+// Title is the filename. The extensions object carries the type as a string;
+// fileSize arrives as a string on some sites and as a JSON number on others
+// (GDK-1900: a number killed every Confluence pass on a real Cloud site), so
+// it decodes as json.Number, which accepts both.
 type Attachment struct {
 	ID         string  `json:"id"`
 	Title      string  `json:"title"`
@@ -253,9 +255,9 @@ type Attachment struct {
 		// MimeType is the browser-facing type ("image/png"); mediaType is the
 		// same string under its other REST v1 name. One of them is always set
 		// on a real row.
-		MimeType  string `json:"mimeType"`
-		MediaType string `json:"mediaType"`
-		FileSize  string `json:"fileSize"`
+		MimeType  string      `json:"mimeType"`
+		MediaType string      `json:"mediaType"`
+		FileSize  json.Number `json:"fileSize"`
 	} `json:"extensions"`
 }
 
@@ -271,7 +273,7 @@ func (a Attachment) MIMEType() string {
 // Size parses extensions.fileSize. 0 when absent or not a number: the mirror
 // treats an unknown size as "no claim", never as an error.
 func (a Attachment) Size() int64 {
-	n, _ := strconv.ParseInt(strings.TrimSpace(a.Extensions.FileSize), 10, 64)
+	n, _ := strconv.ParseInt(strings.TrimSpace(string(a.Extensions.FileSize)), 10, 64)
 	if n < 0 {
 		return 0
 	}
