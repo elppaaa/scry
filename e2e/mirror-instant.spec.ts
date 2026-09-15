@@ -6,6 +6,7 @@ import {
   attachConsoleErrors,
   gotoApp,
 } from './helpers'
+import { FOCUS_POLL_MS } from '../web/src/lib/ui-focus'
 
 /*
  * GDK-1170 — a write made somewhere else reaches an open board on the 500ms
@@ -46,6 +47,13 @@ const INJECTED_KEY = 'NMB-991170'
 const BACKSTOP_MS = 15_000
 /** The window a pull has to land in to be this signal and not the backstop. */
 const INSTANT_MS = 3_000
+/** 2026-09-15: two consecutive ticks that do not pull is the contract, not
+ *  six. The per-tick judgment (still → ignore, bumped → pull, in-flight →
+ *  wait) is fixed by the decideMirrorPull table in ui-focus.test.ts; this
+ *  window only has to span one settled tick after the deciding one, so it
+ *  derives from the imported tick — move the poll's cadence and this window
+ *  follows, with no comment anyone has to remember to grep. */
+const SETTLE = FOCUS_POLL_MS * 2
 
 interface Rig {
   /** Move the mirror identity the poll reports. */
@@ -126,9 +134,9 @@ test.describe('GDK-1170 a write elsewhere reaches an open board', () => {
     const anchored = rig.deltas()
 
     // Control: 500ms ticks with an unmoved mirror must not pull. The duration
-    // IS the contract here (absence over ~6 ticks), and it ends well before
-    // the next backstop.
-    await page.waitForTimeout(INSTANT_MS) // duration is the contract: no pull while the mirror sits still
+    // IS the contract here (absence over two ticks, SETTLE above), and it
+    // ends well before the next backstop.
+    await page.waitForTimeout(SETTLE) // duration is the contract: no pull while the mirror sits still
     expect(rig.deltas(), 'a still mirror must not pull a delta on the 500ms tick').toBe(anchored)
 
     // Three moves inside one 500ms tick. The tab must not fire three deltas —
@@ -148,7 +156,7 @@ test.describe('GDK-1170 a write elsewhere reaches an open board', () => {
     // the burst coalesced into one pull, and a mirror that went still again
     // does not pull a follow-up — the same still-mirror control, on the
     // post-pull state.
-    await page.waitForTimeout(INSTANT_MS) // duration is the contract: no follow-up pull after the burst settles
+    await page.waitForTimeout(SETTLE) // duration is the contract: no follow-up pull after the burst settles
     expect(rig.deltas(), 'three moves inside one tick are one pull').toBe(anchored + 1)
 
     // The assertion waits on the state itself: the injected issue is in the

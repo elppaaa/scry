@@ -11,6 +11,16 @@
  * the two makes the key change whenever the destination does.
  */
 
+/**
+ * The focus poll's tick. Its owner is here rather than in ui-focus-poll.ts,
+ * which installs the interval, because this file is a leaf — zero imports —
+ * and so is the only half of the pair a Playwright spec can import (the poll
+ * module pulls in rune stores, which need the compiler). e2e/mirror-instant
+ * derives its absence windows from this, so the window follows the tick
+ * instead of restating it (GDK-1924).
+ */
+export const FOCUS_POLL_MS = 500
+
 export const UI_FOCUS_KEY = 'gadak:ui-focus-key'
 
 /** The dedup key for one focus payload. Opaque: only ever compared. */

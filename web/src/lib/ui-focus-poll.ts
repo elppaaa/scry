@@ -22,6 +22,7 @@ import { showIssueList } from './show-issue-list'
 import { parseView } from './view-config'
 import { COLUMN_PARAM } from './place-dimension'
 import {
+  FOCUS_POLL_MS,
   decideMirrorPull,
   readLastFocusKey,
   rememberFocusKey,
@@ -34,8 +35,10 @@ import { issues } from '../stores/issues.svelte'
 import { filters } from '../stores/filters.svelte'
 import { dashboards } from '../stores/dashboards.svelte'
 
-/** The poll's cadence. Exported so tests and probes name one value. */
-export const FOCUS_POLL_MS = 500
+/** The poll's cadence, re-exported for callers that already import this
+ *  module; its owner is the leaf ui-focus.ts, which a node-side spec can
+ *  import (GDK-1924). */
+export { FOCUS_POLL_MS }
 
 type FocusPoll = Awaited<ReturnType<typeof pollUIFocus>>
 

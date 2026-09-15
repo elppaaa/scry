@@ -87,7 +87,38 @@ async function openPane(page: Page): Promise<void> {
   })
   // The cell size IS the font metrics, and the CJK faces land late on a cold
   // serve; settleResize's own tail is 3s (web/src/lib/terminal/resize.ts).
-  await page.waitForTimeout(3500)
+  // Wait for the geometry itself, not a clock: the condition is
+  // self-verifying (two identical consecutive reads mean the late face has
+  // landed and been applied), where a fixed sleep encodes only a guess about
+  // how long a cold serve takes. We read the render service's cell
+  // dimensions — the metric that actually moves when the face lands — via
+  // the same `(window as any).__gadakTerm` surface the assertions below
+  // already use; the DOM proxy (.xterm-rows computed styles) only reflects
+  // the row box, which does not move with the cell width. The 3.5s deadline
+  // is the old sleep as a ceiling: if the geometry never stabilizes we
+  // proceed exactly as before.
+  await page.evaluate(() => {
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    const t = (window as any).__gadakTerm
+    const read = (): string | null => {
+      const cell = t?._core?._renderService?.dimensions?.css?.cell
+      if (!cell?.width || !cell?.height) return null
+      return `${cell.width}x${cell.height}`
+    }
+    return new Promise<void>((resolve) => {
+      const deadline = Date.now() + 3500
+      let prev = read()
+      const tick = () => {
+        const next = read()
+        if (prev && next === prev) return resolve()
+        prev = next
+        if (Date.now() >= deadline) return resolve()
+        setTimeout(tick, 100)
+      }
+      tick()
+    })
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+  })
   await page.evaluate(() => (document as unknown as { fonts: FontFaceSet }).fonts.ready)
 }
 
