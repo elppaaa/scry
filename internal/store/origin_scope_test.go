@@ -153,6 +153,87 @@ func TestDropStatementsRunAgainstTheRealSchema(t *testing.T) {
 	}
 }
 
+// TestMirrorSchemaHasNoLocalOrAuthoredTables (GDK-1906) is the recurrence gate
+// for "classification right, home wrong": origin_scope.go classified api_usage
+// scopeLocal while schemaV6 still created it in the mirror, so `rm gadak.db` —
+// the documented one-line recovery — deleted the only copy of counters the
+// origin cannot regenerate. TestEveryTableIsOriginScoped forces every table to
+// be classified; this one forces the scopeLocal and scopeAuthored classes to
+// be homed in local.db — a CREATE TABLE for them in the mirror schema (main)
+// fails here. Both schema sources are parsed by execution, the same way
+// liveTables reads them: openTemp applies migrations and localMigrations, so
+// no string restatement of either list can drift from the code under test.
+//
+// frozenMirrorLeftovers holds the deliberate exceptions: a copy migration
+// keeps the mirror-side source rows so a crash between the two file commits
+// can re-run the copy (the schemaV26 rule), and the drop lands in a later
+// release (schemaV38 for v26's tables). An entry whose table the mirror
+// schema no longer creates also fails, so the map cannot outlive its drop.
+//
+// FAIL-first, measured 2026-09-16 on pre-move source (schemaV6 still the
+// only creator, localSchemaV12 not yet written):
+//
+//	scopeLocal/scopeAuthored tables created by mirror migrations: [api_usage]
+//	local- and authored-class data must be created by localMigrations — `rm gadak.db` deletes the mirror's copy and the origin cannot regenerate it (GDK-1906);
+//	a frozen copy-leftover goes in frozenMirrorLeftovers with its reason
+func TestMirrorSchemaHasNoLocalOrAuthoredTables(t *testing.T) {
+	db := openTemp(t)
+	scopeOf := make(map[string]originScope, len(originScopedTables))
+	for _, r := range originScopedTables {
+		scopeOf[r.table] = r.scope
+	}
+
+	// table → why its mirror-side CREATE is still expected.
+	frozenMirrorLeftovers := map[string]string{
+		"api_usage": "schemaV53 (GDK-1906) copied it to local.api_usage; the copy needs " +
+			"the source rows for a crash re-run, so the drop is a later release's — " +
+			"the schemaV38-for-schemaV26 precedent",
+	}
+
+	var offending []string
+	rows, err := db.sql.QueryContext(context.Background(),
+		`SELECT name FROM sqlite_master WHERE type = 'table'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var n string
+		if err := rows.Scan(&n); err != nil {
+			rows.Close()
+			t.Fatal(err)
+		}
+		switch {
+		case strings.HasPrefix(n, "sqlite_"), strings.HasPrefix(n, "items_fts_"):
+			// SQLite bookkeeping and fts5 shadow tables, as in liveTables.
+		default:
+			if scopeOf[n] == scopeLocal || scopeOf[n] == scopeAuthored {
+				if _, frozen := frozenMirrorLeftovers[n]; !frozen {
+					offending = append(offending, n)
+					continue
+				}
+				delete(frozenMirrorLeftovers, n)
+			}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		t.Fatal(err)
+	}
+	rows.Close()
+	sort.Strings(offending)
+	if len(offending) > 0 {
+		t.Errorf("scopeLocal/scopeAuthored tables created by mirror migrations: %v\n"+
+			"local- and authored-class data must be created by localMigrations — "+
+			"`rm gadak.db` deletes the mirror's copy and the origin cannot regenerate it (GDK-1906);\n"+
+			"a frozen copy-leftover goes in frozenMirrorLeftovers with its reason",
+			offending)
+	}
+	if len(frozenMirrorLeftovers) > 0 {
+		t.Errorf("frozenMirrorLeftovers names tables the mirror schema does not create: %v\n"+
+			"the drop landed; remove the stale entries", frozenMirrorLeftovers)
+	}
+}
+
 // The epoch subquery is embedded in inserts and in the History filter, so it
 // has to be a valid scalar expression against an untouched local.db — where the
 // local_meta row does not exist yet and COALESCE is what keeps it 0 rather than

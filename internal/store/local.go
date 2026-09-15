@@ -35,7 +35,7 @@ const localRetention = 180 * 24 * time.Hour
 
 // localMigrations is independent of the mirror's migrations slice. Index+1 is
 // PRAGMA user_version on local.db.
-var localMigrations = []string{localSchemaV1, localSchemaV2, localSchemaV3, localSchemaV4, localSchemaV5, localSchemaV6, localSchemaV7, localSchemaV8, localSchemaV9, localSchemaV10, localSchemaV11}
+var localMigrations = []string{localSchemaV1, localSchemaV2, localSchemaV3, localSchemaV4, localSchemaV5, localSchemaV6, localSchemaV7, localSchemaV8, localSchemaV9, localSchemaV10, localSchemaV11, localSchemaV12}
 
 // localSessionsVersion is the migration that created local.sessions; its Go
 // hook (migrateLocal) backfills the table from the person visits already on
@@ -266,6 +266,26 @@ CREATE TABLE agent_writes (
   origin_epoch INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX agent_writes_at ON agent_writes(at);
+`
+
+// localSchemaV12 is the api_usage move (GDK-1906): the per-day outbound HTTP
+// counters leave the mirror schema and live here. They are this process's own
+// operational data, not mirrored origin content — the origin cannot regenerate
+// them — yet until now the disposable mirror held their only copy, so
+// `rm gadak.db` (the documented one-line recovery) deleted them. Same move as
+// localSchemaV4 (GDK-105). DDL identical to the mirror-side schemaV6 table.
+// Rows cross the file boundary in the mirror-side schemaV53 copy migration,
+// not here: this file has no attachment of the mirror to read from.
+const localSchemaV12 = `
+CREATE TABLE api_usage (
+  day               TEXT PRIMARY KEY,
+  requests          INTEGER NOT NULL DEFAULT 0,
+  throttled         INTEGER NOT NULL DEFAULT 0,
+  server_errors     INTEGER NOT NULL DEFAULT 0,
+  retries           INTEGER NOT NULL DEFAULT 0,
+  wait_ms           INTEGER NOT NULL DEFAULT 0,
+  last_throttled_at TEXT
+);
 `
 
 func init() {
@@ -499,6 +519,16 @@ func (db *DB) localPersonalTablesReady(ctx context.Context) bool {
 	var one int
 	return db.sql.QueryRowContext(ctx,
 		`SELECT 1 FROM local.sqlite_master WHERE type = 'table' AND name = 'saved_views'`).Scan(&one) == nil
+}
+
+// localAPIUsageReady is the schemaV53 sibling of localPersonalTablesReady:
+// schema `local` is attached AND migrated to localSchemaV12, so the copy has
+// a table to land in. Any error reads as not-ready; the caller holds the
+// mirror one version below apiUsageCopyVersion rather than failing the copy.
+func (db *DB) localAPIUsageReady(ctx context.Context) bool {
+	var one int
+	return db.sql.QueryRowContext(ctx,
+		`SELECT 1 FROM local.sqlite_master WHERE type = 'table' AND name = 'api_usage'`).Scan(&one) == nil
 }
 
 // localDSN opens local.db as the main database (no mirror ATTACH). Same

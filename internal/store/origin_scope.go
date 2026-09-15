@@ -183,7 +183,8 @@ var originScopedTables = []tableRule{
 			"queries the user wrote. Not origin content — a dashboard's SQL names " +
 			"the schema, not an origin. Kept on conversion the same way saved_views are"},
 	{table: "api_usage", scope: scopeLocal,
-		why: "our own outbound HTTP counters per day, not origin content (schemaV6)"},
+		why: "our own outbound HTTP counters per day, not origin content; local.db since GDK-1906 " +
+			"(schemaV53), surviving `rm gadak.db` — the origin cannot regenerate them"},
 	{table: "visits", scope: scopeLocal,
 		why: "protected history; hidden from the timeline by origin_epoch instead of deleted"},
 	{table: "searches", scope: scopeLocal,

@@ -320,6 +320,23 @@ func (db *DB) emptyMirror(ctx context.Context) bool {
 		"SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'").Scan(&n) == nil && n == 0
 }
 
+// localCopyMigrations lists the mirror migrations that write into local.* —
+// the copy class (v26, GDK-105; v53, GDK-1906). Each entry pairs the version
+// the copy lands on with a probe for its local-side tables; migrate() holds
+// a mirror whose probe fails one version below so the copy re-runs on a
+// later Open instead of failing it. The third copy migration is one more
+// line here, not a third if-statement in migrate — the same single-owner
+// shape originScopedTables gave its list (GDK-418). Iteration order does not
+// matter: a guard keys on the file's own user_version and its own probe,
+// and a hold only lowers `want`.
+var localCopyMigrations = []struct {
+	version int
+	ready   func(*DB, context.Context) bool
+}{
+	{personalStateCopyVersion, (*DB).localPersonalTablesReady},
+	{apiUsageCopyVersion, (*DB).localAPIUsageReady},
+}
+
 func (db *DB) migrate() error {
 	ctx := context.Background()
 	var have int
@@ -330,15 +347,18 @@ func (db *DB) migrate() error {
 	if have > want {
 		return &SchemaTooNewError{Path: db.path, Have: have, Supported: want}
 	}
-	// The v26 copy writes into local.* in the same transaction that advances
-	// user_version. When local.db cannot be attached or migrated, Open's
-	// contract still holds — a local.db failure "must not refuse the mirror"
-	// (see Open) — so the copy waits instead of failing: stay a version
-	// behind, and user_version still gates the copy onto the next Open once
-	// local answers. Nothing is lost in the gap; the mirror-side tables keep
-	// the rows because schemaV26 deliberately does not drop them.
-	if want >= personalStateCopyVersion && have < personalStateCopyVersion && !db.localPersonalTablesReady(ctx) {
-		want = personalStateCopyVersion - 1
+	// A copy migration writes into local.* in the same transaction that
+	// advances user_version. When local.db cannot be attached or migrated,
+	// Open's contract still holds — a local.db failure "must not refuse the
+	// mirror" (see Open) — so each copy waits instead of failing: stay a
+	// version below it, and user_version still gates the copy onto the next
+	// Open once local answers. Nothing is lost in the gap; the mirror-side
+	// tables keep the rows because the copy migrations deliberately do not
+	// drop them.
+	for _, m := range localCopyMigrations {
+		if want >= m.version && have < m.version && !m.ready(db, ctx) {
+			want = m.version - 1
+		}
 	}
 	db.schemaVersion = want
 	if have == want {

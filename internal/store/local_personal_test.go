@@ -227,6 +227,206 @@ func TestUpgradeCopiesMirrorPersonalToLocal(t *testing.T) {
 	}
 }
 
+// GDK-1906 (api_usage move) has its own trio below, shaped on the three above.
+
+// TestMirrorDeleteKeepsAPIUsage is the api_usage sibling of
+// TestMirrorDeleteKeepsPersonalState: the per-day outbound HTTP counters are
+// operational data this process generated — the origin cannot regenerate
+// them — so deleting gadak.db alone must cost a re-sync and nothing else.
+func TestMirrorDeleteKeepsAPIUsage(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gadak.db")
+	db, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if err := db.AddAPIUsage(ctx, "2026-09-15", APIUsageDelta{
+		Requests: 120, Throttled: 3, ServerErrors: 1, Retries: 2, WaitMS: 900,
+		LastThrottledAt: "2026-09-15T09:00:00.000Z",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			t.Fatal(err)
+		}
+	}
+
+	db2, err := Open(path)
+	if err != nil {
+		t.Fatalf("re-opening after mirror delete: %v", err)
+	}
+	defer db2.Close()
+	days, err := db2.APIUsage(ctx, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(days) != 1 {
+		t.Fatalf("api_usage rows after mirror delete = %d, want 1: origin-unregenerable counters must live in local.db, not the disposable mirror", len(days))
+	}
+	d := days[0]
+	if d.Day != "2026-09-15" || d.Requests != 120 || d.Throttled != 3 || d.ServerErrors != 1 || d.Retries != 2 || d.WaitMS != 900 {
+		t.Errorf("api_usage after mirror delete = %+v, want the seeded counters", d)
+	}
+	if d.LastThrottledAt == nil || *d.LastThrottledAt != "2026-09-15T09:00:00.000Z" {
+		t.Errorf("last_throttled_at after mirror delete = %v, want the seeded value", d.LastThrottledAt)
+	}
+}
+
+// TestUpgradeCopiesMirrorAPIUsageToLocal is the v53 sibling of
+// TestUpgradeCopiesMirrorPersonalToLocal: an upgrade from the last pre-copy
+// level carries the counters across the file boundary, and re-executing the
+// copy statement is idempotent — the crash window the mirror's WAL cannot
+// close across files lands user_version without the copy, so the statement
+// has to be safe to run again.
+func TestUpgradeCopiesMirrorAPIUsageToLocal(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "gadak.db")
+	prev := apiUsageCopyVersion - 1 // v52: last level before the copy
+	raw, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range migrations[:prev] {
+		if _, err := raw.Exec(m); err != nil {
+			raw.Close()
+			t.Fatal(err)
+		}
+	}
+	if _, err := raw.Exec(`INSERT INTO api_usage (day, requests, throttled, server_errors, retries, wait_ms, last_throttled_at)
+		VALUES ('2026-09-14', 40, 1, 0, 1, 200, '2026-09-14T08:00:00.000Z'),
+		       ('2026-09-15', 80, 2, 1, 2, 400, '2026-09-15T09:00:00.000Z')`); err != nil {
+		raw.Close()
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`PRAGMA user_version = ` + strconv.Itoa(prev)); err != nil {
+		raw.Close()
+		t.Fatal(err)
+	}
+	raw.Close()
+
+	db, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open after v52: %v", err)
+	}
+	defer db.Close()
+	ctx := context.Background()
+
+	days, err := db.APIUsage(ctx, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(days) != 2 {
+		t.Fatalf("local.api_usage rows after upgrade = %d, want 2 (copy must carry both days)", len(days))
+	}
+	if days[0].Day != "2026-09-15" || days[0].Requests != 80 || days[0].Throttled != 2 {
+		t.Errorf("newest day after upgrade = %+v, want 2026-09-15/80/2", days[0])
+	}
+
+	// Grow a day through the production path, then re-execute the copy by
+	// hand: the day-row it would collide with is a newer cumulative counter
+	// than the mirror-side snapshot froze at copy time, so INSERT OR IGNORE
+	// must leave it alone (the schemaV53 comment's merge rule).
+	if err := db.AddAPIUsage(ctx, "2026-09-15", APIUsageDelta{Requests: 20, Throttled: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.sql.ExecContext(ctx, schemaV53); err != nil {
+		t.Fatalf("re-executing schemaV53: %v", err)
+	}
+	days, err = db.APIUsage(ctx, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(days) != 2 {
+		t.Fatalf("local.api_usage rows after copy re-run = %d, want 2 (idempotent)", len(days))
+	}
+	if days[0].Requests != 100 || days[0].Throttled != 3 {
+		t.Errorf("2026-09-15 after copy re-run = %+v, want requests=100 throttled=3 — the re-run must not reset a counter the production path already grew", days[0])
+	}
+
+	// The mirror-side table stays (frozen leftover, no code path reads it);
+	// its rows must not have grown either.
+	var frozen int
+	if err := db.sql.QueryRowContext(ctx, `SELECT count(*) FROM api_usage`).Scan(&frozen); err != nil {
+		t.Fatal(err)
+	}
+	if frozen != 2 {
+		t.Errorf("mirror-side api_usage rows = %d, want 2 (frozen at copy time)", frozen)
+	}
+}
+
+// TestAPIUsageCopyWaitsForLocal is the v53 sibling of
+// TestCopyMigrationWaitsForLocal: an unattachable local.db must not refuse
+// the mirror — the version holds one below the copy so it re-runs later, and
+// once local answers again the counters cross the file boundary.
+func TestAPIUsageCopyWaitsForLocal(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gadak.db")
+	prev := apiUsageCopyVersion - 1
+	raw, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(1)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range migrations[:prev] {
+		if _, err := raw.Exec(m); err != nil {
+			raw.Close()
+			t.Fatal(err)
+		}
+	}
+	if _, err := raw.Exec(`INSERT INTO api_usage (day, requests, throttled, server_errors, retries, wait_ms)
+		VALUES ('2026-09-15', 60, 2, 0, 1, 300)`); err != nil {
+		raw.Close()
+		t.Fatal(err)
+	}
+	if _, err := raw.Exec(`PRAGMA user_version = ` + strconv.Itoa(prev)); err != nil {
+		raw.Close()
+		t.Fatal(err)
+	}
+	raw.Close()
+
+	// The raw connection's attach hook created a real local.db while the
+	// v52 mirror was being built; replace it with a directory so ATTACH
+	// cannot succeed.
+	if err := os.Remove(LocalPath(path)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(LocalPath(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	db, err := Open(path)
+	if err != nil {
+		t.Fatalf("Open with unattachable local.db must succeed: %v", err)
+	}
+	if got := db.SchemaVersion(); got != prev {
+		t.Errorf("schema version with local unreachable = %d, want %d (hold below the copy so it re-runs)", got, prev)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.Remove(LocalPath(path)); err != nil {
+		t.Fatal(err)
+	}
+	db, err = Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if got := db.SchemaVersion(); got != len(migrations) {
+		t.Errorf("schema version after local recovered = %d, want %d (the copy must run)", got, len(migrations))
+	}
+	days, err := db.APIUsage(context.Background(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(days) != 1 || days[0].Day != "2026-09-15" || days[0].Requests != 60 {
+		t.Errorf("api_usage after local recovered = %+v, want the seeded 2026-09-15/60: the held copy must now have run", days)
+	}
+}
+
 // The copy migration must not refuse the mirror when local.db cannot be
 // attached (a directory in its place is the shape local_test.go uses): Open
 // succeeds, the version holds one below the copy so it re-runs later, and

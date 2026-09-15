@@ -3,7 +3,7 @@ package store
 // migrations are applied in order and the index+1 is the schema version. A
 // released migration is never edited; a schema change is a new entry at the end
 // plus a documented row in specs/000-product/data-model.md.
-var migrations = []string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14, schemaV15, schemaV16, schemaV17, schemaV18, schemaV19, schemaV20, schemaV21, schemaV22, schemaV23, schemaV24, schemaV25, schemaV26, schemaV27, schemaV28, schemaV29, schemaV30, schemaV31, schemaV32, schemaV33, schemaV34, schemaV35, schemaV36, schemaV37, schemaV38, schemaV39, schemaV40, schemaV41, schemaV42, schemaV43, schemaV44, schemaV45, schemaV46, schemaV47, schemaV48, schemaV49, schemaV50, schemaV51, schemaV52}
+var migrations = []string{schemaV1, schemaV2, schemaV3, schemaV4, schemaV5, schemaV6, schemaV7, schemaV8, schemaV9, schemaV10, schemaV11, schemaV12, schemaV13, schemaV14, schemaV15, schemaV16, schemaV17, schemaV18, schemaV19, schemaV20, schemaV21, schemaV22, schemaV23, schemaV24, schemaV25, schemaV26, schemaV27, schemaV28, schemaV29, schemaV30, schemaV31, schemaV32, schemaV33, schemaV34, schemaV35, schemaV36, schemaV37, schemaV38, schemaV39, schemaV40, schemaV41, schemaV42, schemaV43, schemaV44, schemaV45, schemaV46, schemaV47, schemaV48, schemaV49, schemaV50, schemaV51, schemaV52, schemaV53}
 
 // itemsFTSCreate is the canonical items_fts DDL, spliced into schemaV1 so a
 // fresh database is born matching it (GDK-444: an inline copy in V1 lagged at
@@ -1105,3 +1105,45 @@ CREATE INDEX issues_blocked ON issues_raw(blocked_since);
 const schemaV52 = `
 ALTER TABLE comments ADD COLUMN parent_id TEXT;
 `
+
+// schemaV53 (GDK-1906) moves api_usage to local.db (localSchemaV12): the
+// per-day outbound HTTP counters are this process's own operational data —
+// origin-unregenerable — yet the disposable mirror held their only copy, so
+// `rm gadak.db`, the documented recovery, deleted them. Same shape as the v26
+// copy: this runs on an Open() connection, where the driver hook has already
+// ATTACHed local.db as `local`, and EnsureLocal has run before migrate()
+// (see Open), so the localSchemaV12 table exists by the time the INSERT
+// executes. When it does not (unattachable local.db), migrate() holds the
+// mirror at apiUsageCopyVersion - 1 rather than fail — see
+// localCopyMigrations in store.go.
+//
+// The mirror-side table is deliberately NOT dropped here, the v26 rule: the
+// mirror is WAL and local.db is not, so the copy's transaction has no
+// inter-file atomicity to lean on — a crash between the two file commits can
+// land user_version without the copy, and the source rows staying behind keep
+// the re-run (user_version still short, the copy re-executes on the next
+// Open) lossless. From this version on the mirror-side table is a frozen
+// leftover that no code path reads or writes — AddAPIUsage and APIUsage go
+// to local.api_usage — so its rows stop growing the moment the copy lands;
+// the drop belongs to a later release (the schemaV38-for-v26 precedent).
+// Until then an unprefixed `SELECT ... FROM api_usage` resolves main first
+// and answers the frozen snapshot, not local.db's truth.
+//
+// INSERT OR IGNORE not touching existing day-rows is the correct merge for
+// this table, not just re-run safety. day is the PRIMARY KEY and rows are
+// cumulative counters, so the only conflict a re-run can meet is a local
+// day-row written after the first copy ran — and that row is strictly more
+// current than the mirror-side row, which froze at copy time because every
+// write since goes to local. Overwriting it (REPLACE) would reset a running
+// counter to migration-time values; ignoring keeps the newer sum. v26's
+// tables got the same property for a weaker reason (a re-run cannot beat a
+// newer local edit); here the counters make it load-bearing.
+const schemaV53 = `
+INSERT OR IGNORE INTO local.api_usage (day, requests, throttled, server_errors, retries, wait_ms, last_throttled_at)
+  SELECT day, requests, throttled, server_errors, retries, wait_ms, last_throttled_at FROM api_usage;
+`
+
+// apiUsageCopyVersion is the migration level schemaV53 lands on. migrate
+// holds a mirror whose local.db has no localSchemaV12 one version below it,
+// the same hold personalStateCopyVersion takes for the v26 copy.
+const apiUsageCopyVersion = 53
