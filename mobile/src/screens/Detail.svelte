@@ -3,6 +3,11 @@
   import { onDestroy, untrack } from 'svelte'
   import Sheet from '../ui/Sheet.svelte'
   import CreateSheet from '../ui/CreateSheet.svelte'
+  import TransitionSheet from '../ui/detail/TransitionSheet.svelte'
+  import AssigneeSheet from '../ui/detail/AssigneeSheet.svelte'
+  import PrioritySheet from '../ui/detail/PrioritySheet.svelte'
+  import LabelsSheet from '../ui/detail/LabelsSheet.svelte'
+  import DueSheet from '../ui/detail/DueSheet.svelte'
   import AttachChips, { type AttachChip } from '../ui/AttachChips.svelte'
   import AdfBody from '../ui/AdfBody.svelte'
   import AttachmentGrid from '../ui/AttachmentGrid.svelte'
@@ -28,17 +33,11 @@
   import { commentBody, sendReady } from '../lib/composer-attach'
   import {
     setDescription,
-    setAssignee,
-    setDuedate,
-    setLabels,
-    setPriority,
     setSummary,
     getPriorities,
-    searchUsers,
   } from '../lib/writes'
   import { hasCustomFieldRow } from '../lib/desk'
   import { fieldRows, type FieldRow } from '../lib/fields'
-  import { knownLabels, sameLabels, splitLabelInput } from '../lib/labels'
   import { keyboardInset } from '../lib/keyboard'
   import { clearDraft, loadDraft, saveDraft, type DraftKind } from '../lib/drafts'
   import { t, fieldLabel } from '../lib/i18n'
@@ -51,7 +50,6 @@
     PriorityDoc,
     TransitionDoc,
     UploadedAttachment,
-    UserDoc,
   } from '../lib/types'
 
   let { issueKey }: { issueKey: string } = $props()
@@ -130,33 +128,16 @@
   const isEpic = $derived(lite?.hierarchy_level === 1)
   let childOpen = $state(false)
 
+  /*
+   * The five write sheets (GDK-1925) live in ui/detail/ now; this screen
+   * owns only their open flags and, per sheet, the verdicts that are not
+   * the sheet's to give — writability (refuseWrite) and the write's
+   * result (onWritten). The labels and due sheets take their current
+   * value in, and their drafts reset by construction: each sheet is
+   * mounted inside the {#if} that opens it.
+   */
   let labelsOpen = $state(false)
-  /** The set being edited; the row's own set until a toggle moves it. */
-  let labelDraft = $state<string[]>([])
-  let labelInput = $state('')
-  /** Labels typed in this sitting. Kept apart from the draft so one that is
-   *  added and then turned back off stays on screen as an unchecked row
-   *  rather than vanishing from a list it was never in. */
-  let labelAdded = $state<string[]>([])
-  let labelsSaving = $state(false)
-  let labelsError = $state<string | null>(null)
-  const currentLabels = $derived<string[]>(lite?.labels ?? [])
-  /** Every label this workspace uses, plus any this row carries that the
-   *  snapshot has not caught up with, plus whatever was just typed in. */
-  const labelChoices = $derived(
-    [
-      ...new Set([...knownLabels(app.issues), ...currentLabels, ...labelDraft, ...labelAdded]),
-    ].sort((a, b) => a.localeCompare(b)),
-  )
-  const labelsArmed = $derived(!sameLabels(labelDraft, currentLabels))
-
   let dueOpen = $state(false)
-  /** `<input type="date">` speaks YYYY-MM-DD and so does the server. */
-  let dueDraft = $state('')
-  let dueSaving = $state(false)
-  let dueError = $state<string | null>(null)
-  const currentDue = $derived((lite?.duedate ?? '').slice(0, 10))
-  const dueArmed = $derived(dueDraft !== '' && dueDraft !== currentDue)
 
   let sheetOpen = $state(false)
   let transitions = $state<TransitionDoc[] | null>(null)
@@ -203,18 +184,6 @@
   /* ── A2 header writes: assignee, priority, summary, description ── */
   let assigneeOpen = $state(false)
   let priorityOpen = $state(false)
-  /** In-flight row id across both pick sheets (null = idle). */
-  let applyingId = $state<string | null>(null)
-  let rowError = $state<string | null>(null)
-  let failedRow = $state<string | null>(null)
-  let userQuery = $state('')
-  let users = $state<UserDoc[]>([])
-  let searching = $state(false)
-  /** Search debounce handle + staleness guard: results land only for the
-   *  newest keystroke, and the previous request is aborted, not just ignored. */
-  let searchTimer: ReturnType<typeof setTimeout> | null = null
-  let searchAbort: AbortController | null = null
-  let searchSeq = 0
   /** Per-key catalog, kept for this screen's life once it loads. */
   let priorities = $state<PriorityDoc[] | null>(null)
   let prioritiesError = $state<string | null>(null)
@@ -467,53 +436,6 @@
     !writesOff && (sendReady(comment, attachments, uploading) || sending),
   )
 
-  /** The clearing rows are "current" only when the issue really carries no
-   *  value — an empty id is the mirror's "unknown", not "none" (types.ts:39
-   *  pins that contract for priority_id), so an id-less row marks nothing. */
-  const unassignedNow = $derived(!lite?.assignee_id)
-  const priorityNone = $derived(Boolean(lite) && !lite?.priority_id && !lite?.priority)
-
-  /** Assignee sheet rows beyond the clearing one: me, the current assignee,
-   *  then what the search brought — deduped by account id. */
-  const assigneeCandidates = $derived.by<
-    Array<{ id: string; accountId: string | null; label: string; sub: string | null }>
-  >(() => {
-    const out: Array<{ id: string; accountId: string | null; label: string; sub: string | null }> = []
-    const seen = new Set<string>()
-    const me = app.me
-    const meId = me?.account_id ?? null
-    if (me && meId) {
-      seen.add(meId)
-      out.push({
-        id: 'me',
-        accountId: meId,
-        label: me.name || me.email || t('common.me'),
-        sub: t('common.me'),
-      })
-    }
-    const currentId = lite?.assignee_id ?? null
-    if (currentId && !seen.has(currentId)) {
-      seen.add(currentId)
-      out.push({
-        id: 'current',
-        accountId: currentId,
-        label: lite?.assignee ?? currentId,
-        sub: null,
-      })
-    }
-    for (const u of users) {
-      if (seen.has(u.account_id)) continue
-      seen.add(u.account_id)
-      out.push({
-        id: 'user-' + u.account_id,
-        accountId: u.account_id,
-        label: u.display_name,
-        sub: u.email,
-      })
-    }
-    return out
-  })
-
   function isCredentialRequired(err: unknown): boolean {
     return err instanceof ApiError && err.code === 'credential_required'
   }
@@ -521,8 +443,9 @@
   // The A2 write states are NOT reset here: GDK-692 bans $state assigns in
   // effect bodies, and the app already owns this — App.svelte remounts the
   // whole screen per key ({#key}), so every control above starts clean on
-  // a new issue. Only the search plumbing (plain lets, not $state) needs
-  // an explicit teardown, and that rides this effect's cleanup.
+  // a new issue. The assignee sheet's search teardown rides its own
+  // onDestroy now (ui/detail/AssigneeSheet.svelte), which also cancels a
+  // debounce that outlived the sheet it belonged to.
   $effect(() => {
     const key = issueKey
     detail = null
@@ -570,11 +493,6 @@
     window.addEventListener('pagehide', flushAllDrafts)
     document.addEventListener('visibilitychange', onHidden)
     return () => {
-      searchSeq++
-      if (searchTimer) clearTimeout(searchTimer)
-      searchTimer = null
-      searchAbort?.abort()
-      searchAbort = null
       window.removeEventListener('pagehide', flushAllDrafts)
       document.removeEventListener('visibilitychange', onHidden)
       flushAllDrafts()
@@ -694,64 +612,22 @@
     return true
   }
 
+  /** The one place a landed write lands (GDK-1925): every sheet's wrapper
+   *  answers with the issue it brought back, and this screen latches it,
+   *  drops whichever sheet is standing (only one can be) and syncs. */
+  function onWritten(next: IssueLite): void {
+    written = next
+    sheetOpen = false
+    assigneeOpen = false
+    priorityOpen = false
+    labelsOpen = false
+    dueOpen = false
+    void sync()
+  }
+
   function openAssignee() {
     if (writesOff) return
-    rowError = null
-    failedRow = null
     assigneeOpen = true
-  }
-
-  function onUserQuery(next: string) {
-    userQuery = next
-    if (searchTimer) clearTimeout(searchTimer)
-    if (next.trim().length < 2) {
-      searchSeq++
-      searchAbort?.abort()
-      searchAbort = null
-      users = []
-      searching = false
-      return
-    }
-    const seq = ++searchSeq
-    searching = true
-    searchTimer = setTimeout(() => void runUserSearch(next, seq), 250)
-  }
-
-  async function runUserSearch(q: string, seq: number) {
-    searchAbort?.abort()
-    const ctl = new AbortController()
-    searchAbort = ctl
-    try {
-      const res = await searchUsers(issueKey, q.trim(), { signal: ctl.signal })
-      if (seq !== searchSeq) return
-      users = res.users
-    } catch (err) {
-      if (seq !== searchSeq || ctl.signal.aborted) return
-      // The fixed rows stay usable; only the search band reports.
-      users = []
-      rowError = errorMessage(err)
-    } finally {
-      if (seq === searchSeq) searching = false
-    }
-  }
-
-  async function pickAssignee(accountId: string | null) {
-    if (writesOff || applyingId) return
-    applyingId = accountId ?? 'unassigned'
-    rowError = null
-    failedRow = null
-    try {
-      const res = await setAssignee(issueKey, accountId)
-      written = res.issue
-      assigneeOpen = false
-      void sync()
-    } catch (err) {
-      if (refuseWrite(err)) return
-      rowError = errorMessage(err)
-      failedRow = applyingId
-    } finally {
-      applyingId = null
-    }
   }
 
   function openPriority() {
@@ -773,102 +649,14 @@
     })()
   }
 
-  async function pickPriority(priorityId: string | null) {
-    if (writesOff || applyingId) return
-    applyingId = priorityId ?? 'none'
-    rowError = null
-    failedRow = null
-    try {
-      const res = await setPriority(issueKey, priorityId)
-      written = res.issue
-      priorityOpen = false
-      void sync()
-    } catch (err) {
-      if (refuseWrite(err)) return
-      rowError = errorMessage(err)
-      failedRow = applyingId
-    } finally {
-      applyingId = null
-    }
-  }
-
-  /* ── Labels and the due date (GDK-1871). Both are the picker dialect the
-   *  priority sheet set: a sheet of rows, one write, `written = res.issue`
-   *  then `void sync()`.
-   *
-   *  The one departure is the refusal. refuseWrite drops the open sheet so
-   *  its sentence lands on the status row underneath, which is right for a
-   *  picker whose rows are the server's — reopening asks the server again.
-   *  These two sheets hold something the person composed (a set they
-   *  toggled, a date they picked), and eating that on a refusal is the
-   *  defect GDK-1863 closed for words. So the latch is taken (writes are
-   *  off from here on, every control recedes) and the sheet stays standing
-   *  with its set and the same sentence in its own error line. */
-
   function openLabels() {
     if (writesOff) return
-    labelDraft = [...currentLabels]
-    labelInput = ''
-    labelAdded = []
-    labelsError = null
     labelsOpen = true
-  }
-
-  function toggleLabel(label: string) {
-    labelDraft = labelDraft.includes(label)
-      ? labelDraft.filter((l) => l !== label)
-      : [...labelDraft, label]
-  }
-
-  /** Whitespace separates labels rather than sitting inside one: Jira
-   *  refuses a label with a space and the server only trims (lib/labels.ts). */
-  function addTypedLabel() {
-    const typed = splitLabelInput(labelInput)
-    if (typed.length === 0) return
-    labelDraft = [...new Set([...labelDraft, ...typed])]
-    labelAdded = [...new Set([...labelAdded, ...typed])]
-    labelInput = ''
-  }
-
-  async function saveLabels() {
-    if (writesOff || labelsSaving || !labelsArmed) return
-    labelsSaving = true
-    labelsError = null
-    try {
-      const res = await setLabels(issueKey, labelDraft)
-      written = res.issue
-      labelsOpen = false
-      void sync()
-    } catch (err) {
-      labelsError = errorMessage(err)
-      refuseWrite(err, true)
-    } finally {
-      labelsSaving = false
-    }
   }
 
   function openDue() {
     if (writesOff) return
-    dueDraft = currentDue
-    dueError = null
     dueOpen = true
-  }
-
-  async function writeDue(value: string | null) {
-    if (writesOff || dueSaving) return
-    dueSaving = true
-    dueError = null
-    try {
-      const res = await setDuedate(issueKey, value)
-      written = res.issue
-      dueOpen = false
-      void sync()
-    } catch (err) {
-      dueError = errorMessage(err)
-      refuseWrite(err, true)
-    } finally {
-      dueSaving = false
-    }
   }
 
   function editSummary() {
@@ -1297,255 +1085,62 @@
     {/snippet}
   </Screen>
 
-  <!-- The current value's mark, one owner for both pick sheets. It is a
-       shape, not a colour: the row's text stays primary so the mark reads as
-       "this is what the issue has", never as "this is the actionable one"
-       (the accent is the Cancel/link colour on this screen). -->
-  {#snippet currentTick()}
-    <svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M20 6 9 17l-5-5" />
-    </svg>
-  {/snippet}
-
   {#if sheetOpen}
-    <Sheet title={t('write.moveStatus')} onclose={() => (sheetOpen = false)}>
-      <div class="t-list">
-        {#if !transitions && !transitionError}
-          <p class="none">{t('write.askingServer')}</p>
-        {:else if transitions}
-          {#each transitions as tr (tr.id)}
-            {@const blocked = (tr.fields?.length ?? 0) > 0}
-            <button class="t-row" disabled={blocked || applying !== null} onclick={() => void applyTransition(tr)}>
-              <span class="dot dot-{tr.to_category}" aria-hidden="true"></span>
-              <span class="t-text">
-                <span class="t-name">{applying === tr.id ? t('common.applying') : tr.name}</span>
-                <!-- The built-in tracker names a transition after its target,
-                     so "Done / → Done" said everything twice; the arrow line
-                     stays only when it adds a word. -->
-                {#if blocked || tr.to_status !== tr.name}
-                  <span class="t-to">→ {tr.to_status}{blocked ? ' · ' + t('write.transitionNeedsFields') : ''}</span>
-                {/if}
-                {#if failedId === tr.id && transitionError}
-                  <span class="t-err">{transitionError}</span>
-                {/if}
-              </span>
-            </button>
-          {/each}
-          {#if transitions.length === 0}
-            <p class="none">{t('write.noTransitionsFrom')}</p>
-          {/if}
-        {:else if transitionError}
-          <p class="error">{transitionError}</p>
-        {/if}
-      </div>
-    </Sheet>
+    <TransitionSheet
+      transitions={transitions}
+      error={transitionError}
+      applying={applying}
+      failedId={failedId}
+      onclose={() => (sheetOpen = false)}
+      onpick={(doc) => void applyTransition(doc)}
+    />
   {/if}
 
   {#if assigneeOpen}
-    <Sheet title={t('write.pickAssignee')} onclose={() => (assigneeOpen = false)}>
-      <div class="pick-list">
-        <!-- The field sits above what it filters: the rows below it are the
-             result of what is typed here, and a filter under its own results
-             reads as an afterthought. Row order stays Unassigned → me →
-             current → results. -->
-        <div class="search">
-          <input
-            value={userQuery}
-            placeholder={t('write.searchNameEmail')}
-            inputmode="search"
-            oninput={(e) => onUserQuery(e.currentTarget.value)}
-          />
-          {#if searching}
-            <p class="none">{t('common.searching')}</p>
-          {:else if userQuery.trim().length >= 2 && users.length === 0}
-            <p class="none">{t('write.userNotFound')}</p>
-          {/if}
-        </div>
-        <button
-          class="t-row"
-          class:current={unassignedNow}
-          aria-current={unassignedNow ? 'true' : undefined}
-          disabled={applyingId !== null}
-          onclick={() => void pickAssignee(null)}
-        >
-          <span class="t-text">
-            <span class="t-name">{t('common.unassigned')}</span>
-            {#if failedRow === 'unassigned' && rowError}
-              <span class="t-err">{rowError}</span>
-            {/if}
-          </span>
-          {#if unassignedNow}{@render currentTick()}{/if}
-        </button>
-        {#each assigneeCandidates as c (c.id)}
-          {@const current = Boolean(lite?.assignee_id) && lite?.assignee_id === c.accountId}
-          <button
-            class="t-row"
-            class:current
-            aria-current={current ? 'true' : undefined}
-            disabled={applyingId !== null}
-            onclick={() => void pickAssignee(c.accountId)}
-          >
-            <span class="t-text">
-              <span class="t-name">{c.label}</span>
-              {#if c.sub}
-                <span class="t-to">{c.sub}</span>
-              {/if}
-              {#if failedRow === c.id && rowError}
-                <span class="t-err">{rowError}</span>
-              {/if}
-            </span>
-            {#if current}{@render currentTick()}{/if}
-          </button>
-        {/each}
-      </div>
-    </Sheet>
+    <AssigneeSheet
+      {issueKey}
+      {lite}
+      {writesOff}
+      onwritten={onWritten}
+      onrefused={refuseWrite}
+      onclose={() => (assigneeOpen = false)}
+    />
   {/if}
 
   {#if priorityOpen}
-    <Sheet title={t('write.changePriority')} onclose={() => (priorityOpen = false)}>
-      <div class="pick-list">
-        {#if prioritiesLoading}
-          <p class="none">{t('write.askingServer')}</p>
-        {:else if prioritiesError}
-          <p class="error">{prioritiesError}</p>
-        {:else if priorities && lite}
-          <button
-            class="t-row"
-            class:current={priorityNone}
-            aria-current={priorityNone ? 'true' : undefined}
-            disabled={applyingId !== null}
-            onclick={() => void pickPriority(null)}
-          >
-            <span class="t-text">
-              <span class="t-name">{t('common.none')}</span>
-              {#if failedRow === 'none' && rowError}
-                <span class="t-err">{rowError}</span>
-              {/if}
-            </span>
-            {#if priorityNone}{@render currentTick()}{/if}
-          </button>
-          {#each priorities as p (p.id)}
-            {@const current = Boolean(lite.priority_id) && lite.priority_id === p.id}
-            <button
-              class="t-row"
-              class:current
-              aria-current={current ? 'true' : undefined}
-              disabled={applyingId !== null}
-              onclick={() => void pickPriority(p.id)}
-            >
-              <span class="t-text">
-                <span class="t-name">{p.name}</span>
-                {#if failedRow === p.id && rowError}
-                  <span class="t-err">{rowError}</span>
-                {/if}
-              </span>
-              {#if current}{@render currentTick()}{/if}
-            </button>
-          {/each}
-          {#if priorities.length === 0}
-            <p class="none">{t('write.noPriorities')}</p>
-          {/if}
-        {/if}
-      </div>
-    </Sheet>
+    <PrioritySheet
+      {issueKey}
+      {lite}
+      {writesOff}
+      priorities={priorities}
+      loading={prioritiesLoading}
+      error={prioritiesError}
+      onwritten={onWritten}
+      onrefused={refuseWrite}
+      onclose={() => (priorityOpen = false)}
+    />
   {/if}
 
   {#if labelsOpen}
-    <Sheet title={fieldLabel('labels')} onclose={() => (labelsOpen = false)}>
-      <div class="pick-list">
-        <!-- The rows are the labels this workspace already uses, read off
-             the snapshot the phone is holding (lib/labels.ts) — the serve
-             has no labels catalog to ask for, and the desk's own dialog
-             reads the same source. The free line below adds one that is
-             not there yet; it sits under the rows because it is the
-             exception, not the way in. -->
-        {#each labelChoices as l (l)}
-          {@const on = labelDraft.includes(l)}
-          <button
-            class="t-row"
-            class:current={on}
-            aria-pressed={on}
-            disabled={labelsSaving}
-            onclick={() => toggleLabel(l)}
-          >
-            <span class="t-text"><span class="t-name">{l}</span></span>
-            {#if on}{@render currentTick()}{/if}
-          </button>
-        {/each}
-        {#if labelChoices.length === 0}
-          <p class="none">{t('common.none')}</p>
-        {/if}
-        <div class="sheet-foot">
-        <div class="label-add">
-          <input
-            bind:value={labelInput}
-            placeholder={t('write.addLabelOptional')}
-            aria-label={t('write.addLabelOptional')}
-            enterkeyhint="done"
-            autocapitalize="none"
-            autocorrect="off"
-            spellcheck="false"
-            onkeydown={(e) => {
-              if (e.key === 'Enter') {
-                e.preventDefault()
-                addTypedLabel()
-              }
-            }}
-          />
-          <button
-            class="ghost"
-            aria-label={t('write.addLabelOptional')}
-            disabled={splitLabelInput(labelInput).length === 0}
-            onclick={addTypedLabel}>+</button
-          >
-        </div>
-        <div class="sheet-actions">
-          <button
-            class="save"
-            class:armed={labelsArmed && !writesOff}
-            disabled={writesOff || labelsSaving || !labelsArmed}
-            onclick={() => void saveLabels()}
-          >
-            {t('common.save')}
-          </button>
-        </div>
-        {#if labelsError}
-          <p class="field-err">{labelsError}</p>
-        {/if}
-        </div>
-      </div>
-    </Sheet>
+    <LabelsSheet
+      {issueKey}
+      current={lite?.labels ?? []}
+      {writesOff}
+      onwritten={onWritten}
+      onrefused={refuseWrite}
+      onclose={() => (labelsOpen = false)}
+    />
   {/if}
 
   {#if dueOpen}
-    <Sheet title={fieldLabel('due')} onclose={() => (dueOpen = false)}>
-      <div class="pick-list">
-        <!-- The platform's own date control, not a calendar of our own: it
-             speaks YYYY-MM-DD, which is exactly what the server takes, and
-             on the phone it is the wheel the person already knows. -->
-        <div class="due-edit">
-          <input type="date" bind:value={dueDraft} aria-label={fieldLabel('due')} />
-        </div>
-        <div class="sheet-actions">
-          <button
-            class="save"
-            class:armed={dueArmed && !writesOff}
-            disabled={writesOff || dueSaving || !dueArmed}
-            onclick={() => void writeDue(dueDraft)}
-          >
-            {t('common.save')}
-          </button>
-          {#if currentDue}
-            <button class="ghost" disabled={writesOff || dueSaving} onclick={() => void writeDue(null)}>
-              {t('common.none')}
-            </button>
-          {/if}
-        </div>
-        {#if dueError}
-          <p class="field-err">{dueError}</p>
-        {/if}
-      </div>
-    </Sheet>
+    <DueSheet
+      {issueKey}
+      current={(lite?.duedate ?? '').slice(0, 10)}
+      {writesOff}
+      onwritten={onWritten}
+      onrefused={refuseWrite}
+      onclose={() => (dueOpen = false)}
+    />
   {/if}
 
   {#if descOpen}
@@ -2163,76 +1758,6 @@
     color: var(--color-status-reopen);
   }
 
-  .t-list {
-    overflow-y: auto;
-    padding: 4px 8px 8px;
-  }
-  .t-row {
-    display: flex;
-    width: 100%;
-    align-items: center;
-    gap: 10px;
-    min-height: var(--spacing-control);
-    padding: 6px 8px;
-    border-radius: 6px;
-    text-align: left;
-  }
-  .t-row:active:not(:disabled) {
-    background: var(--color-bg-hover);
-  }
-  .t-row:disabled {
-    opacity: 0.5;
-  }
-  .t-text {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-  }
-  .t-name {
-    color: var(--color-text-primary);
-    font-weight: 600;
-  }
-  .t-to {
-    font-size: var(--text-micro);
-    color: var(--color-text-muted);
-  }
-  .t-err {
-    font-size: var(--text-micro);
-    font-weight: 400;
-    color: var(--color-status-reopen);
-  }
-  /* The current row is marked by the tick alone. It used to be tinted with
-     --color-accent-text, which is also Cancel's and every link's colour on
-     this screen, so the row read as "tap me" rather than "this is current". */
-  .tick {
-    flex: none;
-    margin-left: auto;
-    width: 16px;
-    height: 16px;
-    color: var(--color-accent-text);
-  }
-  .pick-list {
-    overflow-y: auto;
-    padding: 4px 8px 8px;
-    display: flex;
-    flex-direction: column;
-  }
-  .search {
-    border-bottom: 1px solid var(--color-border-subtle);
-    padding: 4px 8px 8px;
-    margin-bottom: 4px;
-  }
-  .search input {
-    width: 100%;
-    min-height: var(--spacing-control);
-    padding: 0 12px;
-    background: var(--color-bg-base);
-    border: 1px solid var(--color-border-subtle);
-    border-radius: 6px;
-  }
-  .search .none {
-    padding: 6px 2px 0;
-  }
   .desc-edit {
     display: flex;
     flex-direction: column;
@@ -2250,10 +1775,9 @@
     font: inherit;
     resize: none;
   }
-  /* One action row, two sheets that need it: the description editor's and
-     the label/due sheets GDK-1871 added. Same rule, not a second one. */
-  .desc-actions,
-  .sheet-actions {
+  /* The description editor's action row. The label/due sheets that shared
+     this rule moved to ui/detail/ (GDK-1925) and carry their own copy. */
+  .desc-actions {
     display: flex;
     gap: 8px;
     padding-top: 8px;
@@ -2265,55 +1789,5 @@
     color: var(--color-text-muted);
     font-size: var(--text-body);
     line-height: 1;
-  }
-  /* The free label line under the picker's rows. Same input dialect as the
-     assignee sheet's search field, with the add beside it. */
-  /* The free line and Save stay in frame while the rows scroll above them:
-     the 2026-09-14 vision pass opened the sheet on a workspace with twelve
-     labels and found the way to add one, and the Save, below the fold.
-     Sticky inside .pick-list's own scroll, on the sheet's panel colour. */
-  .sheet-foot {
-    position: sticky;
-    bottom: 0;
-    background: var(--color-bg-panel);
-    padding-bottom: 8px;
-    border-top: 1px solid var(--color-border-subtle);
-  }
-  /* In a sheet the actions sit on the 16px gutter the inputs above them
-     use (.due-edit / .label-add pad 8 inside .pick-list's 8) — the same
-     vision pass measured the Due sheet's Save box starting 8px left of the
-     date input's edge. The description editor's .desc-actions is not in a
-     .pick-list and keeps its own alignment. */
-  .pick-list .sheet-actions {
-    padding: 8px 8px 0;
-  }
-  .label-add {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 8px 0;
-  }
-  .label-add input {
-    flex: 1 1 auto;
-    min-width: 0;
-    min-height: var(--spacing-control);
-    padding: 0 12px;
-    background: var(--color-bg-base);
-    border: 1px solid var(--color-border-subtle);
-    border-radius: 6px;
-    font-size: var(--text-body);
-  }
-  .due-edit {
-    padding: 8px 8px 0;
-  }
-  .due-edit input {
-    width: 100%;
-    min-height: var(--spacing-control);
-    padding: 0 12px;
-    background: var(--color-bg-base);
-    border: 1px solid var(--color-border-subtle);
-    border-radius: 6px;
-    font-size: var(--text-body);
-    color: var(--color-text-primary);
   }
 </style>

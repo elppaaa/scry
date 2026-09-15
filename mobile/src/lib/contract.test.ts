@@ -136,11 +136,17 @@ describe('GDK-906 Detail F2 — one control, catalog copy, honest empty', () => 
   })
 
   it('reports a refused transition on the row that acted', () => {
-    const row = detail.indexOf('class="t-row"')
+    // GDK-1925 (2026-09-16): the sheet's rows moved to ui/detail/
+    // TransitionSheet.svelte — same contract at the new address, plus the
+    // half that stayed on the screen: it still owns the sentence and hands
+    // it to the sheet as a prop.
+    const sheet = markup('ui/detail/TransitionSheet.svelte')
+    expect(detail).toMatch(/error=\{transitionError\}/)
+    const row = sheet.indexOf('class="t-row"')
     expect(row).toBeGreaterThan(-1)
-    const after = detail.slice(row)
+    const after = sheet.slice(row)
     const rowEnd = after.indexOf('</button>')
-    expect(after.slice(0, rowEnd)).toMatch(/transitionError/)
+    expect(after.slice(0, rowEnd)).toMatch(/failedId === tr\.id && error/)
   })
 
   it('paints an empty page body with doc.noContent instead of a hole', () => {
@@ -482,27 +488,42 @@ describe('GDK-935 row folio is one grammar', () => {
 describe('GDK-1497 A2 — the header is a control surface', () => {
   const detail = read('screens/Detail.svelte')
 
+  /*
+   * GDK-1925 (2026-09-16): the assignee, priority, labels and due sheets
+   * moved out of Detail.svelte into ui/detail/. The contracts below are
+   * re-pinned to the new addresses, not loosened — same entities (the
+   * typed wrapper, the null row, the current mark, the search-before-rows
+   * order), same expectations. FAIL-first: this file unmodified against
+   * the extracted tree failed exactly these five tests
+   * (`expected -1 to be greater than -1` on the moved functions,
+   * `expected '' to match /…/` on the emptied sheetOf slices).
+   */
+  const assigneeSheet = read('ui/detail/AssigneeSheet.svelte')
+  const assigneeMarkup = markup('ui/detail/AssigneeSheet.svelte')
+  const prioritySheet = read('ui/detail/PrioritySheet.svelte')
+  const priorityMarkup = markup('ui/detail/PrioritySheet.svelte')
+
   it("wires the assignee sheet's Unassigned row through setAssignee(issueKey, null)", () => {
     // The wire body {"account_id":null} is pinned in writes.test.ts against
     // a fake transport; this pins the other half of the chain — that the
     // row the person taps hands pickAssignee a literal null, and that the
     // picker's one exit is the typed wrapper (a row that looked clearing
     // but PUTs the current id would pass every transport test).
-    const at = detail.indexOf('async function pickAssignee')
+    const at = assigneeSheet.indexOf('async function pickAssignee')
     expect(at).toBeGreaterThan(-1)
-    const pickFn = detail.slice(at, detail.indexOf('\n  }', at))
+    const pickFn = assigneeSheet.slice(at, assigneeSheet.indexOf('\n  }', at))
     expect(pickFn).toMatch(/setAssignee\(issueKey, accountId\)/)
-    expect(detail).toMatch(/void pickAssignee\(null\)/)
-    expect(detail).toMatch(/t\('common\.unassigned'\)/)
+    expect(assigneeSheet).toMatch(/void pickAssignee\(null\)/)
+    expect(assigneeSheet).toMatch(/t\('common\.unassigned'\)/)
   })
 
   it('clears priority through the None row and marks the current one', () => {
-    const at = detail.indexOf('async function pickPriority')
+    const at = prioritySheet.indexOf('async function pickPriority')
     expect(at).toBeGreaterThan(-1)
-    expect(detail.slice(at, detail.indexOf('\n  }', at))).toMatch(/setPriority\(issueKey, priorityId\)/)
-    expect(detail).toMatch(/void pickPriority\(null\)/)
-    expect(detail).toMatch(/t\('common\.none'\)/)
-    expect(detail).toMatch(/lite\.priority_id === p\.id/)
+    expect(prioritySheet.slice(at, prioritySheet.indexOf('\n  }', at))).toMatch(/setPriority\(issueKey, priorityId\)/)
+    expect(prioritySheet).toMatch(/void pickPriority\(null\)/)
+    expect(prioritySheet).toMatch(/t\('common\.none'\)/)
+    expect(prioritySheet).toMatch(/lite\.priority_id === p\.id/)
   })
 
   it('keeps the writes-off degradation on every new control, like the composer', () => {
@@ -527,19 +548,24 @@ describe('GDK-1497 A2 — the header is a control surface', () => {
   }
 
   it('marks the current row with a shape, not with the link colour', () => {
-    const styles = detail.slice(detail.indexOf('<style>'))
-    // The tint was the only marker; a tick that a colour rule can outvote
-    // is not a marker.
-    expect(styles).not.toMatch(/\.t-row\.current\s+\.t-name\s*\{/)
-    expect(detailMarkupOnly).toMatch(/\{#snippet currentTick\(\)\}/)
-    for (const flag of ['assigneeOpen', 'priorityOpen']) {
-      const sheet = sheetOf(flag)
-      // Both sheets render the one snippet — no second, divergent glyph.
-      expect(sheet.match(/@render currentTick\(\)/g)?.length).toBe(2)
+    // GDK-1925: the snippet became ui/detail/CurrentTick.svelte — a
+    // snippet cannot cross a component boundary, so the glyph is an import
+    // now. The contract is unchanged: one glyph for the whole family, no
+    // colour rule a tick can be outvoted by, and every render on the
+    // row's trailing edge.
+    const sheetMarkups = [assigneeMarkup, priorityMarkup, markup('ui/detail/LabelsSheet.svelte')]
+    expect(markup('ui/detail/CurrentTick.svelte')).toMatch(/<svg class="tick"/)
+    for (const sheet of sheetMarkups) {
+      // No sheet inlines a second, divergent glyph of its own.
+      expect(sheet).not.toMatch(/class="tick"/)
+      const styles = sheet.slice(sheet.indexOf('<style>'))
+      // The tint is not the marker; a tick that a colour rule can outvote
+      // is not a marker.
+      expect(styles).not.toMatch(/\.t-row\.current/)
       // …and every render sits after its row's text, i.e. on the trailing
       // edge. A leading tick shifts the label and reads as a bullet.
       for (const row of sheet.split('<button').slice(1)) {
-        const tick = row.indexOf('@render currentTick()')
+        const tick = row.indexOf('<CurrentTick />')
         if (tick === -1) continue
         expect(tick).toBeGreaterThan(row.indexOf('class="t-text"'))
       }
@@ -548,17 +574,17 @@ describe('GDK-1497 A2 — the header is a control surface', () => {
 
   it('marks the clearing row when the issue carries no value', () => {
     // Unassigned / None are rows like any other: if that is the current
-    // value, the sheet says so.
-    expect(detail).toMatch(/const unassignedNow = \$derived\(!lite\?\.assignee_id\)/)
-    expect(detail).toMatch(/const priorityNone = \$derived\(/)
-    expect(sheetOf('assigneeOpen')).toMatch(/class:current=\{unassignedNow\}/)
-    expect(sheetOf('priorityOpen')).toMatch(/class:current=\{priorityNone\}/)
+    // value, the sheet says so. (GDK-1925: the deriveds moved with the
+    // sheets that render them.)
+    expect(assigneeSheet).toMatch(/const unassignedNow = \$derived\(!lite\?\.assignee_id\)/)
+    expect(prioritySheet).toMatch(/const priorityNone = \$derived\(/)
+    expect(assigneeMarkup).toMatch(/class:current=\{unassignedNow\}/)
+    expect(priorityMarkup).toMatch(/class:current=\{priorityNone\}/)
   })
 
   it('puts the assignee search above the rows it filters', () => {
-    const sheet = sheetOf('assigneeOpen')
-    expect(sheet).toContain('class="search"')
-    expect(sheet.indexOf('class="search"')).toBeLessThan(sheet.indexOf('class="t-row"'))
+    expect(assigneeMarkup).toContain('class="search"')
+    expect(assigneeMarkup.indexOf('class="search"')).toBeLessThan(assigneeMarkup.indexOf('class="t-row"'))
   })
 
   it('leaves one Cancel on the description sheet and arms its Save', () => {

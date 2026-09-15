@@ -122,7 +122,10 @@ test('captures the A2 write surfaces for the vision round', async ({ page }) => 
   // assignee fragments as meta-line controls. The header must have settled
   // before the photograph (summary text present, not the ghost).
   await expect(page.locator('.subject h1')).toContainText(/\S/)
-  await expect(page.locator('.meta .m-btn')).toHaveCount(2)
+  // Three since GDK-1871 added the due control beside priority and
+  // assignee; this line said 2 for a cycle because the spec only runs when
+  // a vision round names A2_SHOT_DIR (found by the GDK-1925 round).
+  await expect(page.locator('.meta .m-btn')).toHaveCount(3)
   await page.screenshot({
     path: join(SHOT_DIR, 'a2-detail-header.png'),
     fullPage: true,

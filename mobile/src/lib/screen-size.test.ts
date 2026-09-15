@@ -32,7 +32,9 @@ const screensDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'screens'
 /** Measured 2026-09-16 on `main` at the v0.23 audit's fix cycle. Lower a row
  *  when a screen shrinks; raising one is a decision, not a fix. */
 const CEILINGS: Record<string, { lines: number; state: number }> = {
-  'Detail.svelte': { lines: 2319, state: 52 },
+  // Lowered 2026-09-16 in the extraction round (GDK-1925): the five write
+  // sheets moved to ui/detail/, 2,319→1,793 lines and 52→38 $state.
+  'Detail.svelte': { lines: 1793, state: 38 },
   'Shell.svelte': { lines: 1611, state: 18 },
   'Settings.svelte': { lines: 765, state: 14 },
   'PageDetail.svelte': { lines: 522, state: 8 },
