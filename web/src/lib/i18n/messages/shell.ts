@@ -183,8 +183,8 @@ export const shell = {
   },
   'terminal.refusal.scope': {
     en: 'This pairing cannot read the mirror. Pair again with a serve-scope offer.',
-    ko: '이 페어링으로는 미러를 읽을 수 없습니다. serve 스코프 오퍼로 다시 페어링하세요.',
-    ja: 'このペアリングではミラーを読めません。serve スコープのオファーでもう一度ペアリングしてください。',
+    ko: '이 페어링으로는 캐시를 읽을 수 없습니다. serve 스코프 오퍼로 다시 페어링하세요.',
+    ja: 'このペアリングではキャッシュを読めません。serve スコープのオファーでもう一度ペアリングしてください。',
   },
   'terminal.refusal.other': {
     en: 'The server refused this request.',
@@ -1303,8 +1303,8 @@ export const shell = {
   // them as literals in lib because that round was read-only on web/src).
   'app.offerTerminalOnly': {
     en: 'This offer carries only a terminal token: it opens a shell on the desktop, not the issue mirror. Mint a serve-scope offer (`gadak pairing mint --label phone --scope serve,terminal`) and pair again.',
-    ko: '이 오퍼에는 터미널 토큰만 들어 있습니다. 데스크톱에서 셸은 열리지만 이슈 미러는 열리지 않습니다. serve 스코프 오퍼를 만들어(`gadak pairing mint --label phone --scope serve,terminal`) 다시 페어링하세요.',
-    ja: 'このオファーにはターミナルトークンしか入っていません。デスクトップのシェルは開けますが、課題ミラーは開けません。serve スコープのオファーを発行して(`gadak pairing mint --label phone --scope serve,terminal`)、もう一度ペアリングしてください。',
+    ko: '이 오퍼에는 터미널 토큰만 들어 있습니다. 데스크톱에서 셸은 열리지만 이슈 캐시는 열리지 않습니다. serve 스코프 오퍼를 만들어(`gadak pairing mint --label phone --scope serve,terminal`) 다시 페어링하세요.',
+    ja: 'このオファーにはターミナルトークンしか入っていません。デスクトップのシェルは開けますが、課題キャッシュは開けません。serve スコープのオファーを発行して(`gadak pairing mint --label phone --scope serve,terminal`)、もう一度ペアリングしてください。',
   },
   // GDK-1150 (2026-09-10): the phone's api.ts error table joined the
   // catalog — it was the last English-sentence table in the app. ko/ja are
@@ -1333,7 +1333,7 @@ export const shell = {
   },
   'app.offerNoMirrorToken': {
     en: 'This offer carries no token for the issue mirror. Mint a serve-scope offer on the desktop and pair again.',
-    ko: '이 오퍼에는 이슈 미러용 토큰이 없습니다. 데스크톱에서 serve 스코프 오퍼를 만들어 다시 페어링하세요.',
-    ja: 'このオファーには課題ミラー用のトークンがありません。デスクトップで serve スコープのオファーを発行して、もう一度ペアリングしてください。',
+    ko: '이 오퍼에는 이슈 캐시용 토큰이 없습니다. 데스크톱에서 serve 스코프 오퍼를 만들어 다시 페어링하세요.',
+    ja: 'このオファーには課題キャッシュ用のトークンがありません。デスクトップで serve スコープのオファーを発行して、もう一度ペアリングしてください。',
   },
 } as const satisfies Record<string, Message>

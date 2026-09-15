@@ -238,8 +238,8 @@ export const detail = {
   // cmd/gadak/dev.go names both halves of this sentence.
   'detail.prsNotMirrored': {
     en: "PRs are mirrored via devStatus; writes go through Jira's GitHub app",
-    ko: 'PR은 devStatus로 미러됩니다. 쓰기는 Jira의 GitHub 앱을 통합니다',
-    ja: 'PR は devStatus でミラーされます。書き込みは Jira の GitHub アプリ経由です',
+    ko: 'PR은 devStatus로 캐시됩니다. 쓰기는 Jira의 GitHub 앱을 통합니다',
+    ja: 'PR は devStatus でキャッシュされます。書き込みは Jira の GitHub アプリ経由です',
   },
   // Who attached the link (dev-panel actor) — distinct from the PR's author.
   'detail.prLinkedBy': {
@@ -365,8 +365,8 @@ export const detail = {
   },
   'detail.refNotMirrored': {
     en: 'workspace {workspace} is not mirrored on this machine',
-    ko: '이 컴퓨터에 {workspace} 워크스페이스 미러가 없습니다',
-    ja: 'このマシンに {workspace} ワークスペースのミラーがありません',
+    ko: '이 컴퓨터에 {workspace} 워크스페이스 캐시가 없습니다',
+    ja: 'このマシンに {workspace} ワークスペースのキャッシュがありません',
   },
   'detail.linked': {
     en: 'Linked',
@@ -487,7 +487,7 @@ export const detail = {
   'detail.artifactExpand': {
     en: 'Expand {name}',
     ko: '{name} 펼치기',
-    ja: '{name} を広げる',
+    ja: '{name} を開く',
   },
   'detail.artifactDownload': {
     en: 'Download',
@@ -669,8 +669,8 @@ export const detail = {
   },
   'docs.recentEmpty': {
     en: 'No mirrored documents yet',
-    ko: '미러링된 문서가 아직 없습니다',
-    ja: 'ミラーされたドキュメントはまだありません',
+    ko: '아직 캐시된 문서가 없습니다',
+    ja: 'キャッシュされたドキュメントはまだありません',
   },
   /* GDK-1054: the index request failed — the list-screen counterpart of
      doc.loadFailed ("this document"), which is about one open page. */
@@ -846,8 +846,8 @@ export const detail = {
   },
   'person.noComments': {
     en: 'No comments from this person in the mirror.',
-    ko: '미러에 이 사람의 코멘트가 없습니다.',
-    ja: 'ミラーにこの人のコメントはありません。',
+    ko: '캐시에 이 사람의 코멘트가 없습니다.',
+    ja: 'キャッシュにこの人のコメントはありません。',
   },
   'person.commentsFailed': {
     en: "Could not load this person's comments.",
@@ -856,8 +856,8 @@ export const detail = {
   },
   'person.unlinked': {
     en: 'The mirror has no account id for this person yet, so their comments cannot be listed.',
-    ko: '미러에 이 사람의 계정 id가 아직 없어 코멘트를 나열할 수 없습니다.',
-    ja: 'ミラーにこの人のアカウント id がまだないため、コメントを一覧できません。',
+    ko: '캐시에 이 사람의 계정 id가 아직 없어 코멘트를 나열할 수 없습니다.',
+    ja: 'キャッシュにこの人のアカウント id がまだないため、コメントを一覧できません。',
   },
   'person.showingOf': {
     en: 'Showing the {n} most recent of {total}.',

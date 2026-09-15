@@ -579,8 +579,8 @@ export const list = {
   },
   'omnibox.issueMissing': {
     en: '{key} is not in the mirror.',
-    ko: '미러에 {key}가 없습니다.',
-    ja: '{key} はミラーにありません。',
+    ko: '캐시에 {key}가 없습니다.',
+    ja: '{key} はキャッシュにありません。',
   },
   'list.searchFailed': {
     en: 'Could not search body text. Check the connection and try again.',
