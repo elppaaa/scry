@@ -80,8 +80,10 @@ Confluence site that reports attachment sizes as numbers rather than strings
 no longer stops the wiki sync at the first listing ([GDK-1900]). A page the
 hourly reconcile cannot confirm no longer fails the whole pass every hour:
 that one page stays, and the rest of the pass finishes ([GDK-1887]). An
-attachment added to or removed from a page reaches the cache on the hourly
-reconcile even when the page itself was not edited ([GDK-1888]).
+attachment or a comment added to or removed from a page reaches the cache on
+the hourly reconcile even when the page itself was not edited; the first
+reconcile after upgrading re-reads each page that has comments once, and a
+deleted reply still stays for now ([GDK-1888]).
 
 **An agent's page renders on the issue.** Attach an HTML file to an issue and
 the detail shows it as an artifact: the page runs in a sandboxed frame — no
