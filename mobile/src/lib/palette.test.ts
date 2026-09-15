@@ -163,7 +163,10 @@ describe('GDK-905 the palette\'s plates are distinct and catalog-backed', () => 
   })
 
   it('uses catalog keys for clear and for no-results', () => {
-    expect(src).toContain("t('list.clearSearch')")
+    // GDK-1928: the clear × owns app.searchClear — same word as the desk's
+    // clear-X, but without list.searchClear's "(Esc)" hint a phone cannot
+    // honor. Still a catalog key, which is what this test pins.
+    expect(src).toContain("t('app.searchClear')")
     expect(src).toContain("t('common.noResults')")
     expect(src).not.toContain('aria-label="Clear search"')
     expect(src).not.toContain('title="No matches"')

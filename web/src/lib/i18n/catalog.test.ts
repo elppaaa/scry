@@ -90,7 +90,98 @@ function unusedCatalogKeys(): string[] {
   return unused
 }
 
-/** Stable fail() codes inside failCreate. The prose fallback (err.Error()) is not a code. */
+/**
+ * Prefixes the phone owns outright: keys here may be phone-only by design
+ * (56 `app.*`, 13 `terminal.strip.*`, 4 `terminal.refusal.*` at the 2026-09-15
+ * census) and are exempt from the web/src-citation requirement.
+ */
+const PHONE_OWNED_PREFIXES = ['app.', 'terminal.'] as const
+
+function isPhoneOwned(key: string): boolean {
+  return PHONE_OWNED_PREFIXES.some((p) => key.startsWith(p))
+}
+
+/**
+ * The set of catalog keys a web/src grep can see — the same tree, the same
+ * needles and the same exemptions as `unusedCatalogKeys`, minus mobile/src
+ * and e2e. This is what a web round reads before calling a key dead, so test
+ * files count: a key cited only by a web test is still protected (deleting
+ * it turns that test red), which is the failure mode this gate closes.
+ * `includeTests: false` is the UI-only view the dead-entries check needs —
+ * this file's own exception list lives under web/src, and counting it would
+ * launder every entry into "cited".
+ */
+function webCitedKeys(includeTests = true): Set<string> {
+  const files = walkSourceFiles(WEB_SRC).filter(
+    (f) => !isCatalogDefinition(f) && (includeTests || !f.endsWith('.test.ts')),
+  )
+  const blobs = files.map((f) => readFileSync(f, 'utf8'))
+  const extra = new Set<string>(Object.values(WRITE_ERROR_KEYS))
+  const cited = new Set<string>()
+  for (const key of Object.keys(en)) {
+    if (hasDynamicPrefix(key)) continue
+    if (extra.has(key)) {
+      cited.add(key)
+      continue
+    }
+    const needles = [`'${key}'`, `"${key}"`, '`' + key + '`']
+    if (blobs.some((s) => needles.some((n) => s.includes(n)))) cited.add(key)
+  }
+  return cited
+}
+
+/**
+ * Keys that stay phone-only in a shared namespace on purpose. Same contract
+ * as ALLOWED_BYTE_EQUAL below: an entry states its reason, and an entry
+ * whose key gains a web/src citation (or dies) is stale and fails the
+ * dead-entries check.
+ *
+ * The 2026-09-15 census (GDK-1923) counted 26 such keys. One was renamed
+ * under the phone prefix this round (`list.searchIdleHint` →
+ * `app.searchIdleHint`). The 25 below are all live on the phone — every one
+ * is a real t() call in shipped mobile source, none is dead — and their
+ * rename needs either a catalog file outside messages/list.ts or a mobile
+ * screen outside the file boundary of the round that wrote this gate
+ * (Detail.svelte was under concurrent edit). Each line says where the phone
+ * reads it; moving a key to `app.*` is a mobile round's call, and removing
+ * its entry here is how that round closes it.
+ */
+const ALLOWED_PHONE_ONLY = new Map<string, string>([
+  // ── phone affordances wearing a shared prefix; eventual home app.* ──
+  ['common.applying', 'inline transition feedback (Detail meta line); the desk applies transitions with no inline state'],
+  ['list.nothingOpenAssigned', 'assigned-scope empty state (Issues); the desk list renders its own empty states'],
+  ['list.noIdentityFilter', 'no-identity-on-serve note (Issues), pair of the row above'],
+  ['sidebar.scopeOpenDesktop', 'blocked-scope rows say to open the desktop (AttachmentGrid, DeskRow) — the phone cannot render those scopes by design'],
+  ['sidebar.scopeShowAll', 'palette show-all-{n} row (Palette); named for the sidebar scopes it ranks'],
+  ['pairing.noIdentityLocal', 'local-serve pairing note (Settings); the desk pairing UI says it differently'],
+  // ── phone detail screen: the desk panel renders these facts under its own
+  //    section keys (description/comments/…) or not at all (no Fields
+  //    section, no share verb, tap-to-play media) ──
+  ['detail.fields', 'Fields section heading (Detail); the desk panel has no Fields section'],
+  ['detail.noComments', 'empty-comments line (Detail, PageDetail); the desk shows its own empty hint'],
+  ['detail.resume.dismiss', 'resume-banner dismiss verb (Detail)'],
+  ['detail.share', 'share button (Detail); the desk has no share verb'],
+  ['detail.attachmentTapToPlay', 'tap-to-play media hint (AdfBody); the desk autoplays on click'],
+  ['detail.attachmentLoading', 'inline media loading state (AdfBody)'],
+  ['detail.attachmentLoadFailed', 'inline media failure/retry state (AdfBody)'],
+  ['detail.attachmentCopiesLink', 'attachment chip tooltip (AdfBody)'],
+  ['detail.viewerClose', 'fullscreen viewer close verb (AttachmentViewer)'],
+  ['detail.updatedWhen', 'updated-{when} meta line (Detail)'],
+  ['detail.byline', 'by-{name} meta line (Detail)'],
+  // ── phone write flow: the desk write flow uses its own keys (toasts,
+  //    comment composer) and has no child-creation sheet, ADF force-ask or
+  //    move-status sheet ──
+  ['write.newChild', 'new-child sheet title/verb (CreateSheet, Detail)'],
+  ['write.descriptionForceAsk', 'ADF force-ask line (Detail description editor)'],
+  ['write.descriptionReplace', 'force-ask confirm verb (Detail)'],
+  ['write.draftRestored', 'draft-restored note (CreateSheet, Detail, PageDetail)'],
+  ['write.moveStatus', 'move-status sheet title (Detail)'],
+  ['write.askingServer', 'asking-server placeholder (move-status sheet)'],
+  ['write.noTransitionsFrom', 'no-transitions empty line (move-status sheet)'],
+  ['write.transitionNeedsFields', 'needs-fields suffix (move-status sheet)'],
+])
+
+
 function failCreateCodes(src: string): string[] {
   const start = src.indexOf('func failCreate(')
   expect(start, 'internal/server/write.go must define failCreate').toBeGreaterThanOrEqual(0)
@@ -244,6 +335,51 @@ describe('catalog contracts', () => {
     // assertion is unchanged; only the budget reflects the walk it pays for.
     const unused = unusedCatalogKeys()
     expect(unused, unused.join('\n')).toEqual([])
+  }, 30_000)
+
+  test('a shared-namespace key is cited under web/src, not phone-only (GDK-1923)', () => {
+    // The unused-key scan above reads web/src, e2e and mobile/src as one
+    // merged tree, so a key only the phone cites counts as referenced. A
+    // web round greps web/src before calling a key dead — on 2026-08-26 that
+    // deleted `terminal.unavailable`, every web gate stayed green, and only
+    // the Mobile CI job went red. The phone owns two prefixes outright
+    // (`app.*`, `terminal.*`); anywhere else a key with no web/src citation
+    // is a twin waiting for that deletion, and fails here until it is
+    // renamed under a phone prefix or its exception below states why it
+    // stays. field./column./category./deploy. keys are web-owned by
+    // construction (fieldLabel() and siblings build them at runtime) and
+    // sit outside this check for the same reason as the scan above.
+    const web = webCitedKeys()
+    const strays = Object.keys(en).filter(
+      (k) =>
+        !isPhoneOwned(k) &&
+        !hasDynamicPrefix(k) &&
+        !web.has(k) &&
+        !ALLOWED_PHONE_ONLY.has(k),
+    )
+    expect(strays, strays.join('\n')).toEqual([])
+  }, 30_000)
+
+  test('every phone-only exception still names a phone-only key — no dead entries', () => {
+    // Same contract as the ALLOWED_BYTE_EQUAL list below: once a key gains a
+    // web/src citation, is renamed under a phone prefix, or dies, its entry
+    // must go — otherwise "phone-only allowed" quietly grows to cover
+    // whatever lands next. The citation view here is UI-only: a test's
+    // citation protects a key without making it less phone-only.
+    const web = webCitedKeys(false)
+    const stale: string[] = []
+    for (const key of ALLOWED_PHONE_ONLY.keys()) {
+      if (isPhoneOwned(key) || hasDynamicPrefix(key)) {
+        stale.push(`${key}: phone-owned or dynamic prefix — remove the entry`)
+        continue
+      }
+      if (!(key in en)) {
+        stale.push(`${key}: key no longer exists`)
+        continue
+      }
+      if (web.has(key)) stale.push(`${key}: web/src cites it now — remove the entry`)
+    }
+    expect(stale, stale.join('\n')).toEqual([])
   }, 30_000)
 
   test('each status category has exactly one catalog key', () => {

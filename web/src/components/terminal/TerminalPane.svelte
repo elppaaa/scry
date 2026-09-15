@@ -416,11 +416,15 @@
    * so it publishes them rather than the roster reaching in. Cleared on
    * destroy: a roster outliving the pane must render a dead verb disabled,
    * not call into a torn-down driver.
+   *
+   * `restartable` is the third publication, not a separate effect: it is a
+   * pure function of status synced into the store — the same
+   * effect-assigns-state shape the gate forbids on local runes, invisible
+   * here only because the target is an imported store. One publish point,
+   * one cleanup.
    */
   $effect(() => {
     terminalChrome.restartable = statusRestartable
-  })
-  $effect(() => {
     terminalChrome.newSession = () => newSession?.()
     terminalChrome.restart = onStatusActivate
     return () => {

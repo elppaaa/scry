@@ -31,9 +31,14 @@ const REPO = join(HERE, '..', '..', '..')
 
 type Tree = { root: string; skip?: string[] }
 
-/** Component trees on both surfaces. `skip` names sanctioned store homes. */
+/** Component trees on both surfaces. `skip` names sanctioned store homes.
+ *  A root may name one file (web/src/App.svelte): the root shell is a
+ *  component for this gate's purposes — its 500ms UI-focus poll escaped the
+ *  sweep for exactly as long as the sweep only named directories
+ *  (GDK-1926). */
 const TREES: Tree[] = [
   { root: 'web/src/components' },
+  { root: 'web/src/App.svelte' },
   { root: 'mobile/src', skip: ['mobile/src/lib'] },
 ]
 
@@ -62,24 +67,32 @@ const ALLOWED: Exception[] = [
   },
 ]
 
+function scanFile(p: string, tree: Tree, out: string[]): void {
+  const name = p.slice(p.lastIndexOf('/') + 1)
+  if (!(name.endsWith('.svelte') || (name.endsWith('.ts') && !name.endsWith('.test.ts')))) return
+  const rel = relative(REPO, p)
+  if (tree.skip?.some((s) => rel === s || rel.startsWith(s + '/'))) return
+  if (ALLOWED.some((a) => rel === a.file)) return
+  const lines = readFileSync(p, 'utf8').split('\n')
+  lines.forEach((line, i) => {
+    if (!line.includes('setInterval(')) return
+    out.push(`${rel}:${i + 1}: ${line.trim()}`)
+  })
+}
+
 function intervalSites(tree: Tree): string[] {
   const rootAbs = join(REPO, tree.root)
   const out: string[] = []
+  if (statSync(rootAbs).isFile()) {
+    scanFile(rootAbs, tree, out)
+    return out
+  }
   for (const e of readdirSync(rootAbs, { withFileTypes: true }).sort((a, b) =>
     a.name < b.name ? -1 : a.name > b.name ? 1 : 0,
   )) {
     const p = join(rootAbs, e.name)
     if (e.isDirectory()) out.push(...intervalSites({ ...tree, root: relative(REPO, p) }))
-    else if (e.name.endsWith('.svelte') || (e.name.endsWith('.ts') && !e.name.endsWith('.test.ts'))) {
-      const lines = readFileSync(p, 'utf8').split('\n')
-      lines.forEach((line, i) => {
-        if (!line.includes('setInterval(')) return
-        const rel = relative(REPO, p)
-        if (tree.skip?.some((s) => rel === s || rel.startsWith(s + '/'))) return
-        if (ALLOWED.some((a) => rel === a.file)) return
-        out.push(`${rel}:${i + 1}: ${line.trim()}`)
-      })
-    }
+    else scanFile(p, tree, out)
   }
   return out
 }

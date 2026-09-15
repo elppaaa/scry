@@ -29,6 +29,10 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const SHEET = join(HERE, '../../components/shell/ShortcutsDialog.svelte')
 const COMMANDS = join(HERE, '../commands.ts')
 const WEB_SRC = join(HERE, '../..')
+// The phone renders the same affordances from the same catalog (GDK-1928):
+// a walk that stops at the web tree cannot see the phone's half of a
+// twin-key drift.
+const MOBILE_SRC = join(HERE, '../../../../mobile/src')
 
 const CATALOGS = [
   ['en', en],
@@ -133,7 +137,9 @@ describe('GDK-621 close affordances agree with themselves', () => {
     // title={t('…')} on its own line or the next two, and when either key
     // is close-family the two keys must be equal. The codebase formats
     // attributes aria-first (every pair at authoring time); a reversed or
-    // far-apart pair is outside this gate.
+    // far-apart pair is outside this gate. The walk covers the phone tree
+    // too (GDK-1928): the same affordance rendered there from the same
+    // catalog was invisible to a web-only sweep.
     const aria = /aria-label=\{t\('([^']+)'\)\}/
     const title = /title=\{t\('([^']+)'\)\}/
     const files: string[] = []
@@ -145,6 +151,7 @@ describe('GDK-621 close affordances agree with themselves', () => {
       }
     }
     walk(WEB_SRC)
+    walk(MOBILE_SRC)
     const failures: string[] = []
     for (const p of files) {
       const lines = readFileSync(p, 'utf8').split('\n')
@@ -276,6 +283,20 @@ describe('GDK-652 in-field X: one name, aria-label on SearchBox', () => {
     expect(history).toContain("aria-label={t('list.searchClear')}")
     expect(docs).not.toContain("docs.filterClear")
     expect(history).not.toContain("history.filterClear")
+  })
+
+  test('the phone palette clear-X owns a phone key, not the no-match CTA (GDK-1928)', () => {
+    // The phone's field clear × wore list.clearSearch — the key the desk
+    // labels a *different* affordance with (the no-match panel's text CTA,
+    // ListView). Same affordance, two names, one of them borrowed: the
+    // twin-key class this describe exists for, seen from the phone side by
+    // the walk extension below. It must not unify to list.searchClear
+    // either: that value says "(Esc)", and a phone has no Esc key to tell
+    // the reader about. The phone owns app.searchClear for this X (the
+    // catalog key carries the divergence note).
+    const src = readFileSync(join(MOBILE_SRC, 'ui/Palette.svelte'), 'utf8')
+    expect(src).toContain("t('app.searchClear')")
+    expect(src).not.toContain("t('list.clearSearch')")
   })
 })
 

@@ -916,6 +916,7 @@ export function relTime(
   if (sec < 60) return t('time.justNow')
   if (sec < 3600) return t('time.minute', { n: Math.floor(sec / 60) })
   if (sec < 86400) return t('time.hour', { n: Math.floor(sec / 3600) })
+  // The 7-day cutoff is a deliberate phone choice: past a week the chip shows the calendar date, while the desk keeps its 2w/1mo ladder (vocabulary.test.ts pins the four stages both share).
   if (sec < 7 * 86400) return t('time.day', { n: Math.floor(sec / 86400) })
   return calendarLabel(ts, localeTag)
 }

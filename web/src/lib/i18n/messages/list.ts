@@ -390,6 +390,17 @@ export const list = {
     ko: '본문·코멘트에서도 0건입니다.',
     ja: '本文・コメントにも一致はありません。',
   },
+  // GDK-1928: the phone palette's in-field clear × — the same affordance the
+  // desk labels list.searchClear, deliberately NOT that key: its value says
+  // "(Esc)", and a phone has no Esc key to teach. Same word, phone-owned
+  // name; list.clearSearch below stays the desk's no-match text CTA and
+  // carries these same three values — it is the same affordance, so the
+  // reader sees the same word; only the key is the phone's own.
+  'app.searchClear': {
+    en: 'Clear search',
+    ko: '검색 지우기',
+    ja: '検索をクリア',
+  },
   'list.clearSearch': {
     en: 'Clear search',
     ko: '검색 지우기',
@@ -589,7 +600,10 @@ export const list = {
   },
   // GDK-1704: the phone's search idle hint (mobile Search.svelte) — the
   // first thing the tab explains, previously hardcoded English.
-  'list.searchIdleHint': {
+  // GDK-1923: renamed out of list.* — only the phone palette renders it, so
+  // it sits under the phone-owned prefix (the app.* entries here follow the
+  // omnibox.* precedent for a key whose family lives in another file).
+  'app.searchIdleHint': {
     en: 'Keys and summaries answer instantly from the {n}-issue snapshot; the server adds comment matches.',
     ko: '키와 요약은 이슈 {n}건의 스냅샷에서 즉시 답하고, 코멘트 일치는 서버가 더합니다.',
     ja: 'キーと要約は {n}件の課題スナップショットから即座に答え、コメントの一致はサーバーが加えます。',

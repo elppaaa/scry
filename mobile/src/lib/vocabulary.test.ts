@@ -159,3 +159,56 @@ describe('status-category folding stays parity with the desktop', () => {
     expect(Object.keys(categoryAliases()).sort()).toEqual([...aliases].sort())
   })
 })
+
+describe('relative-time ladder stays parity with the desktop', () => {
+  // GDK-1927: relTime and the desk's relativeTimeParts are two ladders over
+  // the same catalog keys (time.justNow/minute/hour/day). Where they cut is
+  // a shared fact — "5m" must mean the same minute on both surfaces — so
+  // the desk's thresholds are parsed from its source and asserted equal,
+  // the same string-marker pattern as the status-alias test above. What
+  // stays deliberately unpinned: the desk continues past a week (2w/1mo)
+  // while the phone shows the calendar date — that divergence is the
+  // comment on relTime, and merging the ladders is the lead's call, not
+  // this gate's.
+  it('cuts the four catalog-keyed stages at the same thresholds', () => {
+    const owner = readFileSync(join(srcDir, '../../web/src/lib/i18n/index.ts'), 'utf8')
+    // The desk's ladder constants, in declaration order (60_000, 60 * MIN,
+    // 24 * HOUR) — resolved against each other, never restated here.
+    const consts: Record<string, number> = {}
+    for (const m of owner.matchAll(/const (MIN|HOUR|DAY) = (.+)$/gm)) {
+      let v = 1
+      for (const term of m[2].replace(/_/g, '').split('*')) {
+        const t = term.trim()
+        v *= /^[0-9]+$/.test(t) ? Number(t) : consts[t]
+      }
+      consts[m[1]] = v
+    }
+    expect(consts.DAY, 'the desk ladder constants parsed').toBeGreaterThan(0)
+    const webCuts = [...owner.matchAll(/diff < (MIN|HOUR|DAY)\)/g)].map(
+      (m) => consts[m[1]] / 1000,
+    )
+    const dayCut = owner.match(/days < (\d+)/)
+    expect(dayCut, 'the desk day-stage cutoff parsed').not.toBeNull()
+    webCuts.push((Number(dayCut![1]) * consts.DAY) / 1000)
+    expect(webCuts, 'four desk stages parsed').toHaveLength(4)
+
+    const phone = readFileSync(join(srcDir, 'lib/domain.ts'), 'utf8')
+    const body = phone.slice(phone.indexOf('export function relTime'))
+    const rel = body.slice(0, body.indexOf('\n}'))
+    const stages = [...rel.matchAll(/sec < (.+?)\) return t\('time\.(justNow|minute|hour|day)'/g)]
+    expect(stages.map((m) => m[2]), 'the phone ladder keys, in stage order').toEqual([
+      'justNow',
+      'minute',
+      'hour',
+      'day',
+    ])
+    const phoneCuts = stages.map((m) => {
+      let v = 1
+      for (const term of m[1].split('*')) v *= Number(term.trim())
+      return v
+    })
+    expect(phoneCuts, 'four phone stages parsed, all numeric').toHaveLength(4)
+    expect(phoneCuts.every(Number.isFinite)).toBe(true)
+    expect(phoneCuts, 'the same minute/hour/day/week on both surfaces').toEqual(webCuts)
+  })
+})

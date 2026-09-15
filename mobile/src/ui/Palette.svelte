@@ -178,7 +178,7 @@
     enterkeyhint="search"
   />
   {#if query}
-    <button class="clear" onclick={clear} aria-label={t('list.clearSearch')}>×</button>
+    <button class="clear" onclick={clear} aria-label={t('app.searchClear')}>×</button>
   {/if}
   <button class="palette-cancel" onclick={closePalette}>{t('common.cancel')}</button>
 </div>
@@ -261,7 +261,7 @@
   {/if}
   <div class="foot" aria-hidden="true"></div>
 {:else if mode === 'short'}
-  <p class="idle-hint">{t('list.searchIdleHint', { n: app.issues.length })}</p>
+  <p class="idle-hint">{t('app.searchIdleHint', { n: app.issues.length })}</p>
 {:else}
   {#if scopeHits.length > 0}
     <!-- Matching owners lead under the desk's own word for them: the
