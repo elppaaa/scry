@@ -6,6 +6,10 @@
 import { type Page } from '@playwright/test'
 import { expect, test } from './helpers'
 import { SHEET_INSET_FLOOR_PX, sheetBottomInset } from '../src/lib/inset'
+// GDK-902 2026-09-15: the road to Settings is defined once in nav.ts.
+// The local waitPaired/openPalette below stay as they are — they carry
+// this file's own measurement waits.
+import { openSettings } from './nav'
 
 type Measure = {
   label: string
@@ -227,7 +231,8 @@ async function walkAll(page: Page): Promise<Measure[]> {
 
   // GDK-902 2026-09-15: every label below survives — the gate compares
   // them — but the road to each one changed. Search is the palette with a
-  // query, and Pairing is the Settings push layer behind the gear.
+  // query, and the `pairing` frame is the Settings push layer behind the
+  // gear (the label is the gate's, the screen's name is Settings).
   await openPalette(page)
   report.push(await measure(page, 'search-empty'))
 
@@ -237,8 +242,7 @@ async function walkAll(page: Page): Promise<Measure[]> {
 
   await page.locator('button.palette-cancel').click()
   await page.locator('.palette-field input').waitFor({ state: 'detached' })
-  await page.locator('button.gear').click()
-  await page.getByRole('heading', { name: 'Pairing' }).waitFor()
+  await openSettings(page)
   report.push(await measure(page, 'pairing'))
 
   await page.locator('.settings-layer button.back').click()

@@ -264,13 +264,11 @@
   <p class="idle-hint">{t('list.searchIdleHint', { n: app.issues.length })}</p>
 {:else}
   {#if scopeHits.length > 0}
-    <!-- Matching owners lead, unlabeled on purpose: the catalog has a word
-         for each *section* of the owner list (Built-in views, My views,
-         Jira filters, Documents) and none for "the owners that matched",
-         and authoring one is the desk's edit, not the phone's (§3.6). A
-         section heading borrowed from one of the four would be wrong for
-         the other three. Reported to the lead as a word this round needed
-         and could not find. -->
+    <!-- Matching owners lead under the desk's own word for them: the
+         command palette calls this set Views
+         (web/src/components/palette/CommandPalette.svelte:899), so the
+         phone borrows it rather than authoring a second one (§3.6). -->
+    <p class="palette-section">{t('palette.sectionViews')}</p>
     {#each scopeHits as scope (scope.id)}
       {#if scope.unsupported.length > 0}
         <DeskRow label={scope.name} />

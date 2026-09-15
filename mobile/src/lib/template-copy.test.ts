@@ -198,17 +198,19 @@ const ALLOWED = new Map<string, string>([
     'CLI command shown verbatim in the hint (mono .cmd span)',
   ],
   [
-    'screens/PairingTab.svelte :: gadak pairing mint --scope terminal',
+    // GDK-902 2026-09-15: the three keys below moved with the file —
+    // PairingTab.svelte is Settings.svelte, same content.
+    'screens/Settings.svelte :: gadak pairing mint --scope terminal',
     'CLI command shown verbatim in the hint (mono span)',
   ],
   [
     // GDK-1788 (2026-09-11): the version left the literal — it is now the
     // tauri.conf.json import, so the footer cannot drift from the build.
-    'screens/PairingTab.svelte :: gadak mobile',
+    'screens/Settings.svelte :: gadak mobile',
     'brand footer, locale-neutral by construction (version from tauri.conf.json)',
   ],
   [
-    'screens/PairingTab.svelte :: DEV',
+    'screens/Settings.svelte :: DEV',
     'dev-only viewport probe prefix (import.meta.env.DEV-gated, hidden attr)',
   ],
 ])

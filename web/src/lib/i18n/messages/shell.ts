@@ -1259,11 +1259,6 @@ export const shell = {
     ko: '키, 제목, 댓글…',
     ja: 'キー、要約、コメント…',
   },
-  'app.pairingTitle': {
-    en: 'Pairing',
-    ko: '페어링',
-    ja: 'ペアリング',
-  },
   'app.offline': {
     en: 'Offline',
     ko: '오프라인',

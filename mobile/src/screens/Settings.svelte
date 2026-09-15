@@ -281,7 +281,7 @@
         </svg>
         <span>{t('app.back')}</span>
       </button>
-      <h1 class="type-subject">{t('app.pairingTitle')}</h1>
+      <h1 class="type-subject">{t('settings.title')}</h1>
     </div>
   {/snippet}
 
@@ -310,6 +310,54 @@
           <p class="sub mono">{host(app.meta.endpoint)}</p>
         </section>
       {/if}
+
+      <!-- The two pairings lead, adjacent (DESIGN.md §2: "pairing ·
+           hosts · terminal"). One screen answers "is this thing still
+           connected" for the mirror and for the shell, so the question
+           is asked once at the top and the machinery — the roster, the
+           cache, who the serve thinks I am — follows it. Each pairing
+           keeps the heading the catalog already gave it (§3.6); no word
+           was authored to cover both. -->
+      <section>
+        <h3>{t('sidebar.terminal')}</h3>
+        {#if app.terminal}
+          <p class="big">{app.terminal.label || host(app.terminal.endpoint)}</p>
+          <p class="sub mono">{host(app.terminal.endpoint)}</p>
+          <button class="unpair-shell" class:armed={termArmed} onclick={onUnpairTerminal}>
+            {termArmed ? t('app.unpairConfirm') : t('app.unpairShell')}
+          </button>
+        {:else}
+          <label class="lbl" for="term-offer">{t('app.terminalOffer')}</label>
+          <textarea
+            id="term-offer"
+            bind:value={termOffer}
+            rows="3"
+            placeholder={t('app.terminalOfferPlaceholder')}
+            autocapitalize="off"
+            spellcheck="false"
+          ></textarea>
+          <p class="sub">
+            {t('app.gate.desktopLead')}
+            <span class="mono">gadak pairing mint --scope terminal</span>
+            {t('app.gate.desktopTail')}
+          </p>
+          {#if termError}
+            <p class="error" role="alert">{termError}</p>
+          {/if}
+          {#if termOffer.trim() === ''}
+            <button class="act" disabled={termBusy} onclick={() => void pasteAndPairTerminal()}>
+              {termBusy ? t('app.hosts.checking') : t('app.hosts.pastePair')}
+            </button>
+          {:else}
+            <button class="act" disabled={termBusy} onclick={() => void submitTerminal()}>
+              {termBusy ? t('app.hosts.checking') : t('app.hosts.pair')}
+            </button>
+          {/if}
+          {#if !DEV}
+            <button class="act" onclick={() => void scanTerminal()}>{t('app.scan')}</button>
+          {/if}
+        {/if}
+      </section>
 
       <!-- Host roster (GDK-1097 B2): switch with a tap, forget an inactive
            row through the two-step arm. -->
@@ -418,47 +466,6 @@
               })}</span
             >
           </p>
-        {/if}
-      </section>
-
-      <section>
-        <h3>{t('sidebar.terminal')}</h3>
-        {#if app.terminal}
-          <p class="big">{app.terminal.label || host(app.terminal.endpoint)}</p>
-          <p class="sub mono">{host(app.terminal.endpoint)}</p>
-          <button class="unpair-shell" class:armed={termArmed} onclick={onUnpairTerminal}>
-            {termArmed ? t('app.unpairConfirm') : t('app.unpairShell')}
-          </button>
-        {:else}
-          <label class="lbl" for="term-offer">{t('app.terminalOffer')}</label>
-          <textarea
-            id="term-offer"
-            bind:value={termOffer}
-            rows="3"
-            placeholder={t('app.terminalOfferPlaceholder')}
-            autocapitalize="off"
-            spellcheck="false"
-          ></textarea>
-          <p class="sub">
-            {t('app.gate.desktopLead')}
-            <span class="mono">gadak pairing mint --scope terminal</span>
-            {t('app.gate.desktopTail')}
-          </p>
-          {#if termError}
-            <p class="error" role="alert">{termError}</p>
-          {/if}
-          {#if termOffer.trim() === ''}
-            <button class="act" disabled={termBusy} onclick={() => void pasteAndPairTerminal()}>
-              {termBusy ? t('app.hosts.checking') : t('app.hosts.pastePair')}
-            </button>
-          {:else}
-            <button class="act" disabled={termBusy} onclick={() => void submitTerminal()}>
-              {termBusy ? t('app.hosts.checking') : t('app.hosts.pair')}
-            </button>
-          {/if}
-          {#if !DEV}
-            <button class="act" onclick={() => void scanTerminal()}>{t('app.scan')}</button>
-          {/if}
         {/if}
       </section>
 

@@ -31,8 +31,8 @@ function markup(rel: string): string {
 
 const shell = markup('screens/Shell.svelte')
 const shellRaw = read('screens/Shell.svelte')
-const pairing = markup('screens/PairingTab.svelte')
-const pairingRaw = read('screens/PairingTab.svelte')
+const pairing = markup('screens/Settings.svelte')
+const pairingRaw = read('screens/Settings.svelte')
 
 describe('GDK-908 first-attach connecting state', () => {
   it('the Status union includes connecting', () => {

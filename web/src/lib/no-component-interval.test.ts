@@ -56,7 +56,8 @@ const ALLOWED: Exception[] = [
     why: 'roster poll at ROSTER_POLL_MS, only while the sheet is open (GDK-1497 A6) — a data cadence over a tailnet on a battery, not a wall clock; belongs in a store module',
   },
   {
-    file: 'mobile/src/screens/PairingTab.svelte',
+    // GDK-902 2026-09-15: PairingTab.svelte → Settings.svelte, same file.
+    file: 'mobile/src/screens/Settings.svelte',
     why: 'import.meta.env.DEV-only 1s viewport probe — a debug readout compiled out of production builds, not a wall clock',
   },
 ]

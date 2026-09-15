@@ -7,7 +7,7 @@
   import { bindOsDeepLinks, createDeepLinkRouter, exposeForTests } from './lib/deeplink-entry'
   import PairGate from './screens/PairGate.svelte'
   import Issues from './screens/Issues.svelte'
-  import Settings from './screens/PairingTab.svelte'
+  import Settings from './screens/Settings.svelte'
   import Shell from './screens/Shell.svelte'
   import Detail from './screens/Detail.svelte'
   import PageDetail from './screens/PageDetail.svelte'

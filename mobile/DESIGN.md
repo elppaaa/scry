@@ -94,7 +94,7 @@ trigger would spend ~78px back; the heading slot spends none.
      │     empty query: recent issues · Built-in views · My views ·
      │                  Jira filters · Documents · Terminal
      │     typed query: matching owners · issues (local, then server) · pages
-     ├─► Settings (push layer, from the gear) — pairing · hosts · terminal
+     ├─► Settings (push layer, from the gear) — mirror pairing · shell pairing · hosts · cache · identity
      └─► Detail (push layer) — issue or page
             └─► Transition sheet (issues only)
             └─► linked issue / mentioned issue (replaces, back → owner)
@@ -120,7 +120,9 @@ keyboard covers the screen anyway. Its exit is its own header's back
 control; there is no bar to return to.
 
 **Settings is not an owner.** It is a push layer opened from the gear in the
-heading (pairing for the mirror and for the shell, hosts, terminal options).
+heading (pairing for the mirror and for the shell first, then hosts, the
+cache and identity; terminal options are GDK-901's remaining half and are
+not on the screen yet).
 The offline dot lives on the gear. §1 calls pairing "rarely visited, always
 honest" — that is the description of a settings screen, and it now has one.
 
@@ -133,7 +135,7 @@ out; system back = the same edge; the root has no exit):
 | List (owner = scope) | boot default · palette pick | — (root) |
 | Palette | the heading (44pt) | Cancel (44pt) · system back · picking an owner or a row |
 | Shell (owner) | palette row *Terminal* | ← back in its header → the last scope |
-| Settings | gear in the heading (44pt) | ← back button (top-left, 44pt) → the list |
+| Settings | gear in the list heading (44pt); from the shell, back to the list first | ← back button (top-left, 44pt) → the list |
 | Detail | row tap (list or palette results) · linked-issue tap · deep link | ← back button (top-left, 44pt) → what opened it |
 | Page detail | doc-row tap · palette page hit | ← back button (top-left, 44pt) → what opened it |
 | Transition sheet | status chip in Detail | scrim tap · Cancel · apply |
@@ -232,7 +234,7 @@ documents"), sync is `sidebar.syncNow`, and every sheet's dismiss is
 comes free from §3.1.
 
 Strings with **no** catalog equivalent stay phone-authored and are listed as
-such: the Search and Pairing tab labels, the offline and fallback notes, the
+such: the offline and fallback notes, the
 empty state, the picker's "Open on the desktop" refusal, and the pairing copy.
 Adding a key is the desktop's edit, not the phone's — the phone never writes
 into `web/src/lib/i18n/messages/`.
@@ -242,13 +244,15 @@ into `web/src/lib/i18n/messages/`.
 1. **Safe area — single owner.** Only two files may mention
    `env(safe-area-inset-*)`: `app.css` (utility classes `.safe-top`,
    `.safe-bottom`) and nothing else. `Screen.svelte` applies `.safe-top` to
-   every header; `TabBar.svelte` / Detail composer / sheets apply
-   `.safe-bottom`. Screens receive an already-inset frame, so a touch target
+   every header; the Detail composer, sheets and the shell's key bar
+   (while the keyboard is down — `lib/keyboard.ts` stamps
+   `data-keyboard-inset` while a band is up and the rule stops matching)
+   take the bottom inset from the one rule in `app.css`. Screens receive an already-inset frame, so a touch target
    under the status bar cannot be authored.
 2. **Vertical geometry.** No `vh`/`dvh` anywhere (lint-able: `grep -r "dvh\|100vh" src` is empty).
-   The root is `#app { position: fixed; inset: 0 }`; the tab bar is a normal
-   flex child of that fixed frame, so it sits on the physical bottom and
-   cannot move when the keyboard animates. The Detail composer lifts with the
+   The root is `#app { position: fixed; inset: 0 }`; the column is a normal
+   flex child of that fixed frame, so its bottom-most surface sits on the
+   physical bottom and cannot move when the keyboard animates. The Detail composer lifts with the
    keyboard via the VisualViewport API (measured, not assumed — see capture
    log).
 3. **Horizontal overflow 0.** `#app { overflow: hidden }` backstop + every
@@ -368,12 +372,12 @@ Consequences and the division of labor:
 
 - The app honors env() unconditionally (§4.1). On this shell that pays the
   top inset twice (62pt of cream above the header) and leaves a ~96pt
-  native band under the tab bar. Cosmetic waste, dev shell only — but a
+  native band under the column. Cosmetic waste, dev shell only — but a
   touch target can never land under the status bar or home indicator on
   any shell, which is the §4.1 guarantee.
 - The structural fix is native and one line
   (`webView.scrollView.contentInsetAdjustmentBehavior = .never`): the layout
-  viewport becomes 402x874, env() stays 62/34, and this CSS lands the tab bar
+  viewport becomes 402x874, env() stays 62/34, and this CSS lands the column
   on the physical bottom with no code change.
 
   **Landed** in `src-tauri/src/lib.rs` — an `objc2` `msg_send` pair in the
@@ -404,8 +408,8 @@ Consequences and the division of labor:
   verdict on the same capture independently read the first app content at
   204px, which is the cross-check for the ink measurement.
 
-  Still not measured: what the tab bar does when the keyboard is dismissed
-  in Search. That needs driving, not a screenshot — GDK-838.
+  Still not measured: what the column's bottom does when the keyboard is
+  dismissed in the palette. That needs driving, not a screenshot — GDK-838.
 
   Building the shell needs **rustup's** toolchain, not the one first on
   `PATH`: this machine has Homebrew `rustc` ahead of it, and Homebrew's Rust
@@ -500,7 +504,8 @@ apologize, never quote server internals.
   0, `nav.safe-bottom` flush to the viewport bottom, no input/textarea under
   16px, ≥9 issue rows per screen — the two-line clamp's bound, GDK-1543 — and
   ≥12 page rows (before **and** after the scope picker has
-  been opened), a visible escape (tab bar, `button.back`, or sheet Cancel),
+  been opened), a visible escape (`button.back`, sheet Cancel, or the palette's Cancel;
+  the three root readings are exempt — the root has no exit),
   and no visible button under 44pt (GDK-867). Sheets are measured after their
   rise finishes: a rect read off a mid-transform composited layer at DPR 3
   comes back a hair under the laid-out size (a 44px control read 43.99994),

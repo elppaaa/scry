@@ -180,12 +180,13 @@ test('walk', async ({ page }) => {
   }
 
   // GDK-902 2026-09-15: the shell owns the whole column, so the way to
-  // anything else is its own back control; Pairing is then the Settings
-  // push layer behind the gear in the list's heading.
+  // anything else is its own back control; the `pairing` shoot label is
+  // then the Settings push layer behind the gear in the list's heading —
+  // the label is the gate's (it compares labels), the screen is Settings.
   await page.locator('.pane:not(.off) .head button.back').click()
   await page.locator('h1 button.scope').waitFor()
   await page.locator('button.gear').click()
-  await page.getByRole('heading', { name: 'Pairing' }).waitFor()
+  await page.locator('.settings-layer button.back').waitFor()
   await shoot(page, 'pairing', 'pairing — two pairings, one screen')
 
   await page.locator('.settings-layer button.back').click()

@@ -185,3 +185,26 @@ describe('GDK-905 the palette\'s plates are distinct and catalog-backed', () => 
     expect(src).toContain("t('common.cancel')")
   })
 })
+
+describe('GDK-902 2026-09-15 the typed query labels the owners it matched', () => {
+  const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../ui/Palette.svelte'), 'utf8')
+
+  it('puts a section label above the scope rows in the typed branch', () => {
+    // The matched owners used to lead unlabeled, so the first rows of a
+    // typed query belonged to no section while everything under them did.
+    // The desk's own palette calls this exact set Views
+    // (web/src/components/palette/CommandPalette.svelte:899), so the word
+    // is the catalog's and not the phone's to invent (DESIGN.md §3.6).
+    const typedBranch = src.indexOf("{:else if mode === 'short'}")
+    const label = src.indexOf("t('palette.sectionViews')")
+    const rows = src.indexOf('{#each scopeHits as scope')
+    expect(typedBranch).toBeGreaterThan(-1)
+    expect(rows).toBeGreaterThan(-1)
+    expect(label).toBeGreaterThan(typedBranch)
+    expect(label).toBeLessThan(rows)
+  })
+
+  it('no longer explains why the matched owners have no word', () => {
+    expect(src).not.toContain('unlabeled on purpose')
+  })
+})

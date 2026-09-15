@@ -33,7 +33,6 @@ function makeTerminalOffer(label: string): string {
 /** Pairs the shell through the gear, the only road to it now. */
 async function pairShell(page: Page, label = 'This Mac (dev)'): Promise<void> {
   await openSettings(page)
-  await page.getByRole('heading', { name: 'Pairing' }).waitFor()
   await page.locator('#term-offer').fill(makeTerminalOffer(label))
   await page.getByRole('button', { name: 'Pair', exact: true }).click()
   await expect(page.locator('#term-offer')).toHaveCount(0)

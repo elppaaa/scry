@@ -157,7 +157,9 @@ describe('GDK-906 Detail F2 — one control, catalog copy, honest empty', () => 
 
 describe('GDK-879 pairing / spine contracts', () => {
   it('does not borrow a status token for Unpair', () => {
-    const pairing = read('screens/PairingTab.svelte')
+    // GDK-902 2026-09-15: the screen is Settings.svelte now — same file,
+    // the name it always answered to (DESIGN.md §2).
+    const pairing = read('screens/Settings.svelte')
     const styles = pairing.slice(pairing.indexOf('<style>'))
     const unpair = styles.match(/\.unpair\s*\{[^}]+\}/)
     const armed = styles.match(/\.unpair\.armed\s*\{[^}]+\}/)
@@ -242,7 +244,8 @@ describe('GDK-867 tap floor owner', () => {
       'screens/Issues.svelte',
       'screens/Detail.svelte',
       'screens/PageDetail.svelte',
-      'screens/PairingTab.svelte',
+      // GDK-902 2026-09-15: PairingTab.svelte, renamed to the screen it is.
+      'screens/Settings.svelte',
       'ui/Sheet.svelte',
       // GDK-902 2026-09-15: the Search screen and the scope sheet are one
       // component now — the palette.
