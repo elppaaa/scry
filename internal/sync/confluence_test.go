@@ -66,6 +66,15 @@ type confFixture struct {
 	// attachmentGETs counts child/attachment listings served (refusals
 	// included), for the learn-once assertion.
 	attachmentGETs atomic.Int64
+	// searchAttachLimit is the children.attachment expansion's page size when
+	// a search asks for it (GDK-1888). Zero means the measured Cloud default
+	// (25). The fixture truncates the expansion's results at it, so
+	// size == limit marks a possibly-incomplete listing — the shape the fetch
+	// gate must refuse to compare.
+	searchAttachLimit int
+	// omitSearchChildren strips the children expansion even when the search
+	// asked for it — the issuetap shape (its wiki carries no children).
+	omitSearchChildren bool
 }
 
 type confPage struct {
@@ -256,14 +265,18 @@ func (f *confFixture) serveSearch(w http.ResponseWriter, r *http.Request) {
 		if f.omitSearchIDs {
 			id = ""
 		}
-		results = append(results, map[string]any{
+		hit := map[string]any{
 			"id": id, "type": "page", "status": "current", "title": p.Title,
 			"space": map[string]any{"key": p.Space, "name": f.spaceName(p.Space)},
 			"version": map[string]any{
 				"number": p.Version, "when": p.When,
 				"by": map[string]any{"accountId": "acc-1", "displayName": "Ada Example"},
 			},
-		})
+		}
+		if ca := f.searchChildrenAttachment(r, p); ca != nil {
+			hit["children"] = map[string]any{"attachment": ca}
+		}
+		results = append(results, hit)
 	}
 	if f.afterSearch != nil {
 		hook := f.afterSearch
@@ -496,6 +509,31 @@ func (f *confFixture) serveAttachments(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"results": results, "size": len(results), "limit": 100, "start": start,
 	})
+}
+
+// searchChildrenAttachment renders the expand=children.attachment payload for
+// one page hit from the fixture's own attachment data, truncated at
+// searchAttachLimit (default 25, the measured Cloud shape) so a test can pin
+// the truncated listing: size == limit. Nil when the request did not ask for
+// the expansion or omitSearchChildren is set (issuetap). Called under the
+// fixture lock.
+func (f *confFixture) searchChildrenAttachment(r *http.Request, p *confPage) map[string]any {
+	if f.omitSearchChildren || !strings.Contains(r.URL.Query().Get("expand"), "children.attachment") {
+		return nil
+	}
+	limit := f.searchAttachLimit
+	if limit <= 0 {
+		limit = 25
+	}
+	atts := p.Attachments
+	if len(atts) > limit {
+		atts = atts[:limit]
+	}
+	results := make([]map[string]any, 0, len(atts))
+	for _, a := range atts {
+		results = append(results, map[string]any{"id": a.ID})
+	}
+	return map[string]any{"results": results, "start": 0, "limit": limit, "size": len(results)}
 }
 
 func confCommentJSON(c confComment) map[string]any {
@@ -2307,6 +2345,142 @@ func TestConfluenceMovedPageBetweenScopedSpacesFollows(t *testing.T) {
 		want := "confluence: reconcile scan refetch reasons space=1"
 		if !containsString(logs, want) {
 			t.Errorf("log lines have no %q:\n%s", want, strings.Join(logs, "\n"))
+		}
+	})
+}
+
+// TestConfluenceReconcileAttachmentChangesReachCache is the GDK-1888
+// recurrence gate. Adding or deleting an attachment bumps no page version, so
+// the incremental CQL floor never lists the page and every stamp the gate
+// checks matches; before GDK-1888 the reconcile scan agreed and the cache
+// kept a deleted attachment (and missed a new one) indefinitely. The scan's
+// children.attachment expansion is what closes it — and the two shapes that
+// must NOT close it are pinned here too, tally and all: a listing truncated
+// at the search limit (no comparison possible, counted as
+// attachments-unchecked) and an origin that carries no children at all
+// (issuetap — nothing changes).
+func TestConfluenceReconcileAttachmentChangesReachCache(t *testing.T) {
+	atts := func(ids ...string) []confAttachment {
+		out := make([]confAttachment, len(ids))
+		for i, id := range ids {
+			out[i] = confAttachment{
+				ID: id, Title: id + ".png", MimeType: "image/png",
+				FileSize: "1000", When: "2026-08-01T12:00:00.000Z",
+			}
+		}
+		return out
+	}
+	// prepare mirrors space AAA once with page 1001 carrying the given
+	// attachments, then resets the cost recorders so the test measures one
+	// reconcile run.
+	prepare := func(t *testing.T, ids ...string) (*confFixture, *confluence.Client, *mirror, *config.Config) {
+		t.Helper()
+		f := newConfFixture(t)
+		f.pages["1001"].Attachments = atts(ids...)
+		client := f.start()
+		db := newMirror(t)
+		cfg := confCfg([]string{"AAA"})
+		if _, err := RunConfluence(context.Background(), cfg, db.DB, Options{Full: true, ConfluenceClient: client}); err != nil {
+			t.Fatal(err)
+		}
+		f.resetCounters()
+		return f, client, db, cfg
+	}
+	attRows := func(t *testing.T, db *mirror, attID string) int {
+		t.Helper()
+		var n int
+		if err := db.raw(t).QueryRow(`SELECT COUNT(*) FROM attachments WHERE id = ?`, "confluence:"+attID).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	reconcile := func(t *testing.T, f *confFixture, client *confluence.Client, db *mirror, cfg *config.Config) (logs, bodies []string) {
+		t.Helper()
+		var lines []string
+		if _, err := RunConfluence(context.Background(), cfg, db.DB, Options{Reconcile: true, ConfluenceClient: client,
+			Log: func(line string) { lines = append(lines, line) }}); err != nil {
+			t.Fatal(err)
+		}
+		return lines, f.bodyFetches()
+	}
+
+	t.Run("attachment deleted, version unchanged", func(t *testing.T) {
+		f, client, db, cfg := prepare(t, "a1", "a2")
+		f.mu.Lock()
+		f.pages["1001"].Attachments = atts("a1")
+		f.mu.Unlock()
+		logs, bodies := reconcile(t, f, client, db, cfg)
+		if got := attRows(t, db, "a2"); got != 0 {
+			t.Fatalf("deleted attachment row survived the reconcile: %d rows for a2", got)
+		}
+		if got := attRows(t, db, "a1"); got != 1 {
+			t.Fatalf("kept attachment row = %d, want 1", got)
+		}
+		if !containsString(bodies, "1001") {
+			t.Errorf("reconcile fetched no body for 1001: %v", bodies)
+		}
+		if !containsString(logs, "confluence: reconcile scan refetch reasons attachments=1") {
+			t.Errorf("log lines have no attachments=1 reason:\n%s", strings.Join(logs, "\n"))
+		}
+	})
+
+	t.Run("attachment added, version unchanged", func(t *testing.T) {
+		f, client, db, cfg := prepare(t, "a1")
+		f.mu.Lock()
+		f.pages["1001"].Attachments = atts("a1", "a2")
+		f.mu.Unlock()
+		logs, _ := reconcile(t, f, client, db, cfg)
+		if got := attRows(t, db, "a2"); got != 1 {
+			t.Fatalf("new attachment row missing after the reconcile: %d rows for a2", got)
+		}
+		if !containsString(logs, "confluence: reconcile scan refetch reasons attachments=1") {
+			t.Errorf("log lines have no attachments=1 reason:\n%s", strings.Join(logs, "\n"))
+		}
+	})
+
+	t.Run("nothing changed fetches no body", func(t *testing.T) {
+		f, client, db, cfg := prepare(t, "a1", "a2")
+		logs, bodies := reconcile(t, f, client, db, cfg)
+		if containsString(bodies, "1001") {
+			t.Errorf("unchanged attachments still fetched 1001's body: %v", bodies)
+		}
+		if containsString(logs, "reconcile scan refetch reasons") {
+			t.Errorf("unexpected refetch reasons on an unchanged corpus:\n%s", strings.Join(logs, "\n"))
+		}
+	})
+
+	t.Run("truncated listing is not compared and says so", func(t *testing.T) {
+		f, client, db, cfg := prepare(t, "a1", "a2", "a3")
+		f.mu.Lock()
+		f.searchAttachLimit = 3 // size == limit: the expansion may be truncated.
+		f.mu.Unlock()
+		logs, bodies := reconcile(t, f, client, db, cfg)
+		if containsString(bodies, "1001") {
+			t.Errorf("a truncated listing must not fetch 1001's body: %v", bodies)
+		}
+		if !containsString(logs, "confluence: reconcile scan refetch reasons attachments-unchecked=1") {
+			t.Errorf("log lines have no attachments-unchecked=1 tally:\n%s", strings.Join(logs, "\n"))
+		}
+	})
+
+	t.Run("origin without the expansion changes nothing", func(t *testing.T) {
+		f, client, db, cfg := prepare(t, "a1", "a2")
+		f.mu.Lock()
+		f.pages["1001"].Attachments = atts("a1")
+		f.omitSearchChildren = true
+		f.mu.Unlock()
+		logs, bodies := reconcile(t, f, client, db, cfg)
+		if containsString(bodies, "1001") {
+			t.Errorf("an origin without children must not fetch 1001's body: %v", bodies)
+		}
+		if containsString(logs, "reconcile scan refetch reasons") {
+			t.Errorf("no tally on an origin without the expansion:\n%s", strings.Join(logs, "\n"))
+		}
+		// The documented gap: with nothing to compare, the stale row stays
+		// until a Full pass. Assert it so a silent "fix" of the degrade (say,
+		// fetching every page regardless) cannot pass this test unnoticed.
+		if got := attRows(t, db, "a2"); got != 1 {
+			t.Fatalf("a2 rows = %d, want the stale row kept (no expansion → no comparison)", got)
 		}
 	})
 }

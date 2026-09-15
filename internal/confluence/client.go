@@ -207,6 +207,10 @@ type Page struct {
 	Body    ContentBody `json:"body"`
 	// Metadata is present when expand includes metadata.labels (full Page fetch).
 	Metadata PageMetadata `json:"metadata"`
+	// Children is present when the search's expand asked for children.* —
+	// today only the sync pass's reconcile scan asks (children.attachment,
+	// GDK-1888). The zero value reads as "no expansion came back".
+	Children PageChildren `json:"children"`
 	// Ancestors, when expanded, lists the parent chain; the last entry is the direct parent.
 	Ancestors []struct {
 		ID string `json:"id"`
@@ -214,6 +218,29 @@ type Page struct {
 	Links struct {
 		WebUI string `json:"webui"`
 	} `json:"_links"`
+}
+
+// PageChildren is the expand=children.* object on a search hit. Only
+// children.attachment is decoded today: the reconcile scan compares the
+// listed attachment ids against the mirror without paying a per-page
+// listing. Attachment is nil when the response carried no expansion
+// (issuetap's wiki) — absent, not "no attachments" (GDK-1888).
+type PageChildren struct {
+	Attachment *ChildAttachments `json:"attachment"`
+}
+
+// ChildAttachments is one children.* expansion: the first results page only.
+// Size is the row count in Results (at most Limit); Size < Limit means the
+// list is complete, Size == Limit means it may be truncated — a caller
+// comparing ids must refuse the truncated shape (GDK-1888). Measured on a
+// real Cloud site: default limit 25.
+type ChildAttachments struct {
+	Results []struct {
+		ID string `json:"id"`
+	} `json:"results"`
+	Start int `json:"start"`
+	Limit int `json:"limit"`
+	Size  int `json:"size"`
 }
 
 // LabelNames returns label names from metadata.labels.results in API order.
@@ -336,8 +363,20 @@ func (c *Client) Space(ctx context.Context, key string) (Space, error) {
 // SearchPages runs a CQL search with expand=version,space and follows _links.next.
 // fn is called once per page of results (may be empty only on the final empty page).
 func (c *Client) SearchPages(ctx context.Context, cql string, fn func([]Page) error) error {
-	path := fmt.Sprintf("%s/content/search?cql=%s&limit=50&expand=version,space",
-		apiPath, url.QueryEscape(cql))
+	return c.SearchPagesExpand(ctx, cql, "version,space", fn)
+}
+
+// SearchPagesExpand is SearchPages with a caller-chosen expand list. The one
+// caller that needs more than the default is the sync pass's reconcile scan,
+// which adds children.attachment (GDK-1888): an attachment added or deleted
+// does not bump the page's version, so the hourly scan compares the listed
+// attachment ids against the mirror and refetches the body on a difference —
+// the incremental and full passes keep the default and carry no extra
+// payload. expand is an in-repo constant token list, not user input, so it
+// rides the query unescaped exactly the way the default always has.
+func (c *Client) SearchPagesExpand(ctx context.Context, cql, expand string, fn func([]Page) error) error {
+	path := fmt.Sprintf("%s/content/search?cql=%s&limit=50&expand=%s",
+		apiPath, url.QueryEscape(cql), expand)
 	for path != "" {
 		var page struct {
 			Results *[]Page `json:"results"`

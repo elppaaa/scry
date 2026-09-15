@@ -298,6 +298,15 @@ func runConfluencePass(ctx context.Context, c *confluence.Client, cfg *config.Co
 					// verified the mirror is current through it — and the page stays
 					// OUT of the gate's fetched set so the comments-only pass can
 					// still reach it if only a comment moved.
+					//
+					// The one no-fetch verdict that carries a reason is
+					// attachments-unchecked (GDK-1888): the hit's attachment
+					// expansion came back truncated at the search limit, so the
+					// scan could not compare it. It rides the same reasons tally
+					// as the fetch reasons so the gap is visible in the log.
+					if why != "" {
+						cp.reasons[why]++
+					}
 					res.PageSkips++
 					noteStamp(hit.Version.When, &cp.maxUTC, &cp.maxRaw)
 					noteStamp(hit.Version.When, &maxUTC, &maxRaw)
@@ -509,7 +518,8 @@ func runConfluencePass(ctx context.Context, c *confluence.Client, cfg *config.Co
 			// path. Documented gap, out of scope here: an incremental
 			// (CQL lastModified) pass cannot list an unbumped moved page at
 			// all — a Full or Reconcile pass is what catches it.
-			gate := &pageFetchGate{have: map[string]store.PageStamp{}, spaceOf: map[string]string{}, fetched: map[string]struct{}{}}
+			gate := &pageFetchGate{have: map[string]store.PageStamp{}, spaceOf: map[string]string{}, fetched: map[string]struct{}{},
+				attachments: map[string]map[string]bool{}}
 			gates := map[string]*pageFetchGate{}
 			for _, key := range chunk.keys {
 				seen[key] = map[string]bool{}
@@ -523,6 +533,16 @@ func runConfluencePass(ctx context.Context, c *confluence.Client, cfg *config.Co
 					gate.have[id] = st
 					gate.spaceOf[id] = key
 				}
+				// GDK-1888: the scan's attachment comparison base — the
+				// mirror's per-page attachment id set, one space at a time
+				// into the shared gate.
+				held, err := db.PageAttachmentIDs(ctx, ConfluenceSourceID, key)
+				if err != nil {
+					return err
+				}
+				for id, set := range held {
+					gate.attachments[id] = set
+				}
 			}
 			cp := newChunkPass(gates)
 			// listedSpace remembers the space each hit was listed under, so a
@@ -531,7 +551,13 @@ func runConfluencePass(ctx context.Context, c *confluence.Client, cfg *config.Co
 			// the listing that predates it.
 			listedSpace := map[string]string{}
 			cql := fmt.Sprintf(`%s AND type=page order by lastmodified asc`, cqlSpaceSet(chunk.keys))
-			if err := c.SearchPages(ctx, cql, func(hits []confluence.Page) error {
+			// The scan expands children.attachment so needsBody can compare the
+			// listed attachment ids against the mirror (GDK-1888): an attachment
+			// added or removed bumps no page version, so without this every
+			// stamp matches and the cache keeps a deleted attachment
+			// indefinitely. The expansion rides the scan only — the incremental
+			// and full passes keep the default payload.
+			if err := c.SearchPagesExpand(ctx, cql, "version,space,children.attachment", func(hits []confluence.Page) error {
 				for _, hit := range hits {
 					key := hit.Space.Key
 					if key == "" && len(chunk.keys) == 1 {
@@ -559,7 +585,10 @@ func runConfluencePass(ctx context.Context, c *confluence.Client, cfg *config.Co
 				// The scan's own tally, same shape as syncChunk's: space= is a
 				// move between scoped spaces, new= a page no scanned space had
 				// ever held, version/stamp= a change the incremental pass had
-				// not yet seen.
+				// not yet seen, attachments= an attachment set the mirror holds
+				// differently — an add or delete that bumped no version
+				// (GDK-1888) — and attachments-unchecked= a listing truncated
+				// at the search limit, where no comparison was possible.
 				opts.logf("confluence: reconcile scan refetch reasons %s", formatReasons(cp.reasons))
 			}
 			for key, ids := range seen {
@@ -1050,6 +1079,17 @@ type pageFetchGate struct {
 	// body for. The comments-only pass consults it so a page touched by both
 	// passes costs one GET, not two.
 	fetched map[string]struct{}
+	// attachments is the mirror's per-page attachment id set (page external
+	// id → attachment external ids), loaded per space by the reconcile scan
+	// only — nil on every other gate, which keeps the attachment question out
+	// of the incremental and full passes. With it, needsBody can compare a
+	// hit's children.attachment expansion against the mirror: an attachment
+	// added or removed bumps no page version, so every stamp check passes and
+	// the cache would keep a deleted attachment (and miss a new one)
+	// indefinitely (GDK-1888). Every mirrored page of the covered spaces has
+	// an entry (empty set = no attachments); a page missing here is one the
+	// mirror does not hold — "new" above has already answered it.
+	attachments map[string]map[string]bool
 }
 
 // newPageFetchGate loads one space's mirrored stamps. backfill returns a nil
@@ -1086,10 +1126,16 @@ func (g *pageFetchGate) commentCurrent(hit confluence.Page) bool {
 // hit's version number *and* the hit's lastModified, in the space the hit
 // claims (a gate covering several spaces also knows which one it files the id
 // under): a number alone can be reused after a restore, a stamp alone is
-// minute-coarse in CQL, and a space move bumps neither. Anything missing, zero
+// minute-coarse in CQL, and a space move bumps neither. When the gate carries
+// an attachment comparison base (the reconcile scan) and the hit carries the
+// children.attachment expansion, a set difference in either direction also
+// says fetch — attachments bump no version (GDK-1888). Anything missing, zero
 // or different is fetched — the mirror is a disposable cache, so the safe
 // answer is always "fetch". The reason is a log tally: a page that is re-read
-// on every unchanged tick names its own cause in the sync output.
+// on every unchanged tick names its own cause in the sync output. One no-fetch
+// verdict still carries a reason: attachments-unchecked, a hit whose expansion
+// came back truncated at the search limit so no comparison was possible — the
+// caller tallies it so the gap rides the log instead of aging silently.
 func (g *pageFetchGate) needsBody(hit confluence.Page) (bool, string) {
 	if g == nil {
 		return true, "" // backfill: every body, not a gate decision
@@ -1129,7 +1175,47 @@ func (g *pageFetchGate) needsBody(hit confluence.Page) (bool, string) {
 	if st.UpdatedAt != jira.ISOTime(hit.Version.When) {
 		return true, "stamp"
 	}
+	// GDK-1888: every stamp matches, but attachments do not bump the page
+	// version — the last word belongs to the hit's own attachment listing,
+	// which only the reconcile scan's expansion carries (attachments is nil
+	// on every other gate, and a hit with no expansion — issuetap — changes
+	// nothing). A complete listing (size < limit) is compared as a set, both
+	// directions: an origin add the cache misses and a cache row the origin
+	// dropped both fetch. A truncated listing (size >= limit) proves neither
+	// direction, so it does not fetch — the caller tallies it as
+	// attachments-unchecked instead.
+	if g.attachments != nil && hit.Children.Attachment != nil {
+		ca := hit.Children.Attachment
+		if ca.Size >= ca.Limit {
+			return false, "attachments-unchecked"
+		}
+		listed := make(map[string]bool, len(ca.Results))
+		for _, r := range ca.Results {
+			if r.ID != "" {
+				listed[r.ID] = true
+			}
+		}
+		if !sameIDSet(listed, g.attachments[hit.ID]) {
+			return true, "attachments"
+		}
+	}
 	return false, ""
+}
+
+// sameIDSet reports whether two id sets hold exactly the same members — the
+// set compare behind the reconcile scan's attachments check (GDK-1888). A
+// nil set reads as the empty set, so a page the mirror holds with no
+// attachments compares equal to an empty origin listing.
+func sameIDSet(a, b map[string]bool) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for id := range a {
+		if !b[id] {
+			return false
+		}
+	}
+	return true
 }
 
 // markFetched records that this pass pulled (or tried to pull) id's body.

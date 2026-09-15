@@ -8,6 +8,43 @@ import (
 	"testing"
 )
 
+// TestPageAttachmentIDs is the GDK-1888 read gate for the reconcile scan's
+// comparison base: one space's mirrored pages → their attachment external-id
+// sets. Every mirrored page of the space has an entry (an empty set is "no
+// attachments", not absence — that is what makes a deleted-everything page
+// comparable); a row without an external id stays outside the sets because no
+// origin id can ever match it; and a foreign space sees nothing.
+func TestPageAttachmentIDs(t *testing.T) {
+	db := pageAttFixture(t) // page 77: att-a (external id) + att-b (none); page 88: none — space ENG
+	got, err := db.PageAttachmentIDs(context.Background(), "confluence", "ENG")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("pages = %v, want exactly 77 and 88", got)
+	}
+	if len(got["77"]) != 1 || !got["77"]["att-a"] {
+		t.Errorf("page 77 set = %v, want exactly att-a (att-b carries no external id)", got["77"])
+	}
+	if got["88"] == nil || len(got["88"]) != 0 {
+		t.Errorf("page 88 set = %v, want a present empty set (mirrored, no attachments)", got["88"])
+	}
+	other, err := db.PageAttachmentIDs(context.Background(), "confluence", "XXS")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(other) != 0 {
+		t.Errorf("foreign space rows = %v, want none", other)
+	}
+	// Degenerate args answer empty, not error — same contract as PageStamps.
+	if m, err := db.PageAttachmentIDs(context.Background(), "", "ENG"); err != nil || len(m) != 0 {
+		t.Errorf("empty source = %v %v, want an empty map", m, err)
+	}
+	if m, err := db.PageAttachmentIDs(context.Background(), "confluence", ""); err != nil || len(m) != 0 {
+		t.Errorf("empty space = %v %v, want an empty map", m, err)
+	}
+}
+
 // TestSprintsCarryTheGoal — the goal has been stored since sprints became
 // rows, and every read surface dropped it (GDK-1695). FAIL-first is the CLI
 // column, but the reader has to hand it over first.

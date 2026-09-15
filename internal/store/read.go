@@ -1090,6 +1090,49 @@ func (db *DB) PageCommentStamps(ctx context.Context, sourceID, spaceKey string) 
 	return out, err
 }
 
+// PageAttachmentIDs returns every mirrored page's attachment external ids in
+// one space, keyed by the page's source id (items.external_id → set of
+// attachments.external_id). It is the reconcile scan's comparison base for
+// the search-side children.attachment expansion (GDK-1888): adding or
+// deleting an attachment bumps no page version, so the id set is the only
+// thing that can disagree. Every mirrored page of the space has an entry —
+// an empty set is "no attachments", not absence, which is what makes a page
+// whose attachments were all deleted comparable. Absence means the page is
+// not mirrored (the stamp gate has already answered "fetch" for it). A row
+// without an external id stays out of the sets: no origin id can ever match
+// it, and the fetch the difference triggers rewrites the row with one.
+func (db *DB) PageAttachmentIDs(ctx context.Context, sourceID, spaceKey string) (map[string]map[string]bool, error) {
+	out := map[string]map[string]bool{}
+	if sourceID == "" || spaceKey == "" {
+		return out, nil
+	}
+	err := each(ctx, db.sql, `
+			SELECT COALESCE(it.external_id, ''), COALESCE(a.external_id, '')
+		FROM pages p
+		JOIN items it ON it.id = p.item_id
+		LEFT JOIN attachments a ON a.item_id = p.item_id
+		WHERE it.source_id = ? AND it.kind = 'page' AND p.space_key = ?`,
+		func(rows *sql.Rows) error {
+			var pageID, attID string
+			if err := rows.Scan(&pageID, &attID); err != nil {
+				return err
+			}
+			if pageID == "" {
+				return nil
+			}
+			set, ok := out[pageID]
+			if !ok {
+				set = map[string]bool{}
+				out[pageID] = set
+			}
+			if attID != "" {
+				set[attID] = true
+			}
+			return nil
+		}, sourceID, spaceKey)
+	return out, err
+}
+
 // PageLites returns every mirrored page, ordered by space then title.
 func (db *DB) PageLites(ctx context.Context) ([]PageLite, error) {
 	out := []PageLite{}
