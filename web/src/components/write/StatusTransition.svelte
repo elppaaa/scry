@@ -4,6 +4,11 @@
    *  - Idle looks like the status chip; hover shows edit affordance (chevron).
    *  - Click → render from write.transitionsFor(issue) local map at 0ms; else GET
    *    <key>/transitions/ fallback.
+   *  - Items are keyed on the TARGET STATUS (t.to_status), matching Jira's own
+   *    menu: a transition named "완료" that lands on "진행 중" reads "진행 중",
+   *    never the workflow's transition label. A transition whose target is the
+   *    current status (a self-loop edge some workflows carry) is hidden — Jira's
+   *    UI hides it too, and firing it only re-posts the same state.
    *  - Sort (quiet suggestions): ① recent transitions (per project) ② workflow forward
    *    (new→inprogress→done) ③ rest. Focus first item → Enter runs immediately.
    *  - On pick: required fields → inline form; else write.transition() optimistic.
@@ -64,17 +69,30 @@
     return c === 'new' ? 0 : c === 'done' ? 2 : 1
   }
 
-  /** Sorted transitions (local first → fallback). */
+  /**
+   * Sorted transitions (local first → fallback). One row per TARGET STATUS,
+   * matching Jira's own menu: a transition named "완료" that lands on
+   * "진행 중" reads "진행 중", never the workflow's transition label.
+   * Self-loop edges (target === current status, compared by stable id) drop
+   * out — Jira hides them too, and firing one only re-posts the same state.
+   */
   const sorted = $derived.by<Transition[]>(() => {
     const base = remote ?? write.transitionsFor(issue) ?? []
     if (base.length === 0) return []
+    const curId = issue.status_id ?? ''
+    const byTarget = new Map<string, Transition>()
+    for (const t of base) {
+      if (t.to_id && t.to_id === curId) continue
+      const k = t.to_id || t.to_status
+      if (!byTarget.has(k)) byTarget.set(k, t)
+    }
     const proj = write.projectOf(issue)
     const recent = recentOf(`transition:${proj}`)
     const recIdx = (id: string) => {
       const i = recent.indexOf(id)
       return i === -1 ? Infinity : i
     }
-    return [...base].sort((a, b) => {
+    return [...byTarget.values()].sort((a, b) => {
       const ra = recIdx(a.id)
       const rb = recIdx(b.id)
       if (ra !== rb) return ra - rb // ① recent
@@ -370,11 +388,9 @@
             class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-body text-text-secondary transition-colors hover:bg-bg-hover hover:text-text-primary focus:bg-bg-hover focus:text-text-primary focus:outline-none disabled:opacity-50"
           >
             <span class="h-1.5 w-1.5 flex-none rounded-full {catDot(t.to_category)}"></span>
-            <span class="min-w-0 flex-1 truncate">{t.name}</span>
+            <span class="min-w-0 flex-1 truncate">{t.to_status}</span>
             {#if busyId === t.id}
               <span class="flex-none text-micro text-text-muted">…</span>
-            {:else if t.to_status && t.to_status !== t.name}
-              <span class="flex-none text-micro text-text-muted">→ {t.to_status}</span>
             {/if}
             {#if effectiveCategory(t.to_category) === 'inprogress' && wipCount > 0}
               <span
