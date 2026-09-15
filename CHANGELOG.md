@@ -4,97 +4,54 @@
 
 ## Unreleased
 
-**The phone drops its tab bar; the column has one owner.** The bottom bar —
-Issues, Search, Terminal, Pairing — is gone, and the rows it covered are
-back. The list heading is where the owner changes: tap it and the palette
-opens in place of the list — recent issues, the built-in views, your saved
-views, Jira filters, spaces, and the terminal once one is paired — and typing
-in it searches issues and pages, so Search is no longer a screen of its own.
-Settings sits behind a gear in the heading, with the offline mark on it; the
-shell takes the whole screen and leaves by its own back control, and its
-font size is the first terminal option in Settings — four sizes, kept on
-the phone ([GDK-901]). Everything
-the cache has — every view, filter, space, shell — is one tap from the
-heading, the same model the desk uses ([GDK-902]).
+**The phone drops its tab bar; the column has one owner.** The bottom bar is
+gone. Tap the list heading and the palette opens in its place — recent issues,
+built-in and saved views, Jira filters, spaces, and the terminal once one is
+paired — and typing in it searches issues and pages, so Search is no longer a
+screen. Settings sits behind a gear in the heading; the shell takes the whole
+screen and leaves by its own back control, and its font size is a Settings
+option, four sizes kept on the phone ([GDK-901], [GDK-902]). What you were
+typing survives: a comment, title or description is saved on the device as you
+type, restored into the same composer after a relaunch or a token refresh, and
+forgotten only once the write has landed ([GDK-1863]). Under the heading, an
+active sprint is one line — name, done over total, days left, the goal
+beneath — and tapping it scopes the list to that sprint; the phone reads the
+sprint, the desk runs it ([GDK-1867]).
 
-The phone also keeps what you typed and says where the sprint stands. A
-comment, a title or a description you were typing in the phone app now
-survives leaving the issue, switching apps, a token refresh and a relaunch:
-the draft is saved on the device as you type, restored into the same composer
-with a one-line note, and forgotten only once the write has landed
-([GDK-1863]). Under the Issues heading, an origin with an active sprint now
-shows one line — the sprint's name, done over total with the percentage, and
-the days left, with the goal beneath — and tapping it scopes the list to that
-sprint, grouped new → in progress → done. There is no board to drag; the phone
-reads the sprint, the desk runs it ([GDK-1867]). The bundled sample workspace
-was regenerated so it carries the fields the phone has read since 0.21. A
-screen-by-screen read of the phone's captures fixed what a first look sees:
-the Send and Save buttons now actually turn to the accent when armed, the
-meta line no longer strands its separator at a line break, the status word in
-the header is data rather than a second button, the activity strip says which
-field moved instead of "Field change", and the pairing tab names the host
-once ([GDK-1869]).
+Whatever the cache holds, the phone shows, and what is one line to say, the
+phone writes. The detail has a Fields section — labels, components, fix
+versions, parent, epic and every custom field under the site's own names —
+which the phone had been receiving since 0.1 and never drawing ([GDK-1870]),
+and an Attachments section, images three across and full screen on tap
+([GDK-1882]). From an epic, **+** files a child; the Labels row toggles the
+workspace's own labels; the due date opens the phone's date wheel — each one
+write, and a refused one keeps what you chose ([GDK-1871]). A photo goes with a
+comment, on an issue or a wiki page, and on a new issue the create sheet holds
+the picture until the issue has a key ([GDK-1872], [GDK-1873], [GDK-1879]).
+What stays on the desk — editing a page or a custom field, authoring a view,
+laying out a dashboard, moving cards — says so in one dimmed line where you
+would look for it ([GDK-1874]).
 
-Whatever the cache holds, the phone shows. The issue detail now has a
-Fields section listing labels, components, fix versions, parent and epic, and
-every custom field the site configured, under the site's own field names — the
-same rows the desk shows, which the phone had been receiving since 0.1 and
-never drawing. Empty fields draw no row; the parent and epic rows open that
-issue ([GDK-1870]). A wiki page
-takes a comment from the phone: the page detail carries the same composer
-the issue detail has, with the same saved draft, and posts the comment to
-the origin. Editing a page stays on the desk, where a rich-text page cannot
-lose its formatting ([GDK-1873]). What is one line to say, the
-phone writes: from an epic, a **+** in the title row files a child under
-it; the Labels row opens the workspace's own labels to toggle, with a line
-to type a new one; the due date in the header opens the phone's date
-wheel. Each is one write, and a refused one keeps what you chose
-([GDK-1871]). And a photo goes with the comment: the paperclip in the
-composer opens the phone's own camera or library, the picture uploads as you
-pick it, and it lands inside the comment ([GDK-1872]) — and on a new issue too:
-the create sheet takes the picture before the issue has a key, files the
-issue, then uploads, and a refused upload never loses the issue it was for
-([GDK-1879]). And a picture nobody embedded is no longer invisible: the
-detail now has an Attachments section — every file the issue carries, images
-as a three-across strip that opens full screen, the rest as a filename line
-([GDK-1882]). And what stays on the
-desk says so where you look for it: editing a page, editing a custom field,
-authoring a view, laying out a dashboard and moving cards on the board each
-have one dimmed line on the phone, at the spot where you would look for them,
-saying they are done on the desktop — no more finding out by searching
-([GDK-1874]).
-
-**A page deleted on Confluence leaves the cache.** Until now a wiki page
-removed at the origin stayed in the local cache for as long as its space did,
-because only a space leaving scope was ever pruned. A full wiki sync now
-compares each space's complete page listing with what the cache holds, and
-the hourly reconcile does the same by page id, reading a body only where the
-listing and the cache disagree; a page missing from the listing is confirmed
-against the origin before it goes, and a row refreshed in the meantime is left
-alone ([GDK-1884]; #104, thanks @wafe). A page moved between two synced spaces
-now follows to its new space on the hourly reconcile, not only on a full
-sync — before, the reconcile left it filed under the old one ([GDK-1886]). Linear gets what the Jira and
-wiki paths already had: an issue deleted at the origin leaves the cache the
-next time gadak re-reads it, instead of surviving there ([GDK-1889]). And a
-Confluence site that reports attachment sizes as numbers rather than strings
-no longer stops the wiki sync at the first listing ([GDK-1900]). A page the
-hourly reconcile cannot confirm no longer fails the whole pass every hour:
-that one page stays, and the rest of the pass finishes ([GDK-1887]). An
-attachment or a comment added to or removed from a page reaches the cache on
-the hourly reconcile even when the page itself was not edited; the first
-reconcile after upgrading re-reads each page that has comments once, and a
-deleted reply still stays for now ([GDK-1888]).
+**A page deleted on Confluence leaves the cache.** A wiki page removed at the
+origin used to stay in the local cache for as long as its space did. A full
+wiki sync now compares each space's page listing with the cache, and the hourly
+reconcile does the same by page id, reading a body only where the two disagree;
+a page missing from the listing is confirmed against the origin before it goes
+([GDK-1884]; #104, thanks @wafe). A page moved between two synced spaces
+follows on the reconcile, not only on a full sync ([GDK-1886]); an attachment
+or comment added to a page reaches the cache on the reconcile even when the
+page itself was not edited ([GDK-1888]); and Linear gets the same rule — an
+issue deleted at the origin leaves the cache the next time gadak re-reads it
+([GDK-1889]).
 
 **An agent's page renders on the issue.** Attach an HTML file to an issue and
 the detail shows it as an artifact: the page runs in a sandboxed frame — no
-network, no access to gadak's own origin — with the issue it belongs to
-pushed in as data, the same contract dashboards already run under, so an
-agent that can write a dashboard can write a page for one issue. Expand it,
-or download the file; on Jira and Linear the same attachment is just a file,
-which is the point — nothing new has to live in the body. The phone lists
-the same attachment as a row that says it renders on the desk ([GDK-1897]).
-A dashboard opened outside the app, its URL pasted into a tab, is held the
-same way and still cannot reach gadak's own storage ([GDK-1898]).
+network, no access to gadak's own origin — with its issue pushed in as data,
+the same contract dashboards run under, so an agent that can write a dashboard
+can write a page for one issue. On Jira and Linear the same attachment is just
+a file, which is the point; the phone lists it as a row that says it renders on
+the desk ([GDK-1897]). A dashboard opened from a pasted URL is held the same
+way ([GDK-1898]).
 
 ## v0.22.1 — 2026-09-14
 
@@ -1697,7 +1654,6 @@ priority sorting keyed on `priority_rank`.
 [GDK-1860]: https://gadak.dev/backlog/#/?ks=GDK-1860
 [GDK-1863]: https://gadak.dev/backlog/#/?ks=GDK-1863
 [GDK-1867]: https://gadak.dev/backlog/#/?ks=GDK-1867
-[GDK-1869]: https://gadak.dev/backlog/#/?ks=GDK-1869
 [GDK-1870]: https://gadak.dev/backlog/#/?ks=GDK-1870
 [GDK-1871]: https://gadak.dev/backlog/#/?ks=GDK-1871
 [GDK-1872]: https://gadak.dev/backlog/#/?ks=GDK-1872
@@ -1707,9 +1663,7 @@ priority sorting keyed on `priority_rank`.
 [GDK-1882]: https://gadak.dev/backlog/#/?ks=GDK-1882
 [GDK-1884]: https://gadak.dev/backlog/#/?ks=GDK-1884
 [GDK-1886]: https://gadak.dev/backlog/#/?ks=GDK-1886
-[GDK-1887]: https://gadak.dev/backlog/#/?ks=GDK-1887
 [GDK-1888]: https://gadak.dev/backlog/#/?ks=GDK-1888
 [GDK-1889]: https://gadak.dev/backlog/#/?ks=GDK-1889
 [GDK-1897]: https://gadak.dev/backlog/#/?ks=GDK-1897
 [GDK-1898]: https://gadak.dev/backlog/#/?ks=GDK-1898
-[GDK-1900]: https://gadak.dev/backlog/#/?ks=GDK-1900
