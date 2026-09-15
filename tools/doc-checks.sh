@@ -3292,9 +3292,9 @@ ok "the release footer makes no update-check claim"
 # the summary so the exemption stays visible.
 # FAIL-first that day against the pre-baseline tree: nine
 # `cmd/gadak/agent.go:NNNN` footnotes in SUPPORT_MATRIX.md — agent.go was
-# split (GDK-1771) and the file no longer exists. Those nine are pinned in
-# KNOWN_STALE below with that attribution; the footnote rewrite itself is
-# the SUPPORT_MATRIX round's job (out of this round's file boundary).
+# split (GDK-1771) and the file no longer exists. Those nine were pinned in
+# KNOWN_STALE with that attribution until the F10 round rewrote the
+# footnotes (2026-09-15); the baseline is empty again.
 # An entry in KNOWN_STALE that no longer matches anything FAILS — an
 # exemption list that only grows is how a guard rots into decoration.
 python3 - "$FILE_CENSUS" <<'PY60' || fail "a docs/ path:line citation does not resolve"
@@ -3318,19 +3318,7 @@ with open(sys.argv[1], encoding="utf-8") as fh:
         if name:
             basenames.setdefault(name, []).append(row.rstrip("\n"))
 
-KNOWN_STALE = {
-    "docs/SUPPORT_MATRIX.md": {
-        "cmd/gadak/agent.go:1167",
-        "cmd/gadak/agent.go:1336",
-        "cmd/gadak/agent.go:2048",
-        "cmd/gadak/agent.go:2394",
-        "cmd/gadak/agent.go:2539",
-        "cmd/gadak/agent.go:2556",
-        "cmd/gadak/agent.go:2746",
-        "cmd/gadak/agent.go:2761",
-        "cmd/gadak/agent.go:2779",
-    },
-}
+KNOWN_STALE = {}
 
 fails, warns, stale_hit = [], [], set()
 skipped_hist = skipped_issuetap = 0
