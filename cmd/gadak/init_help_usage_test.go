@@ -36,7 +36,8 @@ import (
 // carries no row for. A flag joining this table needs a reason the way
 // server's does — and that reason cannot be "nobody noticed".
 var initHelpUnlistedFlags = map[string]string{
-	"server": "shipped unlisted with GDK-1635; adding a row changes `gadak help init` output, which is its own change, not a drift fix",
+	// server joined the list the commit after this gate landed (GDK-1922);
+	// the table is empty on purpose and stays as the place a reason goes.
 }
 
 func TestInitHelpOptionsMatchFlagSetUsage(t *testing.T) {

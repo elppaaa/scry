@@ -102,8 +102,16 @@ func TestLocalClassTablesAreNamedQualified(t *testing.T) {
 			return err
 		}
 		if d.IsDir() {
+			// Same skip list as internal/archlint: every dot-prefixed
+			// directory (.git, .claude agent worktrees — whole stale copies
+			// of the tree that made this gate red locally on 2026-09-16
+			// while CI, which has none, was green), plus the build,
+			// dependency and scratch trees.
+			if strings.HasPrefix(d.Name(), ".") && path != root {
+				return filepath.SkipDir
+			}
 			switch d.Name() {
-			case ".git", "node_modules", "dist", "test-results", "scratch", "artifacts":
+			case "node_modules", "dist", "test-results", "scratch", "artifacts":
 				return filepath.SkipDir
 			}
 			return nil

@@ -99,6 +99,7 @@ const (
 	initUsagePairingCode      = "pairing offer from the home machine's `gadak pairing mint`"
 	initUsagePairingCodeStdin = "read the pairing offer from stdin"
 	initUsageJSON             = "emit one JSON object on success"
+	initUsageServer           = "the site is Jira Server / Data Center: authenticate with a Personal Access Token, no email"
 )
 
 // renderReplaceRefusedJSON writes the --json document for a refused
@@ -197,7 +198,7 @@ func cmdInit(args []string) error {
 	// Jira it was talking to is the "quietly points at another tracker" class
 	// of defect. init still verifies the choice against serverInfo and refuses
 	// a mismatch.
-	serverFlag := fs.Bool("server", false, "the site is Jira Server / Data Center: authenticate with a Personal Access Token, no email")
+	serverFlag := fs.Bool("server", false, initUsageServer)
 	jsonOut := fs.Bool("json", false, initUsageJSON)
 	// The origin is the built-in tracker, running in this process — the
 	// transport axis's local (GDK-1278).

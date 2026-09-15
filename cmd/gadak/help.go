@@ -98,6 +98,7 @@ var helps = map[string]cmdHelp{
 			{name: "local", desc: initUsageLocal},
 			{name: "replace-local", desc: replaceBuiltInUsage},
 			{name: "site", desc: initUsageSite + "; env GADAK_SITE"},
+			{name: "server", desc: initUsageServer},
 			{name: "email", desc: initUsageEmail + "; env GADAK_EMAIL"},
 			{name: "projects", desc: initUsageProjects + "; env GADAK_PROJECTS"},
 			{name: "spaces", desc: spacesFlagUsage + `; omit to leave unchanged`},
