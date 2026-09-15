@@ -3,7 +3,9 @@
   import { type BarKey, type StickySlots } from '../lib/terminal/keys'
 
   // Strip above the keyboard (DESIGN.md §10.3). Every control is a 44pt
-  // target (`--spacing-control`). Ctrl/Alt show idle / armed / locked as
+  // target (`--spacing-control`). Since the tab bar went (GDK-902) this is
+  // also the bottom-most painted surface of the column whenever the keyboard
+  // is down, so it takes app.css's bottom-inset rule — see the markup note. Ctrl/Alt show idle / armed / locked as
   // three states, separated by FILL first and a shape second (GDK-951):
   // armed is a tint under an accent ring, locked is a solid accent pill with
   // an inverted glyph. Colour alone was a defect in an earlier review cycle;
@@ -61,7 +63,11 @@
   }
 </script>
 
-<div class="bar" use:keyboardInset data-testid="key-bar">
+<!-- `key-bar` is not styled here: it is the hook app.css uses to give this
+     bar the bottom inset every bottom-most painted surface owes
+     (`.safe-bottom, .sheet, .key-bar:not([data-keyboard-inset])`). The
+     number has one owner and it is that rule, not this file. -->
+<div class="bar key-bar" use:keyboardInset data-testid="key-bar">
   {#each KEYS as item (item.key)}
     {@const slot = slotOf(item.key)}
     <button

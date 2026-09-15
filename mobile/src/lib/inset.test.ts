@@ -43,8 +43,54 @@ describe('app.css composes the same floor the function owns', () => {
     // would otherwise only show as a control under the home indicator.
     const css = readFileSync(join(srcDir, 'app.css'), 'utf8')
     const formula = new RegExp(
-      `\\.safe-bottom,\\s*\\.sheet\\s*\\{[\\s\\S]*?padding-bottom:\\s*max\\(var\\(--safe-bottom\\),\\s*${SHEET_INSET_FLOOR_PX}px\\)`,
+      `\\.safe-bottom,\\s*\\.sheet,\\s*\\.key-bar:not\\(\\[data-keyboard-inset\\]\\)\\s*\\{[\\s\\S]*?padding-bottom:\\s*max\\(var\\(--safe-bottom\\),\\s*${SHEET_INSET_FLOOR_PX}px\\)`,
     )
     expect(css).toMatch(formula)
+  })
+})
+
+/*
+ * GDK-902 2026-09-15 — the key bar joined that selector list, and why it is
+ * a third selector rather than a second copy of the number.
+ *
+ * The tab bar used to stand between the key bar and the home indicator, so
+ * the bar owed nothing; it was the precedent app.css cited for "KeyBar never
+ * composes .safe-bottom". With no tab bar (DESIGN.md §2) the bar is the
+ * bottom-most painted surface of the column while the keyboard is down, and
+ * a bottom-most surface owes the inset — the same sentence the .sheet rule
+ * was widened by. FAIL-first, measured 2026-09-15 by the shell e2e on the
+ * built bundle: padding-bottom 0px, --safe-bottom 0px, expected 12.
+ *
+ * The `:not([data-keyboard-inset])` half is the other direction of the same
+ * defect. While the keyboard is up the bar rides `keyboardInset`'s
+ * translate, so the inset below it is no longer the home indicator but a
+ * dead strip between the keys and the keyboard's top edge — the exact thing
+ * `.composer.safe-bottom:focus-within` exists to remove. The action is the
+ * only honest witness of "the keyboard is up" (`:focus-within` is false on
+ * the bar — the focus lives in the sibling IME field, and it would also be
+ * false under a hardware keyboard, when the bar DOES sit on the home
+ * indicator), so the action stamps the attribute and CSS reads it.
+ */
+describe('the key bar is a bottom-most surface (GDK-902)', () => {
+  it('KeyBar carries the class the rule names, and does not restate the number', () => {
+    const bar = readFileSync(join(srcDir, 'ui/KeyBar.svelte'), 'utf8')
+    expect(bar).toMatch(/class="bar key-bar"/)
+    expect(bar).toContain('use:keyboardInset')
+    // The floor has one owner. A literal `12px` here would be the second.
+    expect(bar).not.toMatch(/padding-bottom:\s*max\(/)
+  })
+
+  it('keyboardInset stamps the attribute the rule switches on, and clears it', () => {
+    const kb = readFileSync(join(srcDir, 'lib/keyboard.ts'), 'utf8')
+    expect(kb).toContain('keyboardInset')
+    expect(kb).toMatch(/dataset\.keyboardInset/)
+    // Both edges: set while the band exists, removed when it closes and on
+    // destroy — a stuck attribute is a bar that never pays the inset again.
+    expect(kb.match(/dataset\.keyboardInset/g)?.length ?? 0).toBeGreaterThanOrEqual(2)
+  })
+
+  it('app.css zeroes nothing by hand — the rule simply stops matching', () => {
+    const css = readFileSync(join(srcDir, 'app.css'), 'utf8')
+    expect(css).not.toMatch(/\.key-bar\[data-keyboard-inset\]\s*\{[^}]*padding-bottom:\s*0/)
   })
 })

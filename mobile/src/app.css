@@ -124,7 +124,8 @@ body {
   padding-top: var(--safe-top);
 }
 .safe-bottom,
-.sheet {
+.sheet,
+.key-bar:not([data-keyboard-inset]) {
   /* GDK-902, 2026-09-15 — the selector widened from `.detail-layer .sheet`
      to every `.sheet`, and the reason is that the old one was never about
      the layer.
@@ -139,18 +140,31 @@ body {
      inset. There is no longer a place a sheet can be moved to where this
      is wrong.
 
-     FAIL-first (this file with the old selector, measured 2026-09-15 by
-     mobile/e2e/palette.spec.ts): create sheet padding-bottom 0px,
-     expected 12. */
+     GDK-902 R3, 2026-09-15 — and the key bar for the same sentence. It
+     was the file's own counter-example ("KeyBar never composes this")
+     precisely because a 65px tab bar stood between it and the home
+     indicator; with the bar gone it is the bottom-most surface of the
+     column whenever the keyboard is down. `:not([data-keyboard-inset])` is
+     the other half: lib/keyboard.ts stamps that attribute while the
+     VisualViewport reports a band, and a node translated above the keyboard
+     is not bottom-most — the padding would be the same dead strip the
+     `.composer` rule below removes. No zeroing rule is needed; the selector
+     simply stops matching.
+
+     FAIL-first (this file with the old selector): create sheet
+     padding-bottom 0px, expected 12 (mobile/e2e/palette.spec.ts); key bar
+     padding-bottom 0px, safe-bottom 0px, expected 12
+     (mobile/e2e/shell.spec.ts, measured 2026-09-15 on the built bundle). */
   padding-bottom: max(var(--safe-bottom), 12px);
 }
 /*
   Composer (Detail.svelte) composes .safe-bottom and also rides
   keyboardInset. While a field inside is focused the keys cover the
   home indicator, so that padding is a dead strip between Send and the
-  keyboard. TabBar is not a .composer. KeyBar.svelte never composes
-  this class (the precedent). The cleaner fix is dropping the class
-  from the composer; this rule covers the class until that lands.
+  keyboard. KeyBar.svelte still never composes this class — it takes the
+  inset through the rule above, which withdraws it by the action's own
+  attribute rather than by focus (GDK-902 R3). The cleaner fix for the
+  composer is dropping the class; this rule covers it until that lands.
 */
 .composer.safe-bottom:focus-within {
   /* Not 0: the button then sits on the keyboard's edge (2026-09-14 vision

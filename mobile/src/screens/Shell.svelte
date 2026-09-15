@@ -975,8 +975,12 @@
       <h1 class="type-subject">{heading}</h1>
       <!-- The way into the roster, and the only place the pane says which
            shell it is showing. Absent until a list has come back, so it
-           never claims "1" before it has asked. -->
-      {#if rosterLoaded}
+           never claims "1" before it has asked — and absent when it has
+           nothing to say: an ended session leaves the roster, so its label
+           goes with it, and a chip with no text is a coloured block beside
+           the title (vision verdict, GDK-902 R3 2026-09-15). The ended pane
+           itself says what a tap does. -->
+      {#if rosterLoaded && (currentLabel || currentIssue || roster.length > 1)}
         <button
           type="button"
           class="sessions"

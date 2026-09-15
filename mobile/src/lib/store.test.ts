@@ -21,17 +21,23 @@ import { SCOPE_MY_WORK } from './domain'
 import {
   app,
   boot,
+  closeTop,
+  hasBackTarget,
   issuesBootKind,
   openIssue,
+  openPalette,
+  openSettings,
   pair,
   recordVisit,
   removeRosterHost,
   resetVisitDebounce,
   searchPaint,
+  setOwner,
   showOfflineBanner,
   switchHost,
   sync,
   unpair,
+  unpairTerminal,
 } from './store.svelte'
 
 const mem = new Map<string, string>()
@@ -898,5 +904,77 @@ describe('recently viewed — the idle plate’s ledger (GDK-875)', () => {
     expect(app.recentVisits[0]?.viewed_at).toBeTruthy()
     // The fold is synchronous — the POST is the fire-and-forget half.
     expect(vi.mocked(request).mock.calls.filter((c) => c[0] === 'issues/history/visits/')).toHaveLength(1)
+  })
+})
+
+/*
+ * GDK-902 2026-09-15 — system back while the shell owns the column.
+ *
+ * DESIGN.md §2's entry/exit table gives the shell one exit ("← back in its
+ * header → the last scope") and gives the *list* the root's no-exit. Back was
+ * a no-op from the shell because closeTop only knew the three surfaces that
+ * stack above the column — detail, the settings layer, the palette — and the
+ * shell is not above it, it IS it. The same table also says system back is
+ * "the same edge" as the visible control, and the visible control here is the
+ * header's back. So the owner is the last back target, after the three.
+ */
+describe('back from the shell owner (GDK-902)', () => {
+  it('owner=shell is a back target — the shell is not the root', () => {
+    setOwner('shell')
+    expect(hasBackTarget()).toBe(true)
+  })
+
+  it('closeTop returns the column to the list, and the mount latch survives', () => {
+    setOwner('shell')
+    expect(app.shellEntered).toBe(true)
+    closeTop()
+    expect(app.owner).toBe('list')
+    // The pane stays mounted (App.svelte reads the latch), so the PTY is not
+    // torn down by a back gesture — leaving is not unpairing.
+    expect(app.shellEntered).toBe(true)
+  })
+
+  it('the owner is the LAST target: detail, then the layer, then the palette', () => {
+    // openIssue folds a visit and fires the ledger POST; the mocked request
+    // must answer something awaitable for that fire-and-forget half.
+    vi.mocked(request).mockImplementation(async () => ({ status: 200, etag: null, body: {} }) as never)
+    resetVisitDebounce()
+    setOwner('shell')
+    openPalette()
+    openSettings()
+    openIssue('STD-1')
+
+    closeTop()
+    expect(app.detail).toBeNull()
+    expect(app.owner).toBe('shell')
+
+    closeTop()
+    expect(app.layer).toBeNull()
+    expect(app.owner).toBe('shell')
+
+    closeTop()
+    expect(app.palette).toBe(false)
+    expect(app.owner).toBe('shell')
+
+    closeTop()
+    expect(app.owner).toBe('list')
+  })
+
+  it('back from the list is still the root no-op', () => {
+    expect(hasBackTarget()).toBe(false)
+    closeTop()
+    expect(app.owner).toBe('list')
+  })
+
+  it('unpairing the terminal takes the owner and the latch with it', async () => {
+    // The e2e half of this cannot be driven from the shell itself: the gear
+    // that opens Settings lives in the list heading, which is the hidden
+    // pane while the shell is the owner (report §5).
+    app.terminal = { endpoint: 'http://127.0.0.1:7899', label: 'This Mac (dev)', expires_at: '' }
+    setOwner('shell')
+    await unpairTerminal()
+    expect(app.terminal).toBeNull()
+    expect(app.owner).toBe('list')
+    expect(app.shellEntered).toBe(false)
   })
 })

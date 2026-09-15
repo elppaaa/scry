@@ -16,6 +16,9 @@ import { mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { SERVE_ORIGIN } from '../playwright.config'
+// nav.ts owns the road to each surface (GDK-902); waiting on the Settings
+// heading by its word would break when that word changes.
+import { closeSettings, openSettings } from './nav'
 
 // Capture-only spec (GDK-1570): it runs when a vision round names the
 // directory through A6_SHOT_DIR and is skipped otherwise, like a1/a2/a4.
@@ -40,12 +43,11 @@ async function waitPaired(page: Page): Promise<void> {
 // GDK-902 2026-09-15: pairing is the Settings layer behind the gear, and
 // the shell is entered from the palette's Terminal row (DESIGN.md §2/§10).
 async function pairShell(page: Page, label = 'This Mac (dev)'): Promise<void> {
-  await page.locator('button.gear').click()
-  await page.getByRole('heading', { name: 'Pairing' }).waitFor()
+  await openSettings(page)
   await page.locator('#term-offer').fill(makeTerminalOffer(label))
   await page.getByRole('button', { name: 'Pair', exact: true }).click()
   await expect(page.locator('#term-offer')).toHaveCount(0)
-  await page.locator('.settings-layer button.back').click()
+  await closeSettings(page)
   await page.locator('h1 button.scope').waitFor()
 }
 

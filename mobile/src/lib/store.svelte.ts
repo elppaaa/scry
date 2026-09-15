@@ -1247,18 +1247,28 @@ export function closeSettings(): void {
 
 /** True when system back has something to close — App binds this. */
 export function hasBackTarget(): boolean {
-  return app.detail !== null || app.layer !== null || app.palette
+  return app.detail !== null || app.layer !== null || app.palette || app.owner === 'shell'
 }
 
 /**
  * What system back closes, in the order the entry/exit table gives
- * (DESIGN.md §2): the detail first, then a push layer, then the palette.
+ * (DESIGN.md §2): the detail first, then a push layer, then the palette,
+ * and last the column's own owner when that owner is the shell.
  *
  * The palette is deliberately NOT registered with `systemBack.registerSheet`
  * — sheets outrank the detail there, so a row tapped out of the palette
  * would have back close the palette underneath and leave the Detail
  * standing. Sheets keep their precedence for the surfaces that are sheets
  * (the transition sheet over a Detail is right).
+ *
+ * The shell is last and is not a layer at all (GDK-902 R3, 2026-09-15): it
+ * is the column. Back was a no-op from it because this function only knew
+ * the three surfaces that stack ABOVE the column and §2 gives the root no
+ * exit — but the root is the list, not the shell. The table gives the shell
+ * one exit, "← back in its header → the last scope", and the same table's
+ * dead-end rule says system back is that same edge. So the gesture performs
+ * the header control's own call, through the one setter that changes an
+ * owner, and the list comes back wearing the scope it had.
  */
 export function closeTop(): void {
   if (app.detail !== null) {
@@ -1269,7 +1279,11 @@ export function closeTop(): void {
     app.layer = null
     return
   }
-  if (app.palette) app.palette = false
+  if (app.palette) {
+    app.palette = false
+    return
+  }
+  if (app.owner === 'shell') setOwner('list')
 }
 
 /**
