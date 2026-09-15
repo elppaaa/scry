@@ -7,15 +7,17 @@
 //
 // Measured fixture truth (2026-09-07, GET /api/v1/issues/bootstrap/ and
 // /api/v1/auth/me/ on a scratch demo serve), and the three route mocks it
-// forces. Each one is a SINGLE field, each is labeled in the log, and none of
-// them exercises a write:
+// forces. Each one is a SINGLE field, each is labeled in the log, and none
+// of them exercises a write:
 //
 //  1. The session boundary is ABSENT. The demo home has no local.db person
 //     reads at all, so the serve has no previous session to report and the
 //     strip is correctly silent. The route adds the header — a boundary three
-//     days back — so the strip has something true to say about real rows.
-//     Everything the strip then counts is the fixture's own `updated_at`
-//     (18 rows moved in those three days, measured).
+//     days back, anchored on the fixture's own newest row (GDK-1894: the
+//     wall-clock form decayed one day per day until zero rows moved and the
+//     strip had nothing to say) — so the strip has something true to say
+//     about real rows. Everything the strip then counts is the fixture's own
+//     `updated_at` (18 rows moved in those three days, measured).
 //
 //  2. `auth/me` answers `{"email": null}` — the demo serve carries no origin
 //     credential, so it knows no identity. Two of the five built-ins are
@@ -50,6 +52,19 @@ const SHOT_DIR = process.env.A4_SHOT_DIR ?? join(dirname(fileURLToPath(import.me
 
 /** The fixture's own busiest account — see note 2. */
 const IDENTITY = { email: 'demo@example.com', account_id: 'demo-alex', name: 'Alex Kim' }
+
+/**
+ * The boundary's single derivation (GDK-1894): the fixture's own newest
+ * `updated_at`, three days back — never the wall clock, which decays one
+ * day per calendar day against a static fixture. Computed lazily from the first
+ * bootstrap body and reused for the session: the phone's 60s sync timer
+ * re-requests this route with `If-None-Match`, that 304 has no body to
+ * recompute from, and the phone reads the boundary from the header even on
+ * 304 (api.ts reads it before the body guard) — so the pass-through below
+ * replays this same value. The phone-side counterpart of the Go suite's
+ * `fixtureNow` (internal/snapshot/fixture_flow_test.go).
+ */
+let fixtureClock: { fixtureNow: string; boundary: string } | null = null
 
 /**
  * The issue to photograph for the resume card: the one whose changelog
@@ -127,172 +142,216 @@ test('captures the A4 awareness surfaces for the vision round', async ({ page })
   test.skip(!process.env.A4_SHOT_DIR, 'capture-only; set A4_SHOT_DIR to run')
   mkdirSync(SHOT_DIR, { recursive: true })
   const resume = await pickResumeIssue()
-  const boundary = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString()
 
-  // (1) + (3): one header added, one field dropped. Everything else passes
-  // through the serve untouched. The boundary rides the header because the
-  // body field is gone in 0.22 (GDK-1548) — the phone reads the header only.
-  await page.route('**/api/v1/issues/bootstrap/', async (route) => {
-    const res = await route.fetch()
-    const body = (await res.json()) as Record<string, unknown> & {
-      issues: Array<Record<string, unknown>>
-    }
-    const flow = body.flow as { cycle_p85_hours: number; samples: number } | undefined
-    delete body.flow
-    const moved = body.issues.filter(
-      (i) => typeof i.updated_at === 'string' && (i.updated_at as string) > boundary,
-    ).length
-    console.log(
-      `[a4] bootstrap route: session boundary header ← ${boundary} (${moved} rows moved since);` +
-        ` flow dropped (fixture p85 was ${flow?.cycle_p85_hours}h over ${flow?.samples} issues — see header)`,
-    )
-    await route.fulfill({
-      response: res,
-      json: body,
-      headers: { ...res.headers(), 'x-gadak-session-boundary': boundary },
+  // GDK-1894: the routes are unmounted in a finally below. The bootstrap one
+  // is re-requested by the phone's 60s sync timer with If-None-Match; a route
+  // left registered after a failure made the next round's very first 304 the
+  // error this spec is remembered by (res.json() on an empty body).
+  try {
+    // (1) + (3): one header added, one field dropped. Everything else passes
+    // through the serve untouched. The boundary rides the header because the
+    // body field is gone in 0.22 (GDK-1548) — the phone reads the header only.
+    await page.route('**/api/v1/issues/bootstrap/', async (route) => {
+      const res = await route.fetch()
+      // The 304 has no body to read or rewrite — pass it through with the
+      // boundary header the phone reads even on 304 (api.ts reads the header
+      // before its body guard, store.svelte.ts claims it outside the guard).
+      if (res.status() === 304) {
+        console.log(
+          `[a4] bootstrap 304 passed through with boundary ${fixtureClock?.boundary ?? '(none — no 200 seen first)'}`,
+        )
+        await route.fulfill({
+          response: res,
+          headers: fixtureClock
+            ? { ...res.headers(), 'x-gadak-session-boundary': fixtureClock.boundary }
+            : { ...res.headers() },
+        })
+        return
+      }
+      const body = (await res.json()) as Record<string, unknown> & {
+        issues: Array<Record<string, unknown>>
+      }
+      const flow = body.flow as { cycle_p85_hours: number; samples: number } | undefined
+      delete body.flow
+      if (!fixtureClock) {
+        // ISO strings compare lexically; max is the fixture's own "now".
+        const fixtureNow = body.issues.reduce<string>(
+          (max, i) => (typeof i.updated_at === 'string' && i.updated_at > max ? i.updated_at : max),
+          '',
+        )
+        if (!fixtureNow) {
+          throw new Error('fixture bootstrap carries no updated_at to anchor the session boundary on')
+        }
+        fixtureClock = {
+          fixtureNow,
+          boundary: new Date(Date.parse(fixtureNow) - 3 * 24 * 3600 * 1000).toISOString(),
+        }
+      }
+      const { fixtureNow, boundary } = fixtureClock
+      const moved = body.issues.filter(
+        (i) => typeof i.updated_at === 'string' && (i.updated_at as string) > boundary,
+      ).length
+      // The hang this spec was known for (GDK-1894), named at its source
+      // instead: zero rows moved means the strip has nothing to say and every
+      // later waitFor on it would time out without a reason.
+      expect(moved, 'fixture rows moved since the boundary — the strip has nothing to say').toBeGreaterThan(0)
+      console.log(
+        `[a4] bootstrap route: fixture clock ${fixtureNow} → session boundary header ← ${boundary}` +
+          ` (${moved} rows moved since); flow dropped (fixture p85 was ${flow?.cycle_p85_hours}h over` +
+          ` ${flow?.samples} issues — see header)`,
+      )
+      await route.fulfill({
+        response: res,
+        json: body,
+        headers: { ...res.headers(), 'x-gadak-session-boundary': boundary },
+      })
     })
-  })
 
-  // (2): the identity the demo serve does not have.
-  await page.route('**/api/v1/auth/me/', async (route) => {
-    console.log(`[a4] auth/me route-mocked → ${IDENTITY.account_id} (fixture answers email:null)`)
-    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(IDENTITY) })
-  })
+    // (2): the identity the demo serve does not have.
+    await page.route('**/api/v1/auth/me/', async (route) => {
+      console.log(`[a4] auth/me route-mocked → ${IDENTITY.account_id} (fixture answers email:null)`)
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(IDENTITY) })
+    })
 
-  // (4): one previous read on one issue.
-  await page.route(`**/api/v1/issues/${resume.key}/detail/`, async (route) => {
-    const res = await route.fetch()
-    const body = (await res.json()) as Record<string, unknown>
-    body.last_visited_at = resume.visitedAt
-    console.log(`[a4] detail route: ${resume.key}.last_visited_at ← ${resume.visitedAt}`)
-    await route.fulfill({ response: res, json: body })
-  })
+    // (4): one previous read on one issue.
+    await page.route(`**/api/v1/issues/${resume.key}/detail/`, async (route) => {
+      const res = await route.fetch()
+      const body = (await res.json()) as Record<string, unknown>
+      body.last_visited_at = resume.visitedAt
+      console.log(`[a4] detail route: ${resume.key}.last_visited_at ← ${resume.visitedAt}`)
+      await route.fulfill({ response: res, json: body })
+    })
 
-  await page.goto('/')
-  await page.locator('h1 button.scope').waitFor()
-  await page.locator('.pane:not(.off) button.row').first().waitFor()
+    await page.goto('/')
+    await page.locator('h1 button.scope').waitFor()
+    await page.locator('.pane:not(.off) button.row').first().waitFor()
 
-  // (a) The Issues list: the session strip on its first line, and the work
-  // age on the rows beneath it. Both must actually be there before the
-  // photograph — a capture of an absent feature is the failure mode this
-  // round exists to avoid.
-  const strip = page.locator('[data-testid="session-strip"]')
-  await strip.waitFor()
-  console.log(`[a4] session strip reads: ${JSON.stringify(await strip.innerText())}`)
-  const stripLines = await strip.evaluate((el) => {
-    // Content box only — the 6px vertical padding would round a two-line
-    // strip up to three and make the clamp look broken.
-    const cs = getComputedStyle(el)
-    const inner =
-      el.getBoundingClientRect().height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)
-    return Math.round(inner / parseFloat(cs.lineHeight))
-  })
-  console.log(`[a4] session strip renders on ${stripLines} line(s) (clamp is 2)`)
-  const ages = page.locator('.pane:not(.off) button.row .age')
-  await ages.first().waitFor()
-  const bands = await page.locator('.pane:not(.off) button.row .age').evaluateAll((els) =>
-    els.map((el) => `${el.textContent?.trim()}:${el.getAttribute('data-age-band')}`),
-  )
-  console.log(`[a4] ${bands.length} rows wear an age; band per row: ${JSON.stringify(bands)}`)
-  // The measurement behind the FIX that moved the age off the title line:
-  // the judge counted 8 of 11 summaries truncated when the age and the date
-  // shared that line. Reported every run so a later round cannot re-take the
-  // width without the number saying so.
-  const truncated = await page
-    .locator('.pane:not(.off) button.row .summary')
-    .evaluateAll((els) => {
-      // Cut either way (GDK-1543): the summary is a two-line clamp now, and
-      // a clamped box overflows in HEIGHT, not width — a width-only probe
-      // would read every clamped title as whole and turn the assertion
-      // below into a tautology.
-      const cut = (list: Element[]) =>
-        list.filter(
-          (el) => el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1,
-        ).length
-      const above = els.filter((el) => el.getBoundingClientRect().top < window.innerHeight)
+    // (a) The Issues list: the session strip on its first line, and the work
+    // age on the rows beneath it. Both must actually be there before the
+    // photograph — a capture of an absent feature is the failure mode this
+    // round exists to avoid. If the waitFor below hangs, the bootstrap
+    // route's `moved` assertion above has already named why (GDK-1894).
+    const strip = page.locator('[data-testid="session-strip"]')
+    await strip.waitFor()
+    console.log(`[a4] session strip reads: ${JSON.stringify(await strip.innerText())}`)
+    const stripLines = await strip.evaluate((el) => {
+      // Content box only — the 6px vertical padding would round a two-line
+      // strip up to three and make the clamp look broken.
+      const cs = getComputedStyle(el)
+      const inner =
+        el.getBoundingClientRect().height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)
+      return Math.round(inner / parseFloat(cs.lineHeight))
+    })
+    console.log(`[a4] session strip renders on ${stripLines} line(s) (clamp is 2)`)
+    const ages = page.locator('.pane:not(.off) button.row .age')
+    await ages.first().waitFor()
+    const bands = await page.locator('.pane:not(.off) button.row .age').evaluateAll((els) =>
+      els.map((el) => `${el.textContent?.trim()}:${el.getAttribute('data-age-band')}`),
+    )
+    console.log(`[a4] ${bands.length} rows wear an age; band per row: ${JSON.stringify(bands)}`)
+    // The measurement behind the FIX that moved the age off the title line:
+    // the judge counted 8 of 11 summaries truncated when the age and the date
+    // shared that line. Reported every run so a later round cannot re-take the
+    // width without the number saying so.
+    const truncated = await page
+      .locator('.pane:not(.off) button.row .summary')
+      .evaluateAll((els) => {
+        // Cut either way (GDK-1543): the summary is a two-line clamp now, and
+        // a clamped box overflows in HEIGHT, not width — a width-only probe
+        // would read every clamped title as whole and turn the assertion
+        // below into a tautology.
+        const cut = (list: Element[]) =>
+          list.filter(
+            (el) => el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1,
+          ).length
+        const above = els.filter((el) => el.getBoundingClientRect().top < window.innerHeight)
+        return {
+          total: els.length,
+          cut: cut(els),
+          onScreen: above.length,
+          cutOnScreen: cut(above),
+          titleWidth: Math.round(els[0]?.getBoundingClientRect().width ?? 0),
+        }
+      })
+    console.log(
+      `[a4] summaries truncated: ${truncated.cutOnScreen}/${truncated.onScreen} on the first screen,` +
+        ` ${truncated.cut}/${truncated.total} in the list; title width ${truncated.titleWidth}px`,
+    )
+    // GDK-1543, 2026-09-07: date left line 1 and the summary took two lines;
+    // 11/12 cut on the first screen → 0/9, and 37/42 in the list → 0/42
+    // (the first screen holds fewer rows because the rows are taller). The log
+    // line above was a report nobody had to keep true; these two are the
+    // contract. A later round may put something back on the title baseline
+    // only by making these numbers say it is affordable.
+    expect(truncated.cutOnScreen).toBeLessThanOrEqual(3)
+    // The whole content box: 402px viewport − the row's 16px side padding ×2
+    // = 370px, which the summary now owns alone (no gap, no date column).
+    // Asserted at 370 − 4 for sub-pixel and scrollbar slack. Measured 370px
+    // after the move, 329px before it.
+    expect(truncated.titleWidth).toBeGreaterThanOrEqual(366)
+    await page.screenshot({
+      path: join(SHOT_DIR, 'a4-issues-session-and-age.png'),
+      fullPage: true,
+      animations: 'disabled',
+    })
+    console.log(`[a4] shot ${join(SHOT_DIR, 'a4-issues-session-and-age.png')}`)
+
+    // (b) The owner list: the built-in set — the desk's five — under one
+    // heading, split only by the desk's two stance labels. GDK-902
+    // 2026-09-15: it is the palette's empty-query ranking now, drawn in the
+    // list's own body instead of a sheet; the composition it captures is
+    // unchanged, so the capture keeps its name.
+    await page.locator('.head button.scope').click()
+    await page.locator('button.palette-row').first().waitFor()
+    const names = await page.locator('button.palette-row').allInnerTexts()
+    console.log(`[a4] owner list rows: ${JSON.stringify(names)}`)
+    // Headings and sub-labels in document order: one section heading before
+    // the built-in set, not two (vision FIX 2026-09-07).
+    const headings = await page
+      .locator('.palette-section, .stance')
+      .evaluateAll((els) => els.map((el) => `${el.className}:${el.textContent?.trim()}`))
+    console.log(`[a4] owner list headings: ${JSON.stringify(headings)}`)
+    await expect(page.locator('.pane:not(.off) main')).toContainText('Team flow')
+    await page.screenshot({
+      path: join(SHOT_DIR, 'a4-scope-sheet.png'),
+      fullPage: true,
+      animations: 'disabled',
+    })
+    console.log(`[a4] shot ${join(SHOT_DIR, 'a4-scope-sheet.png')}`)
+
+    // (c) The detail with the resume card. Reached through the palette — the
+    // pane's own road to any key (a1/a2's pattern), and the palette is
+    // already open, so the field is right there.
+    await page.locator('.pane:not(.off) input').first().fill(resume.key)
+    await page.locator('.pane:not(.off) button.row', { hasText: resume.key }).first().click()
+    await page.locator('button.back').waitFor()
+    const card = page.locator('[data-testid="resume-card"]')
+    await card.waitFor()
+    console.log(`[a4] resume card reads: ${JSON.stringify(await card.locator('.resume-text').innerText())}`)
+    // The card is a card now (vision FIX 2026-09-07): bounded, tinted, with an
+    // explicit dismiss at the touch floor. Logged, not judged — the photograph
+    // is still what the vision round reads.
+    const box = await card.evaluate((el) => {
+      const cs = getComputedStyle(el)
+      const x = el.querySelector('.resume-x')
+      const xr = x?.getBoundingClientRect()
       return {
-        total: els.length,
-        cut: cut(els),
-        onScreen: above.length,
-        cutOnScreen: cut(above),
-        titleWidth: Math.round(els[0]?.getBoundingClientRect().width ?? 0),
+        height: Math.round(el.getBoundingClientRect().height),
+        background: cs.backgroundColor,
+        radius: cs.borderRadius,
+        dismiss: xr ? `${Math.round(xr.width)}×${Math.round(xr.height)}` : 'MISSING',
+        dismissLabel: x?.getAttribute('aria-label') ?? 'MISSING',
       }
     })
-  console.log(
-    `[a4] summaries truncated: ${truncated.cutOnScreen}/${truncated.onScreen} on the first screen,` +
-      ` ${truncated.cut}/${truncated.total} in the list; title width ${truncated.titleWidth}px`,
-  )
-  // GDK-1543, 2026-09-07: date left line 1 and the summary took two lines;
-  // 11/12 cut on the first screen → 0/9, and 37/42 in the list → 0/42
-  // (the first screen holds fewer rows because the rows are taller). The log
-  // line above was a report nobody had to keep true; these two are the
-  // contract. A later round may put something back on the title baseline
-  // only by making these numbers say it is affordable.
-  expect(truncated.cutOnScreen).toBeLessThanOrEqual(3)
-  // The whole content box: 402px viewport − the row's 16px side padding ×2
-  // = 370px, which the summary now owns alone (no gap, no date column).
-  // Asserted at 370 − 4 for sub-pixel and scrollbar slack. Measured 370px
-  // after the move, 329px before it.
-  expect(truncated.titleWidth).toBeGreaterThanOrEqual(366)
-  await page.screenshot({
-    path: join(SHOT_DIR, 'a4-issues-session-and-age.png'),
-    fullPage: true,
-    animations: 'disabled',
-  })
-  console.log(`[a4] shot ${join(SHOT_DIR, 'a4-issues-session-and-age.png')}`)
-
-  // (b) The owner list: the built-in set — the desk's five — under one
-  // heading, split only by the desk's two stance labels. GDK-902
-  // 2026-09-15: it is the palette's empty-query ranking now, drawn in the
-  // list's own body instead of a sheet; the composition it captures is
-  // unchanged, so the capture keeps its name.
-  await page.locator('.head button.scope').click()
-  await page.locator('button.palette-row').first().waitFor()
-  const names = await page.locator('button.palette-row').allInnerTexts()
-  console.log(`[a4] owner list rows: ${JSON.stringify(names)}`)
-  // Headings and sub-labels in document order: one section heading before
-  // the built-in set, not two (vision FIX 2026-09-07).
-  const headings = await page
-    .locator('.palette-section, .stance')
-    .evaluateAll((els) => els.map((el) => `${el.className}:${el.textContent?.trim()}`))
-  console.log(`[a4] owner list headings: ${JSON.stringify(headings)}`)
-  await expect(page.locator('.pane:not(.off) main')).toContainText('Team flow')
-  await page.screenshot({
-    path: join(SHOT_DIR, 'a4-scope-sheet.png'),
-    fullPage: true,
-    animations: 'disabled',
-  })
-  console.log(`[a4] shot ${join(SHOT_DIR, 'a4-scope-sheet.png')}`)
-
-  // (c) The detail with the resume card. Reached through the palette — the
-  // pane's own road to any key (a1/a2's pattern), and the palette is
-  // already open, so the field is right there.
-  await page.locator('.pane:not(.off) input').first().fill(resume.key)
-  await page.locator('.pane:not(.off) button.row', { hasText: resume.key }).first().click()
-  await page.locator('button.back').waitFor()
-  const card = page.locator('[data-testid="resume-card"]')
-  await card.waitFor()
-  console.log(`[a4] resume card reads: ${JSON.stringify(await card.locator('.resume-text').innerText())}`)
-  // The card is a card now (vision FIX 2026-09-07): bounded, tinted, with an
-  // explicit dismiss at the touch floor. Logged, not judged — the photograph
-  // is still what the vision round reads.
-  const box = await card.evaluate((el) => {
-    const cs = getComputedStyle(el)
-    const x = el.querySelector('.resume-x')
-    const xr = x?.getBoundingClientRect()
-    return {
-      height: Math.round(el.getBoundingClientRect().height),
-      background: cs.backgroundColor,
-      radius: cs.borderRadius,
-      dismiss: xr ? `${Math.round(xr.width)}×${Math.round(xr.height)}` : 'MISSING',
-      dismissLabel: x?.getAttribute('aria-label') ?? 'MISSING',
-    }
-  })
-  console.log(`[a4] resume card box: ${JSON.stringify(box)}`)
-  await page.screenshot({
-    path: join(SHOT_DIR, 'a4-detail-resume.png'),
-    fullPage: true,
-    animations: 'disabled',
-  })
-  console.log(`[a4] shot ${join(SHOT_DIR, 'a4-detail-resume.png')}`)
+    console.log(`[a4] resume card box: ${JSON.stringify(box)}`)
+    await page.screenshot({
+      path: join(SHOT_DIR, 'a4-detail-resume.png'),
+      fullPage: true,
+      animations: 'disabled',
+    })
+    console.log(`[a4] shot ${join(SHOT_DIR, 'a4-detail-resume.png')}`)
+  } finally {
+    // All three route mocks (bootstrap, auth/me, detail), mounted or not.
+    await page.unrouteAll({ behavior: 'ignoreErrors' })
+  }
 })
