@@ -316,6 +316,14 @@ export interface DetailAttachment {
   created_at: string | null
   /** Same-origin attachment URL. Server serves straight from disk cache. */
   content_url: string
+  /** True when the mirror's mime row is text/html — the artifact route
+   *  serves the bytes inline as a sandboxed document (GDK-1897). Optional
+   *  because older servers omit it; a missing flag reads as "not an
+   *  artifact", which is the pre-R1 rendering. */
+  is_artifact?: boolean
+  /** The artifact route for an HTML attachment; empty/absent otherwise.
+   *  The frame is its only consumer — nothing links to it. */
+  artifact_url?: string
 }
 
 interface QaLinkedCase {

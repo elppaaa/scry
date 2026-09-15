@@ -3,6 +3,8 @@
   import type { DetailAttachment } from '../../lib/types'
   import { trapFocus } from '../../lib/focus-trap'
   import { ESC_TIER, isEscapeKey, onEscape } from '../../lib/dom-actions'
+  import { mediaViewer } from '../../stores/media-viewer.svelte'
+  import ArtifactFrame from './ArtifactFrame.svelte'
   import Icon from '../ui/Icon.svelte'
 
   let {
@@ -78,6 +80,15 @@
       >
         <track kind="captions" />
       </video>
+    {:else if attachment.is_artifact}
+      <!-- The same frame the card renders, filling the body. The context
+           rides the store beside the attachment (the gallery passed it to
+           open(); images and videos have none) — App hands this component
+           only the attachment, so the store is the context's source. The
+           header's ↗ stays on content_url: that link is the download. -->
+      <div class="h-full w-full min-w-0 overflow-hidden rounded-md bg-bg-base">
+        <ArtifactFrame {attachment} context={mediaViewer.context} height="h-full" />
+      </div>
     {/if}
   </div>
 </div>

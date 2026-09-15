@@ -25,6 +25,7 @@
   import { viewport } from '../../lib/viewport-regime.svelte'
   import type { AdfNode } from '../../lib/types'
   import { cacheEpoch, getDetailCached, invalidate } from '../../lib/detail-cache.svelte'
+  import { issueContext } from '../../lib/artifact-context'
   import { createResource } from '../../lib/resource.svelte'
   import { createSkeletonGrace } from '../../lib/skeleton-grace.svelte'
   import { ESC_TIER, onEscape } from '../../lib/dom-actions'
@@ -345,7 +346,10 @@
 
           {#if detailForKey.attachments.length > 0}
             <Section title={t('detail.attachments')} count={detailForKey.attachments.length}>
-              <AttachmentGallery attachments={detailForKey.attachments} />
+              <AttachmentGallery
+                attachments={detailForKey.attachments}
+                context={issueContext(lite, detailForKey)}
+              />
             </Section>
           {/if}
 

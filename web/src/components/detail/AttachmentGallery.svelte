@@ -1,9 +1,14 @@
 <script lang="ts">
   import { t } from '../../lib/i18n'
+  import type { ArtifactContext } from '../../lib/artifact-context'
   import type { DetailAttachment } from '../../lib/types'
   import { mediaViewer } from '../../stores/media-viewer.svelte'
+  import ArtifactFrame from './ArtifactFrame.svelte'
 
-  let { attachments }: { attachments: DetailAttachment[] } = $props()
+  let {
+    attachments,
+    context,
+  }: { attachments: DetailAttachment[]; context: ArtifactContext } = $props()
 
   function formatBytes(size: number): string {
     if (!size) return ''
@@ -47,6 +52,45 @@
         <span class="w-full truncate text-micro text-text-secondary">{attachment.filename}</span>
         <span class="text-micro text-text-muted">{formatBytes(attachment.size)}</span>
       </button>
+    {:else if attachment.is_artifact}
+      <!-- An artifact is rendered, not downloaded: the card is a header plus
+           the frame itself. Expand hands the same bytes to the overlay; the
+           download control stays on the content route (Content-Disposition:
+           attachment) — nothing anywhere links to the artifact route. -->
+      <div
+        class="col-span-2 flex min-w-0 flex-col gap-2 rounded-md border border-border-subtle bg-bg-base p-3"
+        data-testid="artifact-card"
+      >
+        <div class="flex min-w-0 items-center gap-2">
+          <span class="section-label flex-none">{t('detail.artifact')}</span>
+          <span
+            class="min-w-0 flex-1 truncate text-body text-text-secondary"
+            title={attachment.filename}
+          >
+            {attachment.filename}
+          </span>
+          <span class="flex-none text-micro text-text-muted">{formatBytes(attachment.size)}</span>
+          <button
+            type="button"
+            onclick={() => mediaViewer.open(attachment, context)}
+            class="flex h-7 w-7 flex-none items-center justify-center rounded-md text-body text-text-muted transition-colors hover:bg-bg-hover hover:text-text-primary"
+            aria-label={t('detail.artifactExpand', { name: attachment.filename })}
+            data-testid="artifact-expand"
+          >
+            ⛶
+          </button>
+          <a
+            href={attachment.content_url}
+            download
+            class="flex h-7 w-7 flex-none items-center justify-center rounded-md text-body text-text-muted transition-colors hover:bg-bg-hover hover:text-text-primary"
+            aria-label={t('detail.artifactDownload')}
+            data-testid="artifact-download"
+          >
+            ↓
+          </a>
+        </div>
+        <ArtifactFrame {attachment} {context} />
+      </div>
     {:else}
       <a
         href={attachment.content_url}

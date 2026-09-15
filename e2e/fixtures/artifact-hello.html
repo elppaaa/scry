@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>artifact hello</title>
+</head>
+<body>
+<!--
+  GDK-1897 e2e fixture: the smallest artifact that proves the push. It
+  listens for the dashboard DataMessage shape and writes the pushed host's
+  key into #key, so "the frame received its host" is a text assertion, not
+  a network or console one. Inline script only — the artifact route's CSP
+  allows nothing else.
+-->
+<h1 id="key">waiting</h1>
+<script>
+  window.addEventListener('message', function (ev) {
+    var d = ev.data;
+    if (!d || d.type !== 'data' || d.name !== 'context') return;
+    var row = d.rows && d.rows[0];
+    document.getElementById('key').textContent = String(row && row.key);
+  });
+</script>
+</body>
+</html>

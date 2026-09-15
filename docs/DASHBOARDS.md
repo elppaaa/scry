@@ -135,8 +135,20 @@ opaque-origin even opened directly as a pasted URL, not only in a frame. The
 response also carries `no-store`, `no-referrer` and `nosniff`, and never a
 `Content-Disposition`; the plain content route still downloads the same
 file. The issue detail flags each attachment with `is_artifact` and its
-`artifact_url`. Serving these inline in the issue view, with a data push, is
-the next round — no UI reads the field yet.
+`artifact_url`, and renders it as a card: the page in a sandboxed frame with
+the wall's exact grants, an expand control that opens the same frame in the
+media overlay, and a download control on the content route.
+
+The host pushes itself in as the frame's one datasource, named `context`,
+in the same `data` message shape the wall uses — except that its single row
+is an object, not a positional array: read `rows[0].key`, `rows[0].title`,
+`rows[0].status`, `rows[0].status_category`, `rows[0].priority`,
+`rows[0].assignee`, `rows[0].labels`, `rows[0].updated_at` (the full list is
+`ArtifactContext` in `web/src/lib/artifact-context.ts`, the one place that
+decides what an artifact may learn). No description, no comments, nothing
+from storage. The frame may send the wall's two verbs back — `refresh`
+(re-push the context) and `open` (a hash the app navigates to) — under the
+same throttles.
 
 ## Writing queries
 

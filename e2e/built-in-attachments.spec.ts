@@ -1,6 +1,7 @@
 import { spawn, execFileSync, type ChildProcess } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { createServer, type Server } from 'node:http'
 import { join } from 'node:path'
 import { type Page } from '@playwright/test'
 import { expect, test } from './helpers'
@@ -42,9 +43,20 @@ const IMAGE = join(repoRoot(), 'examples', 'attachments', '10000.png')
 // A real h264 file, not synthetic bytes: "the video element got a src" is
 // not the claim — the claim is that it decodes and seeks.
 const VIDEO = join(repoRoot(), 'docs', 'media', 'mcp.mp4')
+// GDK-1897: an HTML attachment is an artifact. The hello document proves
+// the push (it writes the host's key into #key); the beacon document's
+// outbound channels are rewritten onto a loopback sink at upload time, so
+// "the frame opened no socket" is assertable.
+const HELLO = join(e2eDir(), 'fixtures', 'artifact-hello.html')
+const BEACON = join(e2eDir(), 'fixtures', 'artifact-beacon.html')
 
 let serve: ChildProcess | undefined
 let issueKey = ''
+let artifactKey = ''
+// The sink standing in for the network (dashboards.spec.ts discipline):
+// loopback, alive for the whole file, and counting every connection.
+let sink: Server | undefined
+const received: string[] = []
 // Last ~4 KiB of the serve's output. A serve that cannot bind exits with the
 // reason on stderr; without this latch that reason is lost and the poll
 // below reports the impostor that took the port instead (GDK-1789).
@@ -111,6 +123,36 @@ test.beforeAll(async () => {
   expect(issueKey, `create printed ${JSON.stringify(created)}`).toMatch(/^[A-Z]+-\d+$/)
   cli('attach', issueKey, IMAGE)
   cli('attach', issueKey, VIDEO)
+
+  // GDK-1897: the artifact uploads must precede the sync below — the serve
+  // starts with --no-sync and only ever sees already-mirrored rows. The
+  // hello document goes to its own issue so each artifact test addresses
+  // the one artifact frame on the issue it opens; the beacon copy rides the
+  // media issue. Serving the external script from the sink (as
+  // dashboards.spec.ts does) is what makes the in-frame #ext assertion
+  // meaningful: on a CSP regression the script would arrive and execute.
+  sink = createServer((req, res) => {
+    received.push(`${req.method} ${req.url}`)
+    if ((req.url ?? '').includes('static-js')) {
+      res.writeHead(200, { 'content-type': 'application/javascript' })
+      res.end("document.getElementById('ext').textContent = 'EXECUTED';")
+      return
+    }
+    res.writeHead(404)
+    res.end()
+  })
+  await new Promise<void>((resolve) => sink!.listen(0, '127.0.0.1', resolve))
+  const sinkPort = (sink.address() as { port: number }).port
+  const beaconCopy = join(HOME, 'artifact-beacon.html')
+  writeFileSync(
+    beaconCopy,
+    readFileSync(BEACON, 'utf8').replaceAll('127.0.0.1:1', `127.0.0.1:${sinkPort}`),
+  )
+  const createdArtifact = cli('create', 'artifact render probe')
+  artifactKey = createdArtifact.split('\t')[0].trim()
+  expect(artifactKey, `create printed ${JSON.stringify(createdArtifact)}`).toMatch(/^[A-Z]+-\d+$/)
+  cli('attach', artifactKey, HELLO)
+  cli('attach', issueKey, beaconCopy)
   cli('sync')
 
   serve = spawn(
@@ -135,6 +177,7 @@ test.beforeAll(async () => {
 
 test.afterAll(() => {
   serve?.kill('SIGTERM')
+  sink?.close()
   rmSync(HOME, { recursive: true, force: true })
 })
 
@@ -248,9 +291,11 @@ test.describe('built-in workspace attachments (GDK-1617)', () => {
 
     const row = page.getByTestId('runtime-attachments')
     await expect(row).toBeVisible({ timeout: 15_000 })
-    // Two attachments, two distinct files, and a date — a panel that says
+    // Four attachments, four distinct files, and a date — a panel that says
     // "0 B" for a workspace holding a video is the failure this pins.
-    await expect(row).toContainText('2 attachments in 2 files')
+    // (GDK-1897: was 2/2 before the two artifact HTML uploads joined this
+    // spec's fixture.)
+    await expect(row).toContainText('4 attachments in 4 files')
     await expect(row).toContainText(/\d{4}-\d{2}-\d{2}/)
     await expect(page.getByTestId('runtime-origin')).toBeVisible()
 
@@ -258,8 +303,105 @@ test.describe('built-in workspace attachments (GDK-1617)', () => {
     // the panel reads. Greater-or-equal: the fixture seed may add its own.
     const doc = await (await fetch(`${BASE}/api/v1/issues/settings/`)).json()
     expect(doc.runtime.attachmentsBytes).toBeGreaterThanOrEqual(uploaded)
-    expect(doc.runtime.attachmentCount).toBe(2)
-    expect(doc.runtime.attachmentsFileCount).toBe(2)
+    expect(doc.runtime.attachmentCount).toBe(4)
+    expect(doc.runtime.attachmentsFileCount).toBe(4)
     expect(doc.runtime.attachmentsPath, 'the panel must name where the bytes are').toContain('blobs')
+  })
+})
+
+/*
+ * GDK-1897 (2026-09-15): an HTML attachment is an artifact. The detail
+ * renders it in a sandboxed frame — the dashboard wall's exact sandbox
+ * grants, never allow-same-origin — and pushes the host issue in as a
+ * dashboard DataMessage, so an artifact can draw the issue it is attached
+ * to with no network. The two tests pin the two halves: the card, the
+ * push, and the artifact route's header policy; and the no-socket
+ * guarantee the CSP gives.
+ */
+test.describe('HTML attachments render as sandboxed artifacts (GDK-1897)', () => {
+  test('the card renders the document, sandboxed, with the issue pushed into it', async ({ page }) => {
+    await page.goto(`${BASE}/#/?issue=${artifactKey}`)
+    const panel = page.getByTestId('issue-detail-panel')
+    await expect(panel).toBeVisible({ timeout: 30_000 })
+
+    const card = panel.getByTestId('artifact-card')
+    await expect(card).toBeVisible({ timeout: 15_000 })
+
+    const frameEl = panel.getByTestId('artifact-frame')
+    // The sandbox grants, exactly — no allow-same-origin, no forms, no top
+    // navigation. A widened string here is the whole security story.
+    await expect(frameEl).toHaveAttribute(
+      'sandbox',
+      'allow-scripts allow-popups allow-popups-to-escape-sandbox',
+    )
+
+    // The push landed and the document ran: rows[0].key is the issue itself.
+    const fl = page.frameLocator('[data-testid="artifact-frame"]')
+    await expect(fl.locator('#key')).toHaveText(artifactKey, { timeout: 15_000 })
+    // Capture for the lead's vision round (GDK-1897): env-gated, the a4
+    // pattern — the assertion above is the gate, the photograph is not.
+    if (process.env.ARTIFACT_SHOT_DIR) {
+      mkdirSync(process.env.ARTIFACT_SHOT_DIR, { recursive: true })
+      await panel.screenshot({ path: join(process.env.ARTIFACT_SHOT_DIR, 'artifact-card.png') })
+    }
+
+    // Expand: the overlay mounts a second frame and must push the same host
+    // into it — the vision round (2026-09-15) caught an overlay still saying
+    // "waiting", so the push into the expanded frame is asserted, not assumed.
+    await page.getByTestId('artifact-expand').click()
+    const overlay = page.getByTestId('media-viewer')
+    await expect(overlay).toBeVisible()
+    const ofl = overlay.frameLocator('[data-testid="artifact-frame"]')
+    await expect(ofl.locator('#key')).toHaveText(artifactKey, { timeout: 15_000 })
+    if (process.env.ARTIFACT_SHOT_DIR) {
+      await page.screenshot({ path: join(process.env.ARTIFACT_SHOT_DIR, 'artifact-overlay.png') })
+    }
+    await page.keyboard.press('Escape')
+    await expect(overlay).toBeHidden()
+
+    // The frame is the artifact route's only consumer — nothing in the card
+    // links to it — and the route's headers carry the sandbox at the HTTP
+    // layer too, so the document is opaque-origin even opened top-level.
+    const src = await frameEl.getAttribute('src')
+    expect(src).toBeTruthy()
+    const aRes = await page.request.get(new URL(src!, BASE).toString())
+    expect(aRes.status()).toBe(200)
+    const csp = aRes.headers()['content-security-policy'] ?? ''
+    expect(csp, csp).toContain('sandbox allow-scripts allow-popups allow-popups-to-escape-sandbox')
+    expect(csp, csp).toContain("default-src 'none'")
+    expect(aRes.headers()['referrer-policy']).toBe('no-referrer')
+    expect(aRes.headers()['content-disposition'], 'inline is the point').toBeFalsy()
+
+    // The card's own download stays on the content route, whose bytes
+    // carry Content-Disposition: attachment (R1's contract).
+    const download = await card.locator('a[download]').getAttribute('href')
+    expect(download).toBeTruthy()
+    const cRes = await page.request.get(new URL(download!, BASE).toString())
+    expect(cRes.headers()['content-disposition'] ?? '').toContain('attachment')
+  })
+
+  test('the frame opens no socket — every outbound channel is refused', async ({ page }) => {
+    await page.goto(`${BASE}/#/?issue=${issueKey}`)
+    const panel = page.getByTestId('issue-detail-panel')
+    await expect(panel).toBeVisible({ timeout: 30_000 })
+    await expect(panel.getByTestId('artifact-card')).toBeVisible({ timeout: 15_000 })
+
+    const fl = page.frameLocator('[data-testid="artifact-frame"]')
+    // The document itself ran (inline script), and each channel was refused
+    // in-frame: the external script never executed, fetch and the image got
+    // errors, not content.
+    await expect(fl.locator('#ran')).toHaveText('yes')
+    await expect(fl.locator('#fetch')).toHaveText(/^refused /)
+    await expect(fl.locator('#img')).toHaveText('refused')
+    await expect(fl.locator('#ext')).toHaveText('no')
+    // The duration is the assertion window: any refused-but-issued load, or
+    // a deferred beacon, would land on the sink inside it. The sink has
+    // been counting since beforeAll, so sockets opened while the earlier
+    // media tests rendered this same frame count against this assertion too.
+    await page.waitForTimeout(800)
+    expect(
+      received,
+      `requests reached a socket: ${received.join(', ')}`,
+    ).toEqual([])
   })
 })
