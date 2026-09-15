@@ -3,6 +3,7 @@ package adf
 import (
 	"encoding/json"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -156,6 +157,58 @@ func TestRawHTMLIsText(t *testing.T) {
 	}
 	if strings.Contains(kinds(adf), "html") {
 		t.Fatalf("no html node kinds: %s", kinds(adf))
+	}
+}
+
+// GDK-1868: text that begins (or, in a heading, ends) with a block marker
+// must survive Markdown → FromMarkdown. Heading text sits after the `## `
+// marker, not at a line head, so a leading `1.` there can open nothing and
+// must come back unescaped; a trailing `#` run is a CommonMark closing
+// sequence and would be eaten. Paragraph text is at a line head, so its
+// markers are escaped — in the form CommonMark honours (`1\.`, not `\1.`).
+// The paragraph cases carry a marked sibling: a plain paragraph alone is a
+// simple document, whose typed text is returned as the markdown it is
+// (TestSimpleDocumentIsReturnedAsTypedText) — escaping is the rich-body path.
+func TestGDK1868LeadingMarkersRoundTrip(t *testing.T) {
+	boldTail := `{"type":"paragraph","content":[{"type":"text","text":"bold","marks":[{"type":"strong"}]}]}`
+	heading := func(text string) string {
+		return `{"type":"doc","version":1,"content":[{"type":"heading","attrs":{"level":2},"content":[{"type":"text","text":` + strconv.Quote(text) + `}]}]}`
+	}
+	para := func(text string) string {
+		return `{"type":"doc","version":1,"content":[{"type":"paragraph","content":[{"type":"text","text":` + strconv.Quote(text) + `}]},` + boldTail + `]}`
+	}
+	cases := []struct {
+		name   string
+		adf    string
+		wantMd string
+	}{
+		{"heading 1. 숫자", heading("1. 숫자"), "## 1. 숫자"},
+		{"heading # not a heading", heading("# not a heading"), "## # not a heading"},
+		{"heading - dash", heading("- dash"), "## - dash"},
+		{"heading > quote", heading("> quote"), "## > quote"},
+		{"heading closing #", heading("closing #"), "## closing \\#"},
+		{"paragraph 1. not a list", para("1. not a list"), "1\\. not a list\n\n**bold**"},
+		{"paragraph 2) also not", para("2) also not"), "2\\) also not\n\n**bold**"},
+		{"paragraph - not a bullet", para("- not a bullet"), "\\- not a bullet\n\n**bold**"},
+		{"paragraph # not a heading", para("# not a heading"), "\\# not a heading\n\n**bold**"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			adf := json.RawMessage(tc.adf)
+			want := normalize(t, adf)
+			md := Markdown(adf)
+			if md != tc.wantMd {
+				t.Errorf("markdown:\n got %q\nwant %q", md, tc.wantMd)
+			}
+			if got := normalize(t, FromMarkdown(md)); got != want {
+				t.Errorf("ADF round trip:\n got %s\nwant %s", got, want)
+			}
+		})
+	}
+	// The write direction alone: a body written as `## 1. 숫자` stores the
+	// clean text, so only the print was wrong, never the stored body.
+	if got, want := normalize(t, FromMarkdown("## 1. 숫자")), normalize(t, json.RawMessage(heading("1. 숫자"))); got != want {
+		t.Errorf("FromMarkdown write direction:\n got %s\nwant %s", got, want)
 	}
 }
 

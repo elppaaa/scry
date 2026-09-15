@@ -497,6 +497,13 @@ func textReader(b []byte) text.Reader { return text.NewReader(b) }
 type writer struct {
 	escape bool
 	inItem int // >0 while rendering a listItem's blocks
+	// inHeading is >0 while rendering a heading's inline text. That text
+	// follows the `## ` marker on the same line, so no line-leading marker
+	// applies to it — escapeInline's line-leading pass is off, and what a
+	// heading's meaning needs instead is a trailing `#` run escaped
+	// (escapeClosingHash). GDK-1868: the pass used to run there too and
+	// printed `## \1. 숫자`.
+	inHeading int
 	// placeholders: a node markdown cannot carry becomes a marker
 	// (preserve.go) instead of its flattened label; kept collects them in
 	// the order the markers are numbered. cur is the type of the block whose
@@ -565,7 +572,10 @@ func (w *writer) block(n node, prefix string, index int) string {
 		if level > 6 {
 			level = 6
 		}
-		return prefixLines(strings.Repeat("#", level)+" "+strings.ReplaceAll(w.inlinesUnder("heading", n.Content), "\n", " "), prefix)
+		w.inHeading++
+		body := w.inlinesUnder("heading", n.Content)
+		w.inHeading--
+		return prefixLines(strings.Repeat("#", level)+" "+escapeClosingHash(strings.ReplaceAll(body, "\n", " ")), prefix)
 	case "rule":
 		return prefix + "---"
 	case "codeBlock":
@@ -783,7 +793,7 @@ func (w *writer) marked(n node) string {
 	if code {
 		s = codeSpan(s)
 	} else if w.escape {
-		s = escapeInline(s)
+		s = escapeInline(s, w.inHeading == 0)
 	}
 	var href, title string
 	for _, m := range n.Marks {
@@ -820,15 +830,20 @@ func codeSpan(s string) string {
 }
 
 // Line-leading block markers, which would start a heading, quote, list or
-// rule if left unescaped; digits before `.`/`)` too.
+// rule if left unescaped; digits before `.`/`)` too, escaped at the
+// punctuation — CommonMark honours a backslash only before ASCII
+// punctuation, so `1\.` is the form that keeps the line a paragraph
+// (GDK-1868: `\1.` left the backslash in the text).
 var leadingEscape = regexp.MustCompile(`(?m)^(\s*)([#>+\-=]|\d+[.)])`)
 
 // escapeInline neutralizes the markdown punctuation in literal text that
 // FromMarkdown would otherwise read as syntax, so a Jira-authored "2 * 3"
 // comes back as "2 * 3" and "[x]" stays brackets. Only positions where the
 // character could open or close something are escaped — a_b and 2 * 3 are
-// left alone, because CommonMark leaves them alone too.
-func escapeInline(s string) string {
+// left alone, because CommonMark leaves them alone too. leading is false
+// for heading text, which follows the `## ` marker on the same line: no
+// line-leading marker can apply there.
+func escapeInline(s string, leading bool) string {
 	var b strings.Builder
 	rs := []rune(s)
 	for i, r := range rs {
@@ -862,10 +877,37 @@ func escapeInline(s string) string {
 		b.WriteRune(r)
 	}
 	out := b.String()
+	if !leading {
+		return out
+	}
 	return leadingEscape.ReplaceAllStringFunc(out, func(m string) string {
 		sub := leadingEscape.FindStringSubmatch(m)
-		return sub[1] + `\` + sub[2]
+		marker := sub[2]
+		if marker[0] >= '0' && marker[0] <= '9' {
+			return sub[1] + marker[:len(marker)-1] + `\` + marker[len(marker)-1:]
+		}
+		return sub[1] + `\` + marker
 	})
+}
+
+// escapeClosingHash protects a heading's trailing `#` run: CommonMark reads
+// it (with the space before it, and trailing spaces after) as the heading's
+// closing sequence and drops it, so the first `#` of the run is escaped. A
+// run not preceded by a space or the start of the text closes nothing —
+// `## foo#` keeps its `#` — and is left alone.
+func escapeClosingHash(s string) string {
+	end := len(s)
+	for end > 0 && (s[end-1] == ' ' || s[end-1] == '\t') {
+		end--
+	}
+	start := end
+	for start > 0 && s[start-1] == '#' {
+		start--
+	}
+	if start == end || (start > 0 && s[start-1] != ' ' && s[start-1] != '\t') {
+		return s
+	}
+	return s[:start] + `\` + s[start:]
 }
 
 func isSpace(r rune) bool { return r == ' ' || r == '\t' || r == '\n' }
