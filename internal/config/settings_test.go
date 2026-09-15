@@ -2,6 +2,11 @@ package config
 
 import (
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -541,5 +546,180 @@ func TestSettingGetSetRetroSessionGap(t *testing.T) {
 	// Nil config keeps the default (a failed config.Load reads as unset).
 	if got := (*Config)(nil).EffectiveRetroSessionGap(); got != "30m" {
 		t.Fatalf("nil config effective = %q", got)
+	}
+}
+
+// settingsCatalogLiteralPaths returns the Path of every catalog item in
+// buildSettings that is a hand-written struct literal rather than a helper
+// call, plus any explicitly typed Setting{…} literal anywhere in the
+// function body (a literal assigned to a variable and appended would evade
+// the element scan).
+func settingsCatalogLiteralPaths(t *testing.T) []string {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, "settings.go", nil, 0)
+	if err != nil {
+		t.Fatalf("parse settings.go: %v", err)
+	}
+	var fn *ast.FuncDecl
+	for _, d := range f.Decls {
+		if g, ok := d.(*ast.FuncDecl); ok && g.Name.Name == "buildSettings" {
+			fn = g
+			break
+		}
+	}
+	if fn == nil {
+		t.Fatal("buildSettings not found in settings.go — update this gate if the catalog builder was renamed")
+	}
+
+	pathOf := func(lit *ast.CompositeLit) string {
+		for _, el := range lit.Elts {
+			kv, ok := el.(*ast.KeyValueExpr)
+			if !ok {
+				continue
+			}
+			if key, ok := kv.Key.(*ast.Ident); ok && key.Name == "Path" {
+				if v, ok := kv.Value.(*ast.BasicLit); ok && v.Kind == token.STRING {
+					s, err := strconv.Unquote(v.Value)
+					if err == nil {
+						return s
+					}
+				}
+				return "?"
+			}
+		}
+		return "?"
+	}
+
+	var out []string
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		// Explicitly typed Setting{…} anywhere in the body.
+		if lit, ok := n.(*ast.CompositeLit); ok {
+			if id, ok := lit.Type.(*ast.Ident); ok && id.Name == "Setting" {
+				out = append(out, pathOf(lit))
+			}
+		}
+		// Elided struct-literal elements of the []Setting{…} catalog list.
+		if lit, ok := n.(*ast.CompositeLit); ok {
+			if at, ok := lit.Type.(*ast.ArrayType); ok {
+				if id, ok := at.Elt.(*ast.Ident); ok && id.Name == "Setting" {
+					for _, el := range lit.Elts {
+						if _, ok := el.(*ast.CallExpr); !ok {
+							if cl, ok := el.(*ast.CompositeLit); ok {
+								out = append(out, pathOf(cl))
+							} else {
+								out = append(out, "?")
+							}
+						}
+					}
+				}
+			}
+		}
+		return true
+	})
+	return out
+}
+
+// pinnedCatalogLiteralPaths is the frozen half of the catalog ratchet
+// (GDK-1922 ⑤): the block settings whose Get/Set own custom decode/apply
+// semantics a leaf helper cannot express. Every other catalog item goes
+// through the helper family (stringSetting, stringsSetting,
+// stringMapSetting, typedSliceSetting, typedMapSetting, refuseSetting,
+// …); a new hand-written literal fails until it either becomes a helper
+// call or joins this table with a structural reason. When a pinned block
+// is converted, its entry must leave in the same commit.
+var pinnedCatalogLiteralPaths = []string{
+	"appearance", "ui.tokens", "ui.dataColors", "terminal", "terminal.cursorBlink",
+	"actor", "actor.trailer", "features", "confluence", "confluence.enabled",
+}
+
+// TestSettingsCatalogHasNoUnpinnedLiteralItems is the source contract
+// behind the helper family: the audit interval (settings.go 987-1044) had
+// exactly one family-shaped item left as a literal (productByGroup); this
+// gate makes "one more" impossible without a conscious table entry.
+func TestSettingsCatalogHasNoUnpinnedLiteralItems(t *testing.T) {
+	literals := settingsCatalogLiteralPaths(t)
+	pinned := map[string]bool{}
+	for _, p := range pinnedCatalogLiteralPaths {
+		pinned[p] = true
+	}
+	var offenders []string
+	for _, p := range literals {
+		if !pinned[p] {
+			offenders = append(offenders, p)
+		}
+	}
+	if len(offenders) > 0 {
+		t.Fatalf("buildSettings has hand-written Setting literals outside the pinned block table (GDK-1922 ⑤):\n"+
+			"  %s\n"+
+			"a plain typed decode belongs to the helper family (typedSliceSetting/typedMapSetting beside their siblings);\n"+
+			"a block with its own apply semantics may join pinnedCatalogLiteralPaths with a structural reason",
+			strings.Join(offenders, ", "))
+	}
+	var stale []string
+	seen := map[string]bool{}
+	for _, p := range literals {
+		seen[p] = true
+	}
+	for _, p := range pinnedCatalogLiteralPaths {
+		if !seen[p] {
+			stale = append(stale, p)
+		}
+	}
+	if len(stale) > 0 {
+		t.Fatalf("pinned block paths with no literal left — remove them from pinnedCatalogLiteralPaths in the same commit (GDK-1922 ⑤ ratchet):\n  %s",
+			strings.Join(stale, ", "))
+	}
+}
+
+// TestSettingGetSetProductByGroup covers the first typedMapSetting resident
+// (GDK-1922 ⑤): the refusal sentence is CLI contract and must survive the
+// fold from the hand-written decode letter for letter; the roundtrip keeps
+// the null-clears semantics the literal had (json null decodes to a nil map
+// with no error, so the field resets and Get reads as an empty map).
+func TestSettingGetSetProductByGroup(t *testing.T) {
+	s, ok := SettingByPath("productByGroup")
+	if !ok {
+		t.Fatal("productByGroup not in catalog")
+	}
+	c := &Config{}
+	if got := s.Get(c); len(got.(map[string]Product)) != 0 {
+		t.Fatalf("unset must read as empty, got %v", got)
+	}
+	for name, raw := range map[string]string{
+		"array":           `["g1"]`,
+		"string":          `"g1"`,
+		"bad value shape": `{"g1": "planner"}`,
+	} {
+		bad := &Config{}
+		err := s.Set(bad, json.RawMessage(raw))
+		if err == nil {
+			t.Fatalf("accepted %s (%s)", raw, name)
+		}
+		if err.Error() != "productByGroup must be an object of {key, label}" {
+			t.Fatalf("%s: refusal sentence changed: %q", name, err.Error())
+		}
+		if bad.ProductByGroup != nil {
+			t.Fatalf("%s: stored %+v after rejection", name, bad.ProductByGroup)
+		}
+	}
+	if err := s.Set(c, json.RawMessage(`{"g1": {"key": "NMB", "label": "Number"}}`)); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	want := map[string]Product{"g1": {Key: "NMB", Label: "Number"}}
+	if !reflect.DeepEqual(c.ProductByGroup, want) {
+		t.Fatalf("stored %+v, want %+v", c.ProductByGroup, want)
+	}
+	if got := s.Get(c); !reflect.DeepEqual(got, want) {
+		t.Fatalf("get after set = %v, want %v", got, want)
+	}
+	if err := s.Set(c, json.RawMessage(`null`)); err != nil {
+		t.Fatalf("clear: %v", err)
+	}
+	if c.ProductByGroup != nil {
+		t.Fatalf("cleared productByGroup must be nil, got %+v", c.ProductByGroup)
+	}
+	if got := s.Get(c); len(got.(map[string]Product)) != 0 {
+		t.Fatalf("get after clear = %v, want empty", got)
 	}
 }

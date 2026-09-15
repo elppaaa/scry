@@ -73,6 +73,34 @@ func parseCSVKeys(s string, upper bool) []string {
 // conversion drops them from the mirror (GDK-241).
 const replaceBuiltInUsage = "replace this workspace's built-in tracker with a Jira site; issues that originated here exist only here and converting deletes them from the mirror — `migrate --to jira` carries them out first"
 
+// The initUsage* constants are the per-flag usage sentences for `gadak
+// init` (GDK-1922 ⑦). Each one is rendered by two surfaces — the FlagSet
+// registration below (what `gadak init --help` prints via VisitAll) and the
+// manual options list in help.go (what `gadak help init` prints) — and the
+// two used to be hand-kept copies that could drift. Both surfaces now read
+// these constants; init_help_usage_test.go compares them. The helps entry
+// may append a qualifier the one-line flag form omits: site, email, and
+// projects add their "; env …" alternative there, and pairing-code says
+// more about what the offer binds than one flag line should, so only its
+// shared head lives in the constant.
+const (
+	initUsageLocal        = "create a workspace on the built-in tracker, running here (no Jira site or credential)"
+	initUsageSite         = "Jira site URL (https://your-site.atlassian.net)"
+	initUsageEmail        = "account email"
+	initUsageProjects     = "project keys, comma-separated (optional — blank syncs every project you can see)"
+	initUsageTokenFile    = "read API token from this file"
+	initUsageTokenStdin   = "read API token from stdin"
+	initUsageTokenExpires = "token expiry date from Atlassian's create dialog (YYYY-MM-DD or RFC3339); omit to assume 365 days from verification"
+	initUsageToken        = "not accepted; use GADAK_TOKEN, --token-file, or --token-stdin"
+	// initUsagePairingCode and initUsagePairingCodeStdin are shared heads
+	// only: the FlagSet and the helps entry continue with deliberately
+	// shorter/longer tails (the helps pairing entries say what the offer
+	// binds and name the secret). The drift test holds the exemptions.
+	initUsagePairingCode      = "pairing offer from the home machine's `gadak pairing mint`"
+	initUsagePairingCodeStdin = "read the pairing offer from stdin"
+	initUsageJSON             = "emit one JSON object on success"
+)
+
 // renderReplaceRefusedJSON writes the --json document for a refused
 // built-in replace. Shape and field values match the previous
 // refuseBuiltInReplace encoder (CLI --json contract).
@@ -149,20 +177,20 @@ func renameLegacyInitFlags(args []string) []string {
 // Projects are optional: blank means sync every project the account can see.
 func cmdInit(args []string) error {
 	fs := newFlagSet("init")
-	siteFlag := fs.String("site", "", "Jira site URL (https://your-site.atlassian.net)")
-	emailFlag := fs.String("email", "", "account email")
-	projectsFlag := fs.String("projects", "", "project keys, comma-separated (optional — blank syncs every project you can see)")
+	siteFlag := fs.String("site", "", initUsageSite)
+	emailFlag := fs.String("email", "", initUsageEmail)
+	projectsFlag := fs.String("projects", "", initUsageProjects)
 	// Confluence: reserved words "all" / "none" (case-insensitive); any other
 	// value is a comma-separated space-key list. Flag absent leaves Confluence alone.
 	spacesFlag := fs.String("spaces", "", spacesFlagUsage)
-	tokenFile := fs.String("token-file", "", "read API token from this file")
-	tokenStdin := fs.Bool("token-stdin", false, "read API token from stdin")
+	tokenFile := fs.String("token-file", "", initUsageTokenFile)
+	tokenStdin := fs.Bool("token-stdin", false, initUsageTokenStdin)
 	// Date from Atlassian's create dialog. Omitted → assume 365 days from
 	// a successful /myself (config.ApplyTokenExpiry). No Atlassian API for this.
-	tokenExpires := fs.String("token-expires", "", "token expiry date from Atlassian's create dialog (YYYY-MM-DD or RFC3339); omit to assume 365 days from verification")
+	tokenExpires := fs.String("token-expires", "", initUsageTokenExpires)
 	// Defined only so a mistaken `--token secret` gets a clear error instead of
 	// "flag provided but not defined"; the value must never be accepted (ps/history).
-	tokenFlag := fs.String("token", "", "not accepted; use GADAK_TOKEN, --token-file, or --token-stdin")
+	tokenFlag := fs.String("token", "", initUsageToken)
 	// Jira Server / Data Center (GDK-1635/1640): a base URL that may carry a
 	// context path, and a Personal Access Token instead of email + API token.
 	// Explicit rather than sniffed — a workspace that silently decided which
@@ -170,16 +198,16 @@ func cmdInit(args []string) error {
 	// of defect. init still verifies the choice against serverInfo and refuses
 	// a mismatch.
 	serverFlag := fs.Bool("server", false, "the site is Jira Server / Data Center: authenticate with a Personal Access Token, no email")
-	jsonOut := fs.Bool("json", false, "emit one JSON object on success")
+	jsonOut := fs.Bool("json", false, initUsageJSON)
 	// The origin is the built-in tracker, running in this process — the
 	// transport axis's local (GDK-1278).
-	builtIn := fs.Bool("local", false, "create a workspace on the built-in tracker, running here (no Jira site or credential)")
+	builtIn := fs.Bool("local", false, initUsageLocal)
 	// Pairing (GDK-433): bind this workspace to a remote gadak serve with
 	// an offer from the home machine's `gadak pairing mint`. The stdin form
 	// exists for the same reason --token-stdin does: the offer carries a
 	// secret and argv is ps/shell history.
-	pairingCode := fs.String("pairing-code", "", "pairing offer from the home machine's `gadak pairing mint`; binds this workspace to that serve")
-	pairingStdin := fs.Bool("pairing-code-stdin", false, "read the pairing offer from stdin (keeps it out of ps and shell history)")
+	pairingCode := fs.String("pairing-code", "", initUsagePairingCode+"; binds this workspace to that serve")
+	pairingStdin := fs.Bool("pairing-code-stdin", false, initUsagePairingCodeStdin+" (keeps it out of ps and shell history)")
 	// Long name on purpose: a typo or a stray -f must not flip the origin.
 	replaceLocalFlag := fs.Bool("replace-local", false, replaceBuiltInUsage)
 	if err := fs.Parse(renameLegacyInitFlags(args)); err != nil {

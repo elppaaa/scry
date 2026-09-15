@@ -1006,20 +1006,12 @@ func buildSettings() []Setting {
 			func(c *Config) map[string]string { return mapOrEmpty(c.GroupColors) },
 			func(c *Config, v map[string]string) error { c.GroupColors = v; return nil },
 		),
-		{
-			Path:        "productByGroup",
-			Root:        "productByGroup",
-			Description: "group key → {key, label} product bucket",
-			Get:         func(c *Config) any { return mapOrEmpty(c.ProductByGroup) },
-			Set: func(c *Config, raw json.RawMessage) error {
-				var v map[string]Product
-				if err := json.Unmarshal(raw, &v); err != nil {
-					return fmt.Errorf("productByGroup must be an object of {key, label}")
-				}
-				c.ProductByGroup = v
-				return nil
-			},
-		},
+		typedMapSetting("productByGroup", "productByGroup",
+			"group key → {key, label} product bucket",
+			func(c *Config) map[string]Product { return mapOrEmpty(c.ProductByGroup) },
+			func(c *Config, v map[string]Product) error { c.ProductByGroup = v; return nil },
+			"productByGroup must be an object of {key, label}",
+		),
 	}
 	return out
 }
@@ -1272,6 +1264,27 @@ func typedSliceSetting[T any](path, root, desc string, get func(*Config) []T, se
 			var v []T
 			if err := json.Unmarshal(raw, &v); err != nil {
 				return fmt.Errorf("%s", notArray)
+			}
+			return set(c, v)
+		},
+	}
+}
+
+// typedMapSetting is the map[string]T sibling of typedSliceSetting
+// (productByGroup is its first resident): the last family-shaped item was
+// a hand-written RawMessage→map decode, and its refusal sentence is CLI
+// contract — notObject carries it verbatim so the fold cannot change a
+// letter (GDK-1922).
+func typedMapSetting[T any](path, root, desc string, get func(*Config) map[string]T, set func(*Config, map[string]T) error, notObject string) Setting {
+	return Setting{
+		Path:        path,
+		Root:        root,
+		Description: desc,
+		Get:         func(c *Config) any { return get(c) },
+		Set: func(c *Config, raw json.RawMessage) error {
+			var v map[string]T
+			if err := json.Unmarshal(raw, &v); err != nil {
+				return fmt.Errorf("%s", notObject)
 			}
 			return set(c, v)
 		},
