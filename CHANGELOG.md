@@ -35,7 +35,7 @@ the header is data rather than a second button, the activity strip says which
 field moved instead of "Field change", and the pairing tab names the host
 once ([GDK-1869]).
 
-**Whatever the cache holds, the phone shows.** The issue detail now has a
+Whatever the cache holds, the phone shows. The issue detail now has a
 Fields section listing labels, components, fix versions, parent and epic, and
 every custom field the site configured, under the site's own field names — the
 same rows the desk shows, which the phone had been receiving since 0.1 and
@@ -78,6 +78,14 @@ wiki paths already had: an issue deleted at the origin leaves the cache the
 next time gadak re-reads it, instead of surviving there ([GDK-1889]). And a
 Confluence site that reports attachment sizes as numbers rather than strings
 no longer stops the wiki sync at the first listing ([GDK-1900]).
+
+**An agent's page renders on the issue.** Attach an HTML file to an issue and
+the detail shows it as an artifact: the page runs in a sandboxed frame — no
+network, no access to gadak's own origin — with the issue it belongs to
+pushed in as data, the same contract dashboards already run under, so an
+agent that can write a dashboard can write a page for one issue. Expand it,
+or download the file; on Jira and Linear the same attachment is just a file,
+which is the point — nothing new has to live in the body ([GDK-1897]).
 
 ## v0.22.1 — 2026-09-14
 
@@ -1691,4 +1699,5 @@ priority sorting keyed on `priority_rank`.
 [GDK-1884]: https://gadak.dev/backlog/#/?ks=GDK-1884
 [GDK-1886]: https://gadak.dev/backlog/#/?ks=GDK-1886
 [GDK-1889]: https://gadak.dev/backlog/#/?ks=GDK-1889
+[GDK-1897]: https://gadak.dev/backlog/#/?ks=GDK-1897
 [GDK-1900]: https://gadak.dev/backlog/#/?ks=GDK-1900
