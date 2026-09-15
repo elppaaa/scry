@@ -229,7 +229,7 @@ The consequence is concrete: the tab is `doc.issues`, the default heading is
 sections are `sidebar.builtinViews` / `sidebar.myViews` /
 `sidebar.jiraFilters` / `sidebar.docs`, the whole-mirror documents plate is
 `docs.tabUpdated` (desk structure → phone row: Updated, not an invented "All
-documents"), sync is `sidebar.syncNow`, and every sheet's dismiss is
+documents"), sync is `sync.now`, and every sheet's dismiss is
 `common.cancel`. Korean and Japanese therefore come free, exactly as dark mode
 comes free from §3.1.
 

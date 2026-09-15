@@ -5,11 +5,6 @@
 import type { Message } from '../types'
 
 export const personal = {
-  'personal.myIssues': {
-    en: 'My issues',
-    ko: '내 이슈',
-    ja: '自分の課題',
-  },
 
   /* ── Personal ── */
   'personal.favorites': {

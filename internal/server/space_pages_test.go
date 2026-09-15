@@ -50,8 +50,14 @@ func (m *spacePagesMock) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		total, ok := m.countFor[key]
 		if !ok || total == nil {
 			// The origin answers, but not with a number this client will
-			// trust: 500 is the plainest form of "cannot answer".
-			http.Error(w, `{"message":"nope"}`, http.StatusInternalServerError)
+			// trust. 400, not 500: httppolicy.IsRetryable says 500 is worth
+			// another try, so a 500 here made each of these tests sit out the
+			// whole 5s spacePageCountBudget in backoff before asserting —
+			// ~20s of race-tier CI wall per run, measured by the v0.23 axis-5
+			// round (GDK-1904). Every assertion is reached on the first
+			// refusal either way: SpacePageCount returns ok=false on any
+			// error (internal/confluence/client.go).
+			http.Error(w, `{"message":"nope"}`, http.StatusBadRequest)
 			return
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"totalSize": total, "results": []any{}})

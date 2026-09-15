@@ -1240,6 +1240,14 @@ export const shell = {
     ko: 'gadak 소개',
     ja: 'gadak について',
   },
+  // GDK-1904: the button that opens that dialog was a bare English literal,
+  // so a ko/ja reader saw "About" and heard "gadak 소개". Its own key, because
+  // the button is narrower than the dialog's name.
+  'hosted.aboutButton': {
+    en: 'About',
+    ko: '소개',
+    ja: '概要',
+  },
   // GDK-1150: the phone's hardcoded controls joined the catalog. ko/ja are
   // the en value as a placeholder until the lead writes them — each key is
   // listed in the report's "리드가 쓸 문자열" and allowlisted in

@@ -83,7 +83,7 @@
             href={attachment.content_url}
             download
             class="flex h-7 w-7 flex-none items-center justify-center rounded-md text-body text-text-muted transition-colors hover:bg-bg-hover hover:text-text-primary"
-            aria-label={t('detail.artifactDownload')}
+            aria-label={t('detail.artifactDownload', { name: attachment.filename })}
             data-testid="artifact-download"
           >
             ↓

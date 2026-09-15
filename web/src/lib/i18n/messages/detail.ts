@@ -490,9 +490,9 @@ export const detail = {
     ja: '{name} を開く',
   },
   'detail.artifactDownload': {
-    en: 'Download',
-    ko: '내려받기',
-    ja: 'ダウンロード',
+    en: 'Download {name}',
+    ko: '{name} 내려받기',
+    ja: '{name} をダウンロード',
   },
   /*
    * Phone attachment affordances (GDK-1503). The packaged app has no opener

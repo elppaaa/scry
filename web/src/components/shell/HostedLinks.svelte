@@ -3,9 +3,9 @@
    * Hosted-demo-only GitHub / About surface (GDK-335). App mounts this when
    * isHostedDemo() — the banner that already wraps it. In-flow, not stacked:
    * an absolutely positioned root painted over the banner CTA at 800px (GDK-766).
-   * Marketing copy (CLAIM, the link list) stays English; the dialog's
-   * accessible name follows the UI locale like every other shell string
-   * (GDK-1704).
+   * Marketing copy (CLAIM, the link list) stays English; the chrome around
+   * it — the button label and the dialog's accessible name — follows the UI
+   * locale like every other shell string (GDK-1704, GDK-1904).
    */
   import { t } from '../../lib/i18n'
   import { ESC_TIER, isEscapeKey, onEscape, onOutsideClick } from '../../lib/dom-actions'
@@ -62,7 +62,7 @@
     aria-haspopup="dialog"
     onclick={() => (open = !open)}
   >
-    About
+    {t('hosted.aboutButton')}
   </button>
 
   {#if open}
