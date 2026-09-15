@@ -15,44 +15,65 @@
 # nothing is minutes.
 #
 # Subject inputs are what the job actually checks out and builds, read off
-# .github/workflows/ci.yml — not a guess. Each row cites its evidence:
+# .github/workflows/ci.yml — not a guess. Each row cites its evidence, and
+# the first skip that proved a row too wide is baked into it (GDK-1931, run
+# 35025858519: a desktop/-only push — 8 files of a separate module plus the
+# rebase-regenerated examples/backlog-snapshot.tar.gz — ran race ×3, e2e ×3
+# and mobile):
 #
-#   go      the race tier compiles ./internal/server/ + ./internal/workspace/
-#           from the root module (imports reach the whole tree — GDK-270's
-#           leaked goroutine came from an import, not an edit under
-#           internal/server): **/*.go, go.mod, go.sum; non-Go bytes Go itself
-#           reads at build/test time (internal/ testdata fixtures and the
-#           //go:embed json catalogs in internal/config/tokencheck/); tools/
-#           (race-partition.sh owns the deal, this filter owns the skip — a
-#           change here can rewrite the gate itself); scripts/ and examples/
-#           kept from the census's conservative starting table; and
-#           .github/workflows/ (the job definitions).
+#   go      the race tier runs `go test ./internal/server/` (sharded) +
+#           `./internal/workspace/` from the root module (imports reach the
+#           whole tree — GDK-270's leaked goroutine came from an import,
+#           not an edit under internal/server): **/*.go, go.mod, go.sum;
+#           internal/ (testdata fixtures and the //go:embed json catalogs
+#           in internal/config/tokencheck/); tools/ (race-partition.sh owns
+#           the deal, this filter owns the skip — a change here can rewrite
+#           the gate itself); scripts/; .github/workflows/. NOT desktop/
+#           (own go.mod — neither race package compiles it). NOT examples/
+#           (grep -rn 'examples/' over the two packages' .go: zero reads;
+#           the tests that open examples/demo.db live in internal/store,
+#           internal/snapshot, cmd/gadak … and run in the always-on build
+#           job, not this filtered tier).
 #
 #   e2e     e2e/serve.sh — the webServer playwright waits on — builds the
-#           gadak binary AND `npm run build` before seeding the committed
-#           fixtures: **/*.go, go.mod, go.sum, web/, e2e/, package.json,
-#           package-lock.json, examples/ (demo.db + demo-linear.db, GDK-672),
-#           tools/ (e2e-partition.sh + this filter), .nvmrc (setup-node),
-#           .github/workflows/.
+#           gadak binary (`go build ./cmd/gadak`) AND `npm run build` before
+#           seeding: **/*.go, go.mod, go.sum, web/, e2e/, package.json,
+#           package-lock.json, .nvmrc (setup-node), tools/ (e2e-partition.sh
+#           + this filter), .github/workflows/. The examples/ input is the
+#           exact set serve.sh and the CI specs open, not the directory:
+#           examples/demo.db (SEED_DB) + examples/demo-linear.db (the
+#           second serve, e2e/linear.spec.ts; both also in
+#           e2e/served-digest.sh's stamp), examples/demo-source.db
+#           (pr-links.spec.ts), examples/demo-i18n/ (helpers.ts
+#           mediaFixture), examples/attachments/ (serve.sh
+#           --import-attachments — the console-hygiene spec reads these
+#           bytes). NOT desktop/ (own go.mod — serve.sh builds the root
+#           module only). NOT examples/backlog-snapshot.tar.gz or the rest
+#           of examples/ (dashboards/, compose/, plugins/ are read by demo
+#           recordings and Go tests outside this filtered tier).
 #
 #   mobile  mobile/ (own src, e2e, package-lock.json, tauri) plus the two
 #           web/src slices it imports (lib/i18n/, lib/terminal/); the root
 #           package.json/package-lock.json (Playwright lives at the root);
 #           docs/media/logo.png (check-brand-icons.sh diffs the phone icons
 #           against the mark); internal/pairing/testdata/ (offer-vectors.json
-#           is half
-#           of a contract whose other half is Go); **/*.go, go.mod, go.sum
-#           (gate-serve.sh builds and runs `gadak demo`); tools/
-#           (check-brand-icons.sh + this filter); .nvmrc;
-#           .github/workflows/.
+#           is half of a contract whose other half is Go); examples/demo.db
+#           (gate-serve.sh's api digest names it — the `gadak demo` it
+#           builds seeds from it); **/*.go, go.mod, go.sum (gate-serve.sh
+#           builds and runs `gadak demo`); tools/ (check-brand-icons.sh +
+#           this filter); .nvmrc; .github/workflows/. NOT desktop/ (own
+#           go.mod — gate-serve.sh builds the root module only).
 #
 #   desktop desktop/ (own module, Info.plist, windows-app.manifest, msix/,
 #           pack scripts) plus the root module every pack script compiles —
 #           build-app.sh / build-linux.sh / build-windows.ps1 each build
-#           ./cmd/gadak so dist/app stays embedded: **/*.go, go.mod, go.sum,
-#           web/, package.json, package-lock.json; tools/
-#           (check-desktop-tidy.sh, windows-manifest.sh, this filter);
-#           .nvmrc; .github/workflows/.
+#           ./cmd/gadak so dist/app stays embedded: **/*.go (the root
+#           module's — desktop/'s own .go is already covered by
+#           dir:desktop/ above), go.mod, go.sum, web/, package.json,
+#           package-lock.json; tools/ (check-desktop-tidy.sh,
+#           windows-manifest.sh, this filter); .nvmrc;
+#           .github/workflows/. No desktop/ carve-out here: this subject
+#           IS the one that builds it.
 #
 # Visibility: a filter that never says anything is its own defect, so every
 # decision — run or skip — prints one line naming the subject, the verdict,
@@ -86,18 +107,24 @@ EOF
 
 # ── the input tables ────────────────────────────────────────────────────────
 # One pattern per line; a changed path matches a subject when it matches any
-# line. Three shapes, and only these:
+# line. Four shapes, and only these:
 #   dir:<d>/    directory prefix — everything under it
 #   suffix:<s>  filename suffix (extension-class matches)
 #   exact:<f>   one file (matched against the whole path)
+#   not:<d>/    carve-out — no path under this prefix is an input of this
+#               subject, however else it would match. Written FIRST in a
+#               table so the carve-out reads before what it carves: the
+#               reason is always "this prefix belongs to a build the subject
+#               never invokes" (desktop/ is its own go.mod — the one carve-
+#               out in the tables below).
 subject_patterns() { # $1 = subject; unknown subject → stderr + exit 2
   case "$1" in
     go)
       cat <<'EOF'
+not:desktop/
 dir:internal/
 dir:tools/
 dir:scripts/
-dir:examples/
 dir:.github/workflows/
 suffix:.go
 exact:go.mod
@@ -106,9 +133,14 @@ EOF
       ;;
     e2e)
       cat <<'EOF'
+not:desktop/
 dir:web/
 dir:e2e/
-dir:examples/
+exact:examples/demo.db
+exact:examples/demo-linear.db
+exact:examples/demo-source.db
+dir:examples/demo-i18n/
+dir:examples/attachments/
 dir:tools/
 dir:.github/workflows/
 suffix:.go
@@ -121,11 +153,13 @@ EOF
       ;;
     mobile)
       cat <<'EOF'
+not:desktop/
 dir:mobile/
 dir:web/src/lib/i18n/
 dir:web/src/lib/terminal/
 exact:docs/media/logo.png
 dir:internal/pairing/testdata/
+exact:examples/demo.db
 dir:tools/
 dir:.github/workflows/
 suffix:.go
@@ -160,7 +194,8 @@ EOF
 # Does one changed path match one pattern? [[ == ]] is a glob match, and the
 # trailing '/' in a dir: pattern keeps dir:web/ from matching a top-level
 # file named web-thing. Runs once per (path, pattern) and diff lists are
-# short, so no subshell per path.
+# short, so no subshell per path. not: lines never match here — decide()
+# collects them as carve-outs before any path is tested.
 pat_match() { # $1 = pattern, $2 = path
   case "$1" in
     'dir:'*) [[ "$2" == "${1#dir:}"* ]] ;;
@@ -186,12 +221,34 @@ verdict() { # $1 = run|skip, $2 = reason; $subject comes from the caller
 # failed open on every error path before getting here.
 decide() { # $1 = subject
   local subject="$1" path p n=0 hit="" first_hit=""
-  local pats
+  local pats xcl ex excluded
   pats=""
   pats="$(subject_patterns "$subject")"
+  # not: lines are carve-outs, collected in one pass over the table: every
+  # prefix they name leaves this subject's input set however else it would
+  # match (a suffix:.go under desktop/ is another module's .go). A path
+  # under a carve-out still counts in n — it changed — it just cannot be
+  # the hit.
+  xcl=""
+  while IFS= read -r p; do
+    [[ -z "$p" ]] && continue
+    if [[ "$p" == 'not:'* ]]; then
+      xcl="${xcl}${p#not:}
+"
+    fi
+  done <<<"$pats"
   while IFS= read -r path; do
     [[ -z "$path" ]] && continue
     n=$((n + 1))
+    excluded=0
+    while IFS= read -r ex; do
+      [[ -z "$ex" ]] && continue
+      if [[ "$path" == "$ex"* ]]; then
+        excluded=1
+        break
+      fi
+    done <<<"$xcl"
+    [[ "$excluded" = 1 ]] && continue
     if [[ -z "$first_hit" ]]; then
       while IFS= read -r p; do
         [[ -z "$p" ]] && continue
