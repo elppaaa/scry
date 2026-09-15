@@ -101,23 +101,23 @@ gadak init && gadak serve
   name scopes: there are none.
 - **The reader picks the scope**: `--projects` for Jira, `--spaces` for the
   wiki (both comma-separated; `cmd/gadak/init.go:154,157`). **The wiki stays
-  off until spaces are named** (`cmd/gadak/init.go:483`). `gadak init` prompts
+  off until spaces are named** (`cmd/gadak/init.go:412`). `gadak init` prompts
   for projects only when stdin is a terminal and none were given; it never
   prompts for spaces. A scoped first run, verified against `gadak init --help`
-  (`cmd/gadak/help.go:67-70`):
+  (`cmd/gadak/help.go:117`):
 
 ```bash
 gadak init --projects ENG,PROD --spaces ENG
 ```
 
 - **What keeps the mirror fresh**: `gadak serve` runs the incremental sync
-  loop by default when a credential is configured (`cmd/gadak/serve.go:258`;
+  loop by default when a credential is configured (`cmd/gadak/serve.go:264`;
   `--no-sync` opts out). The default interval is **60 seconds**
-  (`internal/config/config.go:382`, `DefaultSyncIntervalSec`; floor 15 s;
+  (`internal/config/config.go:400`, `DefaultSyncIntervalSec`; floor 15 s;
   `syncIntervalSec` in Settings → Sync or `gadak config`), plus an **hourly
   reconcile pass** that proves absence: an issue the account can no longer
   see, or that was deleted, is removed from the mirror on the next reconcile
-  (`internal/sync/sync.go:899-970`; a scan that returns zero keys refuses to
+  (`internal/sync/sync.go:1010-1034`; a scan that returns zero keys refuses to
   empty the mirror). Without `serve`, `gadak sync --watch` runs the same loop;
   there is no `gadak watch` verb.
 - **The first full sync is the slow part**: 3.7 minutes for the benchmark
@@ -211,7 +211,7 @@ gadak sql "select epic_key, count(*) from issues_full where resolved_at is null
 - **Two MCP registration commands, and they are not interchangeable**
   (GDK-1633, 2026-09-08):
   - `gadak mcp install claude` execs **Claude Code's** `claude mcp add gadak --
-    <absolute exe> [--profile p] mcp` (`cmd/gadak/mcp_install.go:36`). It
+    <absolute exe> [--profile p] mcp` (`cmd/gadak/mcp_install.go:47`). It
     registers with Claude Code, which reads `~/.claude.json`. Claude Desktop
     never sees it.
   - `gadak mcp install claude-desktop` writes the `gadak` entry into Claude
@@ -235,7 +235,7 @@ gadak sql "select epic_key, count(*) from issues_full where resolved_at is null
 - Writes (`create`, `edit`, `comment`, `transition`, `claim`, `link`, and the
   wiki `page` verbs) go through the origin before the mirror refreshes.
 - **Attribution — say exactly this much and no more** (`internal/origin/trailer.go`,
-  `internal/origin/transport.go:31`): on the **built-in tracker** the agent is
+  `internal/origin/transport.go:33`): on the **built-in tracker** the agent is
   recorded as the write's author. On **Jira Cloud and Linear** the identity
   travels inside the body as one trailing line — `— via gadak · Claude Code
   (claude:…)` — on **three shapes only**: a comment, a transition's comment when
@@ -288,7 +288,7 @@ first question (review round 2026-09-08). Confluence Server has no client
 
 - **No telemetry**, no analytics, no gadak account or server.
 - **Outbound traffic is exactly five destinations**, and `SECURITY.md` is the
-  authority for the list (`docs/PROMISES.md` promise 2 pins the same five, and
+  authority for the list (`docs/PROMISES.md` promise 1 pins the same five, and
   `tools/doc-checks.sh` check 8 asserts the two files agree). Do not
   paraphrase this list shorter — an edition that enumerates must enumerate
   all five:
@@ -302,7 +302,7 @@ first question (review round 2026-09-08). Confluence Server has no client
 - Reads do not open a connection. The exceptions are four origin-asking verbs:
   `gadak issue --editmeta`, `gadak fields`, `gadak api` (a passthrough), and
   viewing an attachment (`docs/NETWORK.md:21`).
-- **gadak never queues a write in the mirror** (`docs/NETWORK.md:29`): a write
+- **gadak never queues a write in the mirror** (`docs/NETWORK.md:28`): a write
   the origin did not accept fails then and there.
 - `SECURITY.md` cites **file paths**, not `path:line`. An edition must not
   claim line-level citations.
@@ -311,10 +311,10 @@ first question (review round 2026-09-08). Confluence Server has no client
   `~/.gadak/profiles/<name>/config.json`) — **the same path on every OS**
   (`%USERPROFILE%\.gadak` on Windows); there is **no OS keychain** on the
   desktop (the phone app is the only Keychain user). It is written atomically
-  with mode `0600` (`internal/atomicfile`, `internal/config/config.go:908`) in a
+  with mode `0600` (`internal/atomicfile`, `internal/config/config.go:844`) in a
   `0700` directory, and sent only as the `Authorization` header to the reader's
   own site — the transport rejects any other host
-  (`internal/atlhttp/transport.go:45`). Gates: `docs/PROMISES.md` promise 7
+  (`internal/atlhttp/transport.go:173`). Gates: `docs/PROMISES.md` promise 2
   (snapshot scan), `TestCredentialLifecycle`, `TestExportWhitelistCoversAllConfigFields`.
 - **"gadak only talks to what you configured" is true** (GDK-1626,
   2026-09-08). It was not before: gadak used to look for a new version on
@@ -335,8 +335,8 @@ first question (review round 2026-09-08). Confluence Server has no client
   someone deciding whether to try it. A landing says the cache is ordinary
   SQLite and what that means if gadak went away, and links the docs.
 - What a reader does not have to take on trust, each with the command that
-  checks it: `docs/PROMISES.md` — **eleven** items since GDK-1626 (an edition
-  that prints the count prints eleven, or leaves the count out). Since
+  checks it: `docs/PROMISES.md` — **eight** items (an edition
+  that prints the count prints eight, or leaves the count out). Since
   2026-09-09 the file is ordered by the reader's question, not by when a claim
   was added: *What leaves this machine* (telemetry, the five destinations, a
   snapshot that cannot carry a token), then *What you can take away* (the
@@ -485,7 +485,7 @@ landing (`site/src/i18n.ts`) and all three READMEs.
   (it asks them to self-censor a harmless number), the separate
   what-to-send-about-an-agent paragraph, and the numbered bug-report list on
   the landings. The deployment type in a bug report is now "Cloud or Server".
-- **Every edition carries status where a first-time reader finds it**: 0.21
+- **Every edition carries status where a first-time reader finds it**: 0.22
   / 0.x, one maintainer, Apache-2.0, and the work that stays in Jira. The
   three-promise compatibility contract is README material, not landing
   material (§11).

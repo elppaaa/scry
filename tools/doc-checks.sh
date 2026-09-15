@@ -336,9 +336,17 @@ else
   # and the "<minor> / 0.x" status line. Deliberately not every `0.NN` —
   # "since 0.20.2" is history and the ledger's own verification date names
   # the tag it was checked against; neither moves with a release.
-  ledger_vers="$( { grep -oE '(Status|상태|状態): 0\.[0-9]+' docs/project/FACT_LEDGER.md
-                    grep -oE '\b0\.[0-9]+ / 0\.x' docs/project/FACT_LEDGER.md
-                  } | grep -oE '\b0\.[0-9]+' | sort -u || true)"
+  #
+  # 2026-09-15: the extraction joins the file to one line first.
+  # grep is line-bound, and §16 of the ledger wrapped its status sentence as
+  # "…finds it**: 0.21\n  / 0.x, one maintainer…" — the wrapped "0.21 / 0.x"
+  # never matched, so the ledger carried 0.21 next to §3's 0.22 for a whole
+  # minor (v0.22) with this check green. A wrapped reflow of the same fact
+  # must not decide whether the guard sees it.
+  ledger_flat="$(tr '\n' ' ' < docs/project/FACT_LEDGER.md | tr -s '[:space:]' ' ')"
+  ledger_vers="$(printf '%s\n' "$ledger_flat" \
+    | grep -oE '(Status|상태|状態): 0\.[0-9]+|\b0\.[0-9]+ / 0\.x' \
+    | grep -oE '\b0\.[0-9]+' | sort -u || true)"
   if [[ -z "$ledger_vers" ]]; then
     fail "docs/project/FACT_LEDGER.md states no status version at all — the status facts cannot have been deleted to satisfy this"
   fi
@@ -3257,5 +3265,226 @@ for b in bad:
 sys.exit(1 if bad else 0)
 PY59
 ok "the release footer makes no update-check claim"
+
+# ── 60. docs/ path:line citations name a file that exists and a line in it ──
+# Attribution: the 2026-09-15 citation-audit round. Three times now a
+# hand-kept `path:line` anchor has drifted while every gate stayed green:
+# 19 of SUPPORT_MATRIX.md's 22 footnotes, the same
+# family again on 2026-09-15, and ten anchors in FACT_LEDGER.md pointing at
+# `}` or an unrelated comment after the code moved (found by re-opening every
+# citation; scratch/audit-citations.py is that audit, kept for re-runs).
+# Line-level citations are the only "checkable" promise the ledger makes that
+# no script checked.
+#
+# Contract (minimum, from the audit round):
+#   ① a cited file that does not resolve → FAIL
+#   ② a line number past the cited file's end → FAIL
+#   ③ a cited line that is empty or nothing but a closing brace → warn
+#     (exactly the shape both FACT_LEDGER drifts had: `config.go:382` `}`)
+# Resolution: repo root, then the doc's own directory, then — for a bare
+# filename — the unique census file with that basename; `issuetap/...` cites
+# resolve against the sibling checkout (../issuetap) when present and are
+# counted as out-of-repo otherwise, so CI (no sibling) is green by policy,
+# not by luck.
+# Exempt: docs/decisions/ (immutable by repo rule — addenda only),
+# docs/research/ and docs/audits/ (point-in-time records whose citations are
+# as-of-date snapshots, not living promises). Their citation counts print in
+# the summary so the exemption stays visible.
+# FAIL-first that day against the pre-baseline tree: nine
+# `cmd/gadak/agent.go:NNNN` footnotes in SUPPORT_MATRIX.md — agent.go was
+# split (GDK-1771) and the file no longer exists. Those nine are pinned in
+# KNOWN_STALE below with that attribution; the footnote rewrite itself is
+# the SUPPORT_MATRIX round's job (out of this round's file boundary).
+# An entry in KNOWN_STALE that no longer matches anything FAILS — an
+# exemption list that only grows is how a guard rots into decoration.
+python3 - "$FILE_CENSUS" <<'PY60' || fail "a docs/ path:line citation does not resolve"
+import re, sys
+from pathlib import Path
+
+CITE = re.compile(
+    r"(?<![\w/])([A-Za-z0-9_.\-]+(?:/[A-Za-z0-9_.\-]+)*\."
+    r"(?:go|ts|js|mjs|py|sh|svelte|rs|md|json|css|html|sql|txt))"
+    r"[:：](\d+)(?:[–-](\d+))?")
+POINT_IN_TIME = ("docs/decisions/", "docs/research/", "docs/audits/")
+ISSUETAP = Path("..") / "issuetap"
+
+# Bare-name resolution: exactly one census file with that basename wins;
+# more than one is ambiguity (warned, not failed — the citation is still
+# findable by a human, the check just cannot pick for it).
+basenames = {}
+with open(sys.argv[1], encoding="utf-8") as fh:
+    for row in fh:
+        name = row.rstrip("\n").rsplit("/", 1)[-1]
+        if name:
+            basenames.setdefault(name, []).append(row.rstrip("\n"))
+
+KNOWN_STALE = {
+    "docs/SUPPORT_MATRIX.md": {
+        "cmd/gadak/agent.go:1167",
+        "cmd/gadak/agent.go:1336",
+        "cmd/gadak/agent.go:2048",
+        "cmd/gadak/agent.go:2394",
+        "cmd/gadak/agent.go:2539",
+        "cmd/gadak/agent.go:2556",
+        "cmd/gadak/agent.go:2746",
+        "cmd/gadak/agent.go:2761",
+        "cmd/gadak/agent.go:2779",
+    },
+}
+
+fails, warns, stale_hit = [], [], set()
+skipped_hist = skipped_issuetap = 0
+
+def resolve(doc, rel):
+    """Path for rel from doc's citation, or None. issuetap/ needs the sibling."""
+    if rel.startswith("issuetap/"):
+        if not ISSUETAP.is_dir():
+            return "SKIP_OOR"
+        p = ISSUETAP / rel[len("issuetap/"):]
+        return p if p.is_file() else None
+    p = Path(rel)
+    if p.is_file():
+        return p
+    p = Path(doc).parent / rel
+    if p.is_file():
+        return p
+    if "/" not in rel:
+        cands = basenames.get(rel, [])
+        if len(cands) == 1:
+            return Path(cands[0])
+        if len(cands) > 1:
+            return "AMBIG"
+    return None
+
+for doc in sorted(Path("docs").rglob("*.md")):
+    dstr = doc.as_posix()
+    historical = dstr.startswith(POINT_IN_TIME)
+    for ln, line in enumerate(doc.read_text(errors="replace").splitlines(), 1):
+        for m in CITE.finditer(line):
+            if "://" in line[max(0, m.start() - 15):m.start() + 1]:
+                continue  # URL context, not a citation
+            if historical:
+                skipped_hist += 1
+                continue
+            rel, lo, hi = m.group(1), int(m.group(2)), m.group(3)
+            hi = int(hi) if hi else lo
+            where = resolve(dstr, rel)
+            if where == "SKIP_OOR":
+                skipped_issuetap += 1
+                continue
+            if where == "AMBIG":
+                warns.append(f"{dstr}:{ln} {m.group(0)} — basename matches "
+                             f"{len(basenames[rel])} files, not resolved")
+                continue
+            if where is None:
+                if m.group(0) in KNOWN_STALE.get(dstr, ()):
+                    stale_hit.add((dstr, m.group(0)))
+                    continue
+                fails.append(f"{dstr}:{ln} {m.group(0)} — no such file")
+                continue
+            n = len(where.read_text(errors="replace").splitlines())
+            if hi > n or lo > n:
+                if m.group(0) in KNOWN_STALE.get(dstr, ()):
+                    stale_hit.add((dstr, m.group(0)))
+                    continue
+                fails.append(f"{dstr}:{ln} {m.group(0)} — {where} has {n} lines")
+                continue
+            first = where.read_text(errors="replace").splitlines()[lo - 1].strip()
+            if not first or first.strip("}()") == "":
+                warns.append(f"{dstr}:{ln} {m.group(0)} — cited line is "
+                             f"{first!r} (anchor drift smell)")
+
+for doc, cites in KNOWN_STALE.items():
+    for cite in cites - {c for d, c in stale_hit}:
+        fails.append(f"KNOWN_STALE entry {doc} :: {cite} matches nothing — "
+                     "the citation was fixed, shrink the baseline")
+
+for w in warns:
+    print("warn: " + w, file=sys.stderr)
+print(f"citations: historical(skipped)={skipped_hist} "
+      f"out-of-repo issuetap(skipped)={skipped_issuetap} "
+      f"known-stale baseline={len(stale_hit)} warn={len(warns)}")
+for f in fails:
+    print("  " + f)
+sys.exit(1 if fails else 0)
+PY60
+ok "docs/ path:line citations resolve to a real file and line"
+
+# ── 61. the site and llms.txt carry the ledger's bench figures, not their own ──
+# (Attribution: the 2026-09-15 citation-audit round.) site/ and llms.txt print
+# the benchmark table's numbers in three languages, and until this check no
+# gate compared any of them to docs/project/FACT_LEDGER.md — the ledger could
+# be re-measured and gadak.dev would keep the old figures until someone
+# happened to rewrite the landing copy. The direction matters: the site may
+# print FEWER numbers than the ledger (an edition compresses), but every
+# `N ms` figure, every `N×` ratio, and the measurement's date and corpus it
+# does print must exist in the ledger. A number with no ledger counterpart is
+# a marketing claim with no home — that is the repo's rule (public bench or
+# nothing), and this check makes it visible instead of enforcing a value.
+# The Datasette Lite URL gets the same treatment percent-decoded: it must
+# embed the ledger's published demo db URL and must not point at the
+# committed examples/demo.db (FACT_LEDGER §7: the fixture's FTS DDL cannot
+# open in pyodide).
+# FAIL-first 2026-09-15: editing the ledger's `583 ms` to `599 ms` made this
+# check fail on site/src/i18n.ts's speed row (output in the round report).
+python3 - <<'PY61' || fail "site/ or llms.txt prints a bench figure the fact ledger does not carry"
+import re, sys
+from urllib.parse import unquote
+from pathlib import Path
+
+LEDGER = Path("docs/project/FACT_LEDGER.md").read_text()
+SITE_FILES = ["site/src/i18n.ts", "site/src/tagline.js", "site/public/llms.txt"]
+
+def norm(text):
+    return re.sub(r"\s+", " ", text)
+
+def figures(text):
+    """{normalized 'Nms', 'N×'} in text — commas stripped so 4,761 == 4761."""
+    out = set()
+    for m in re.finditer(r"([0-9][0-9,]*)\s?ms\b", text):
+        out.add(m.group(1).replace(",", "") + "ms")
+    for m in re.finditer(r"([0-9]+)×", text):
+        out.add(m.group(1) + "×")
+    return out
+
+ledger_figs = figures(LEDGER)
+# The measurement's own identity travels with its numbers: a site that names
+# the date or the corpus is claiming the measurement, not a vibe.
+ledger_lits = {lit: (lit in norm(LEDGER)) for lit in ["2026-08-26", "3,296", "20,000", "3.7"]}
+
+bad = []
+for name in SITE_FILES:
+    p = Path(name)
+    if not p.exists():
+        bad.append(f"{name}: missing — the bench-figure owner list is stale")
+        continue
+    text = norm(p.read_text())
+    for fig in sorted(figures(text) - ledger_figs):
+        where = "ms figure" if fig.endswith("ms") else "ratio"
+        bad.append(f"{name}: {fig} ({where}) is not in docs/project/FACT_LEDGER.md")
+    for lit, in_ledger in ledger_lits.items():
+        if lit in text and not in_ledger:
+            bad.append(f"{name}: {lit} is not in docs/project/FACT_LEDGER.md")
+
+m = re.search(r"https://lite\.datasette\.io/\S+", Path("site/src/i18n.ts").read_text())
+lm = re.search(r"https://gadak\.dev/demo/gadak-demo\.db", LEDGER)
+if not lm:
+    bad.append("docs/project/FACT_LEDGER.md no longer names the published demo db URL")
+elif m:
+    decoded = unquote(m.group(0))
+    if "https://gadak.dev/demo/gadak-demo.db" not in decoded:
+        bad.append(f"site/src/i18n.ts Datasette URL does not embed the ledger's "
+                   f"published db URL: {decoded[:120]}")
+    if "examples/demo.db" in decoded:
+        bad.append("site/src/i18n.ts Datasette URL points at the committed fixture, "
+                   "which pyodide cannot open (FACT_LEDGER §7)")
+elif not m:
+    bad.append("site/src/i18n.ts has no Datasette Lite URL — the runnable proof was deleted")
+
+for b in bad:
+    print("  " + b)
+sys.exit(1 if bad else 0)
+PY61
+ok "site and llms.txt bench figures and the Datasette URL match the fact ledger"
 
 echo "doc-checks: all passed"
