@@ -323,8 +323,8 @@ fi
 #    precisely so this binary cannot carry it. The two checks are a pair:
 #    any encoding change that hides the loopback literals would also hide
 #    the ts.net one, so the presence check turns a vacuous pass into a loud
-#    fail. UNVERIFIED THIS ROUND: authored on a runner with no signing
-#    identity — the first real --bump run owns the confirmation.
+#    fail. Confirmed on two signed builds: build 5 (59e9f085, 2026-09-14)
+#    and build 6 (dd0bcbc6, 2026-09-15) both passed this pair.
 main_bin="$app_bundle/$(plist_get CFBundleExecutable)"
 [ -f "$main_bin" ] || main_bin="$(/usr/bin/find "$app_bundle" -maxdepth 1 -type f -perm -111 | head -1)"
 [ -n "$main_bin" ] || fail "the app bundle has no main executable to scan"
@@ -399,8 +399,9 @@ mkdir -p "$record_dir"
     echo "- Bundle: $BUNDLE_ID, team $TEAM_ID"
     echo "- .ipa contract: version/build, bundle id, signing team,"
     echo "  ITSAppUsesNonExemptEncryption=false, NSCameraUsageDescription present,"
-    echo "  app icon compiled in, no demo-tour in the shipped bundle — all verified"
-    echo "  pre-upload."
+    echo "  app icon compiled in, no demo-tour in the shipped bundle,"
+    echo "  shipped dial scope (ts.net compiled in, loopback absent) — all"
+    echo "  verified pre-upload."
     echo "- altool: VERIFY SUCCEEDED, UPLOAD SUCCEEDED."
     echo "- App Store Connect processingState: $processing_state"
     echo

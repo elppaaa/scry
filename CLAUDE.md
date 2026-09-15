@@ -274,7 +274,7 @@ hard-won 목록)와 `AGENTS.md`(기여 계약)·`docs/MIRROR.md`(스키마·SQL 
   교체.
 - **폰 앱(mobile/)의 TestFlight 내부 배포는 한 줄이다**:
   `cd mobile && scripts/testflight-upload.sh --bump` — 게이트 → `tauri ios
-  build` → **`.ipa` 계약 검증 8항목** → `altool` 업로드 → 처리 대기 →
+  build` → **`.ipa` 계약 검증 9항목** → `altool` 업로드 → 처리 대기 →
   `artifacts/app-store/`에 영수증. 계정 소유자 웹 단계(그룹 배정·계약 갱신
   동의)와 rust 툴체인 함정은 `docs/runbooks/testflight-release.md`가 정본.
   자격증명은 `~/.appstoreconnect`(레포 밖). 공개 스토어 제출은 여전히 별개
