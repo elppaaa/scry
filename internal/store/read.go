@@ -185,26 +185,20 @@ const issueLiteSelect = `
 // (GDK-400), so callers refuse instead of picking one.
 var ErrKeyAmbiguous = errors.New("this key is mirrored from more than one source — scope one side out (projects / linear.teamIds) before writing to it")
 
-// KeySource returns the source_id owning key in the mirror, "" when the key
-// is not mirrored, and ErrKeyAmbiguous when two sources both mint it —
-// silently preferring one source sent writes to a tracker the screen was
-// not showing (GDK-400).
-func (db *DB) KeySource(ctx context.Context, key string) (string, error) {
-	rows, err := db.sql.QueryContext(ctx,
-		`SELECT DISTINCT source_id FROM items WHERE key = ?`, key)
+// distinctSources answers the single-owner question every key-routed write
+// asks: bind arg into query, then collapse the distinct source ids it
+// returned — none means not mirrored (""), one names the owner, more is
+// ErrKeyAmbiguous with arg in front of it. KeySource and ProjectSource
+// shared this switch by hand, each copy able to drift from the GDK-400
+// refusal the other enforced.
+func (db *DB) distinctSources(ctx context.Context, query, arg string) (string, error) {
+	rows, err := db.sql.QueryContext(ctx, query, arg)
 	if err != nil {
 		return "", err
 	}
 	defer rows.Close()
-	srcs := []string{}
-	for rows.Next() {
-		var s string
-		if err := rows.Scan(&s); err != nil {
-			return "", err
-		}
-		srcs = append(srcs, s)
-	}
-	if err := rows.Err(); err != nil {
+	srcs, err := scanStrings(rows)
+	if err != nil {
 		return "", err
 	}
 	switch len(srcs) {
@@ -213,8 +207,33 @@ func (db *DB) KeySource(ctx context.Context, key string) (string, error) {
 	case 1:
 		return srcs[0], nil
 	default:
-		return "", fmt.Errorf("%s: %w", key, ErrKeyAmbiguous)
+		return "", fmt.Errorf("%s: %w", arg, ErrKeyAmbiguous)
 	}
+}
+
+// scanStrings collects a single-column string result into a non-nil slice.
+// Non-nil is load-bearing on the JSON paths: DeletedKeysSince and
+// KeysInSprint feed API responses where nil marshals as null and [] as an
+// empty array — the delta contract is an empty array, never null.
+func scanStrings(rows *sql.Rows) ([]string, error) {
+	out := []string{}
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// KeySource returns the source_id owning key in the mirror, "" when the key
+// is not mirrored, and ErrKeyAmbiguous when two sources both mint it —
+// silently preferring one source sent writes to a tracker the screen was
+// not showing (GDK-400).
+func (db *DB) KeySource(ctx context.Context, key string) (string, error) {
+	return db.distinctSources(ctx,
+		`SELECT DISTINCT source_id FROM items WHERE key = ?`, key)
 }
 
 // ProjectSource is KeySource for a project key: the source_id owning
@@ -222,33 +241,10 @@ func (db *DB) KeySource(ctx context.Context, key string) (string, error) {
 // a Linear-team create uses this. Empty when the project is not
 // mirrored; ErrKeyAmbiguous when Jira and Linear both mint it.
 func (db *DB) ProjectSource(ctx context.Context, projectKey string) (string, error) {
-	rows, err := db.sql.QueryContext(ctx, `
+	return db.distinctSources(ctx, `
 		SELECT DISTINCT it.source_id
 		FROM issues i JOIN items it ON it.id = i.item_id
 		WHERE i.project_key = ?`, projectKey)
-	if err != nil {
-		return "", err
-	}
-	defer rows.Close()
-	srcs := []string{}
-	for rows.Next() {
-		var s string
-		if err := rows.Scan(&s); err != nil {
-			return "", err
-		}
-		srcs = append(srcs, s)
-	}
-	if err := rows.Err(); err != nil {
-		return "", err
-	}
-	switch len(srcs) {
-	case 0:
-		return "", nil
-	case 1:
-		return srcs[0], nil
-	default:
-		return "", fmt.Errorf("%s: %w", projectKey, ErrKeyAmbiguous)
-	}
 }
 
 // ProjectIssueCounts returns the issue count per project key for one
@@ -391,15 +387,7 @@ func (db *DB) DeletedKeysSince(ctx context.Context, since string) ([]string, err
 		return nil, err
 	}
 	defer rows.Close()
-	out := []string{}
-	for rows.Next() {
-		var k string
-		if err := rows.Scan(&k); err != nil {
-			return nil, err
-		}
-		out = append(out, k)
-	}
-	return out, rows.Err()
+	return scanStrings(rows)
 }
 
 // DetailComment is one comment as the detail panel renders it.
@@ -1925,15 +1913,7 @@ func (db *DB) KeysInSprint(ctx context.Context, sprintID int64) ([]string, error
 		return nil, err
 	}
 	defer rows.Close()
-	out := []string{}
-	for rows.Next() {
-		var k string
-		if err := rows.Scan(&k); err != nil {
-			return nil, err
-		}
-		out = append(out, k)
-	}
-	return out, rows.Err()
+	return scanStrings(rows)
 }
 
 // BoardRowWithSprints is one mirrored board. `HasSprints` says whether the board can

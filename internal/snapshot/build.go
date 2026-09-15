@@ -783,52 +783,21 @@ func insertIssueBundle(tx *sql.Tx, p plannedIssue, itemID, key string, ch childr
 
 	// Children.
 	srcID := p.src.itemID
-	comms := ch.commentsBy[srcID]
-	for i, row := range comms {
-		row = maps.Clone(row)
-		if p.cloneSeq > 0 {
-			row["id"] = fmt.Sprintf("snap:clone:%d:c:%v", p.cloneSeq, row["id"])
-		}
-		row["item_id"] = itemID
-		if p.useMap {
-			if asString(row["created_at"]) != "" && i < len(p.events.commentNew) && p.events.commentNew[i] != "" {
-				row["created_at"] = p.events.commentNew[i]
-			}
-			if asString(row["updated_at"]) != "" && i < len(p.events.commentUpd) && p.events.commentUpd[i] != "" {
-				row["updated_at"] = p.events.commentUpd[i]
-			}
-		}
-		if err := insertRow(tx, "comments", commentColumns, row); err != nil {
-			return err
-		}
+	if err := cloneChildRows(tx, ch.commentsBy[srcID], p, itemID, "c", "comments", commentColumns, map[string][]string{
+		"created_at": p.events.commentNew,
+		"updated_at": p.events.commentUpd,
+	}); err != nil {
+		return err
 	}
-	atts := ch.attachmentsBy[srcID]
-	for i, row := range atts {
-		row = maps.Clone(row)
-		if p.cloneSeq > 0 {
-			row["id"] = fmt.Sprintf("snap:clone:%d:a:%v", p.cloneSeq, row["id"])
-		}
-		row["item_id"] = itemID
-		if p.useMap && asString(row["created_at"]) != "" && i < len(p.events.attachments) && p.events.attachments[i] != "" {
-			row["created_at"] = p.events.attachments[i]
-		}
-		if err := insertRow(tx, "attachments", attachmentColumns, row); err != nil {
-			return err
-		}
+	if err := cloneChildRows(tx, ch.attachmentsBy[srcID], p, itemID, "a", "attachments", attachmentColumns, map[string][]string{
+		"created_at": p.events.attachments,
+	}); err != nil {
+		return err
 	}
-	changes := ch.changelogBy[srcID]
-	for i, row := range changes {
-		row = maps.Clone(row)
-		if p.cloneSeq > 0 {
-			row["id"] = fmt.Sprintf("snap:clone:%d:h:%v", p.cloneSeq, row["id"])
-		}
-		row["item_id"] = itemID
-		if p.useMap && asString(row["at"]) != "" && i < len(p.events.changelog) && p.events.changelog[i] != "" {
-			row["at"] = p.events.changelog[i]
-		}
-		if err := insertRow(tx, "changelog", changelogColumns, row); err != nil {
-			return err
-		}
+	if err := cloneChildRows(tx, ch.changelogBy[srcID], p, itemID, "h", "changelog", changelogColumns, map[string][]string{
+		"at": p.events.changelog,
+	}); err != nil {
+		return err
 	}
 
 	// FTS — same contentless delete+insert path (and cjk_bigram / labels
@@ -944,6 +913,11 @@ var (
 	commentColumns = []string{
 		"id", "item_id", "external_id", "author", "author_id",
 		"body_adf", "body_text", "created_at", "updated_at",
+		// parent_id is the wiki thread shape. Absent from this list it meant
+		// a regenerated fixture's comments came out parentless while the
+		// source knew the thread (GDK-1911); NULL stays "parent unknown",
+		// which insertRow gives a source row that carries nothing.
+		"parent_id",
 	}
 	attachmentColumns = []string{
 		"id", "item_id", "external_id", "filename", "mime_type", "size", "author", "created_at",
@@ -966,6 +940,34 @@ var notNullDefaults = map[string]map[string]any{
 		"version": 1, "parent_id": "", "status": "current",
 		"body_adf": "", "labels": "[]", "excerpt": "",
 	},
+}
+
+// cloneChildRows copies one child table's rows onto a planned issue. Every
+// row is cloned before the first edit (the shared source cache stays
+// pristine), a clone gets its rewritten id — tag is the per-table marker the
+// three loops used to spell inline (c comments, a attachments, h changelog)
+// — the new item_id lands, and, only when the plan remaps the timeline,
+// each timestamp column named in stamps shifts onto the planned event, when
+// both the source row and the event carry a value.
+func cloneChildRows(tx *sql.Tx, rows []map[string]any, p plannedIssue, itemID, tag, table string, cols []string, stamps map[string][]string) error {
+	for i, row := range rows {
+		row = maps.Clone(row)
+		if p.cloneSeq > 0 {
+			row["id"] = fmt.Sprintf("snap:clone:%d:%s:%v", p.cloneSeq, tag, row["id"])
+		}
+		row["item_id"] = itemID
+		if p.useMap {
+			for field, events := range stamps {
+				if asString(row[field]) != "" && i < len(events) && events[i] != "" {
+					row[field] = events[i]
+				}
+			}
+		}
+		if err := insertRow(tx, table, cols, row); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func insertRow(tx *sql.Tx, table string, cols []string, data map[string]any) error {

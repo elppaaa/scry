@@ -562,41 +562,7 @@ func buildSettings() []Setting {
 		uiTokenLeafTemplate("type"),
 		uiTokenAxisSetting("fonts"),
 		uiTokenLeafTemplate("fonts"),
-		{
-			Path: "ui.tokensByTheme",
-			Root: "ui",
-			Description: "per-palette token overlays: {\"dark\": {\"accent\": \"#9a6be0\"}} — " +
-				"each named palette is validated against that palette's rules",
-			Get: func(c *Config) any {
-				out := map[string]UITokens{}
-				if c.UI != nil {
-					for p, t := range c.UI.TokensByTheme {
-						if t != nil {
-							out[p] = *t
-						}
-					}
-				}
-				return out
-			},
-			Set: func(c *Config, raw json.RawMessage) error {
-				var in map[string]json.RawMessage
-				if err := json.Unmarshal(raw, &in); err != nil {
-					return fmt.Errorf("ui.tokensByTheme must be an object of palette→token map")
-				}
-				byTheme := map[string]*UITokens{}
-				palettes := slices.Sorted(maps.Keys(in))
-				for _, p := range palettes {
-					t, err := parseThemeTokenOverlay("ui.tokensByTheme."+p, in[p])
-					if err != nil {
-						return err
-					}
-					byTheme[p] = t
-				}
-				next := cloneUIConfig(c.UI)
-				next.TokensByTheme = byTheme
-				return ApplyUIConfig(c, next)
-			},
-		},
+		uiTokensByThemeSetting(),
 		{
 			Path: "ui.dataColors",
 			Root: "ui",
@@ -984,20 +950,12 @@ func buildSettings() []Setting {
 				return nil
 			},
 		),
-		{
-			Path:        "fields",
-			Root:        "fields",
-			Description: "discovered/pinned custom-field specs (alias, ids, role, kind)",
-			Get:         func(c *Config) any { return sliceOrEmpty(c.Fields) },
-			Set: func(c *Config, raw json.RawMessage) error {
-				var v []FieldSpec
-				if err := json.Unmarshal(raw, &v); err != nil {
-					return fmt.Errorf("fields must be an array of field specs")
-				}
-				c.Fields = v
-				return nil
-			},
-		},
+		typedSliceSetting("fields", "fields",
+			"discovered/pinned custom-field specs (alias, ids, role, kind)",
+			func(c *Config) []FieldSpec { return sliceOrEmpty(c.Fields) },
+			func(c *Config, v []FieldSpec) error { c.Fields = v; return nil },
+			"fields must be an array of field specs",
+		),
 		refuseSetting("fieldMap", "fieldMap",
 			"legacy alias→custom-field id map; LoadFor synthesizes into fields and clears it (set refuses — use fields)",
 			func(c *Config) any { return mapOrEmpty(c.FieldMap) },
@@ -1014,52 +972,30 @@ func buildSettings() []Setting {
 			func(c *Config) any { return mapOrEmpty(c.EditableFields) },
 			`use "fields" instead — editableFields is a legacy shape that is migrated away on the next load`,
 		),
-		{
-			Path:        "members",
-			Root:        "members",
-			Description: "static member directory (email, name, group, …)",
-			Get:         func(c *Config) any { return sliceOrEmpty(c.Members) },
-			Set: func(c *Config, raw json.RawMessage) error {
-				var v []Member
-				if err := json.Unmarshal(raw, &v); err != nil {
-					return fmt.Errorf("members must be an array of member objects")
-				}
-				c.Members = v
-				return nil
-			},
-		},
-		{
-			Path:        "groupRules",
-			Root:        "groupRules",
-			Description: "first-match group classification rules",
-			Get:         func(c *Config) any { return sliceOrEmpty(c.GroupRules) },
-			Set: func(c *Config, raw json.RawMessage) error {
-				var v []GroupRule
-				if err := json.Unmarshal(raw, &v); err != nil {
-					return fmt.Errorf("groupRules must be an array of rule objects")
-				}
-				c.GroupRules = v
-				return nil
-			},
-		},
-		{
-			Path:        "groupQuery",
-			Root:        "groupQuery",
-			Description: "optional SELECT/WITH (key, group) that classifies issues; empty string = fall through",
-			Get:         func(c *Config) any { return c.GroupQuery },
-			Set: func(c *Config, raw json.RawMessage) error {
-				var v string
-				if err := json.Unmarshal(raw, &v); err != nil {
-					return fmt.Errorf("groupQuery must be a string")
-				}
-				v = strings.TrimSpace(v)
+		typedSliceSetting("members", "members",
+			"static member directory (email, name, group, …)",
+			func(c *Config) []Member { return sliceOrEmpty(c.Members) },
+			func(c *Config, v []Member) error { c.Members = v; return nil },
+			"members must be an array of member objects",
+		),
+		typedSliceSetting("groupRules", "groupRules",
+			"first-match group classification rules",
+			func(c *Config) []GroupRule { return sliceOrEmpty(c.GroupRules) },
+			func(c *Config, v []GroupRule) error { c.GroupRules = v; return nil },
+			"groupRules must be an array of rule objects",
+		),
+		stringSetting("groupQuery", "groupQuery",
+			"optional SELECT/WITH (key, group) that classifies issues; empty string = fall through",
+			func(c *Config) string { return c.GroupQuery },
+			func(s string) (string, error) {
+				v := strings.TrimSpace(s)
 				if err := ValidateGroupQuery(v); err != nil {
-					return err
+					return "", err
 				}
-				c.GroupQuery = v
-				return nil
+				return v, nil
 			},
-		},
+			func(c *Config, v string) error { c.GroupQuery = v; return nil },
+		),
 		stringMapSetting("groupLabels", "groupLabels",
 			"group key → display label",
 			func(c *Config) map[string]string { return mapOrEmpty(c.GroupLabels) },
@@ -1274,6 +1210,70 @@ func uiTokenAxisSetting(axis string) Setting {
 			next := cloneUIConfig(c.UI)
 			next.Tokens = mergeUITokenAxis(uiTokensOf(c), axis, patch)
 			return ApplyUIConfig(c, next)
+		},
+	}
+}
+
+// uiTokensByThemeSetting hoists the ui.tokensByTheme entry out of
+// buildSettings' literal list. Its two closures carry the overlay parse
+// loop and the nil-deref-guarded Get, and gocyclo bills nested-closure
+// branches to the enclosing function — the inline copy is a large share of
+// buildSettings' complexity (GDK-1922). Shape is byte-identical to the
+// literal it replaces.
+func uiTokensByThemeSetting() Setting {
+	return Setting{
+		Path: "ui.tokensByTheme",
+		Root: "ui",
+		Description: "per-palette token overlays: {\"dark\": {\"accent\": \"#9a6be0\"}} — " +
+			"each named palette is validated against that palette's rules",
+		Get: func(c *Config) any {
+			out := map[string]UITokens{}
+			if c.UI != nil {
+				for p, t := range c.UI.TokensByTheme {
+					if t != nil {
+						out[p] = *t
+					}
+				}
+			}
+			return out
+		},
+		Set: func(c *Config, raw json.RawMessage) error {
+			var in map[string]json.RawMessage
+			if err := json.Unmarshal(raw, &in); err != nil {
+				return fmt.Errorf("ui.tokensByTheme must be an object of palette→token map")
+			}
+			byTheme := map[string]*UITokens{}
+			palettes := slices.Sorted(maps.Keys(in))
+			for _, p := range palettes {
+				t, err := parseThemeTokenOverlay("ui.tokensByTheme."+p, in[p])
+				if err != nil {
+					return err
+				}
+				byTheme[p] = t
+			}
+			next := cloneUIConfig(c.UI)
+			next.TokensByTheme = byTheme
+			return ApplyUIConfig(c, next)
+		},
+	}
+}
+
+// typedSliceSetting is the []T sibling of stringSetting (fields, members,
+// groupRules): each of the three spelled its own RawMessage→[]T decode with
+// its own refusal sentence, and those sentences are CLI contract — notArray
+// carries them verbatim so the fold cannot change a letter (GDK-1922).
+func typedSliceSetting[T any](path, root, desc string, get func(*Config) []T, set func(*Config, []T) error, notArray string) Setting {
+	return Setting{
+		Path:        path,
+		Root:        root,
+		Description: desc,
+		Get:         func(c *Config) any { return get(c) },
+		Set: func(c *Config, raw json.RawMessage) error {
+			var v []T
+			if err := json.Unmarshal(raw, &v); err != nil {
+				return fmt.Errorf("%s", notArray)
+			}
+			return set(c, v)
 		},
 	}
 }

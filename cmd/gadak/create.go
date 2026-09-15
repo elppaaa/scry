@@ -462,20 +462,24 @@ func createLinearOne(ctx context.Context, cfg *config.Config, c origin.Writer, p
 		}
 		fields["description"] = origin.BodyValue(cfg, body, jira.Doc(body, nil))
 	}
-	if p := strings.TrimSpace(priorityWant); p != "" {
-		list, err := c.PriorityCatalog(ctx)
-		if err != nil {
-			return "", nil, err
-		}
-		id, err := create.Priority(p, list)
-		if err != nil {
-			return "", nil, formatCreateError(err)
-		}
-		fields["priority"] = create.PriorityField(id)
+	if p, err := priorityField(ctx, c, priorityWant); err != nil {
+		return "", nil, err
+	} else if p != nil {
+		fields["priority"] = p
 	}
 	if due != "" {
 		fields["duedate"] = due
 	}
+	return finishCreate(ctx, c, fields, projRes, typeRes, parentKey, attach, dryRun)
+}
+
+// finishCreate is the tail createOne and createLinearOne shared by hand
+// before it had a name: the dry-run emit (a CLI stdout contract, so one
+// owner), the origin create, the --json extra map, and the partial-failure
+// attachment upload. parentKey only shapes a parent-rejection hint
+// (withParentHint returns the error untouched when it is empty — the Linear
+// path refuses --parent long before this point).
+func finishCreate(ctx context.Context, c origin.Writer, fields map[string]any, projRes, typeRes create.Resolved, parentKey string, attach []string, dryRun bool) (string, map[string]any, error) {
 	if dryRun {
 		if err := emitDryRun("create", map[string]any{"fields": fields}); err != nil {
 			return "", nil, err
@@ -484,9 +488,11 @@ func createLinearOne(ctx context.Context, cfg *config.Config, c origin.Writer, p
 	}
 	key, err := c.CreateIssue(ctx, fields)
 	if err != nil {
-		return "", nil, err
+		return "", nil, withParentHint(ctx, err, parentKey)
 	}
 	extra := map[string]any{
+		// Top-level "key" beside "created.key": the first extractor a script
+		// writes is ["key"], and it must find the new issue (GDK-1716).
 		"key":     key,
 		"created": map[string]string{"key": key},
 		"resolved": map[string]any{
@@ -506,6 +512,26 @@ func createLinearOne(ctx context.Context, cfg *config.Config, c origin.Writer, p
 		extra["attached"] = attached
 	}
 	return key, extra, nil
+}
+
+// priorityField resolves --priority against the origin's catalog into the
+// fields["priority"] value both create paths set; nil (leave the field
+// unset) when the flag is empty. Refusals keep their CLI flag sentences
+// through formatCreateError.
+func priorityField(ctx context.Context, c origin.Writer, want string) (any, error) {
+	p := strings.TrimSpace(want)
+	if p == "" {
+		return nil, nil
+	}
+	list, err := c.PriorityCatalog(ctx)
+	if err != nil {
+		return nil, err
+	}
+	id, err := create.Priority(p, list)
+	if err != nil {
+		return nil, formatCreateError(err)
+	}
+	return create.PriorityField(id), nil
 }
 
 func createOne(ctx context.Context, cfg *config.Config, db *store.DB, c origin.Writer, projectWant, typeWant, summary, body, priorityWant, parentWant, dueWant string, labels, attach []string, fieldRaws map[string]json.RawMessage, dryRun bool) (string, map[string]any, error) {
@@ -594,16 +620,10 @@ func createOne(ctx context.Context, cfg *config.Config, db *store.DB, c origin.W
 	if len(labels) > 0 {
 		fields["labels"] = labels
 	}
-	if p := strings.TrimSpace(priorityWant); p != "" {
-		list, err := c.PriorityCatalog(ctx)
-		if err != nil {
-			return "", nil, err
-		}
-		id, err := create.Priority(p, list)
-		if err != nil {
-			return "", nil, formatCreateError(err)
-		}
-		fields["priority"] = create.PriorityField(id)
+	if p, err := priorityField(ctx, c, priorityWant); err != nil {
+		return "", nil, err
+	} else if p != nil {
+		fields["priority"] = p
 	}
 	if parentKey != "" {
 		fields["parent"] = map[string]string{"key": parentKey}
@@ -632,38 +652,7 @@ func createOne(ctx context.Context, cfg *config.Config, db *store.DB, c origin.W
 		}
 	}
 
-	if dryRun {
-		if err := emitDryRun("create", map[string]any{"fields": fields}); err != nil {
-			return "", nil, err
-		}
-		return "", nil, errDryRun
-	}
-	key, err := c.CreateIssue(ctx, fields)
-	if err != nil {
-		return "", nil, withParentHint(ctx, err, parentKey)
-	}
-	extra := map[string]any{
-		// Top-level "key" beside "created.key": the first extractor a script
-		// writes is ["key"], and it must find the new issue (GDK-1716).
-		"key":     key,
-		"created": map[string]string{"key": key},
-		"resolved": map[string]any{
-			"project":    projRes,
-			"issue_type": typeRes,
-		},
-	}
-	if len(attach) > 0 {
-		attached, err := uploadAttachPaths(ctx, c, key, attach)
-		if err != nil {
-			var p *attachPartialError
-			if errors.As(err, &p) {
-				return key, extra, fmt.Errorf("created %s, but attaching %s failed: %w", key, p.failed, p.err)
-			}
-			return key, extra, fmt.Errorf("created %s, but attaching failed: %w", key, err)
-		}
-		extra["attached"] = attached
-	}
-	return key, extra, nil
+	return finishCreate(ctx, c, fields, projRes, typeRes, parentKey, attach, dryRun)
 }
 
 func mergeFieldRaws(base, overlay map[string]json.RawMessage) map[string]json.RawMessage {

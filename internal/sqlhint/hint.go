@@ -102,8 +102,13 @@ func WithColumnSuggestion(db *sql.DB, query string, err error) error {
 	return fmt.Errorf("%w; did you mean %s?", err, tail)
 }
 
-func parseAmbiguousColumn(msg string) (string, bool) {
-	m := ambiguousColumnRe.FindStringSubmatch(msg)
+// columnNameFrom is the shape SQLite's column-naming errors share: capture
+// the name with re, unquote it, and strip any table qualifier — the "no
+// such column" and "ambiguous column name" parsers differ only in the
+// pattern, so the unquote/strip rule lives once and cannot drift between
+// the two sentences.
+func columnNameFrom(re *regexp.Regexp, msg string) (string, bool) {
+	m := re.FindStringSubmatch(msg)
 	if len(m) < 2 {
 		return "", false
 	}
@@ -117,19 +122,12 @@ func parseAmbiguousColumn(msg string) (string, bool) {
 	return name, true
 }
 
+func parseAmbiguousColumn(msg string) (string, bool) {
+	return columnNameFrom(ambiguousColumnRe, msg)
+}
+
 func parseNoSuchColumn(msg string) (string, bool) {
-	m := noSuchColumnRe.FindStringSubmatch(msg)
-	if len(m) < 2 {
-		return "", false
-	}
-	name := strings.Trim(m[1], "`\"[]")
-	if i := strings.LastIndex(name, "."); i >= 0 {
-		name = name[i+1:]
-	}
-	if name == "" {
-		return "", false
-	}
-	return name, true
+	return columnNameFrom(noSuchColumnRe, msg)
 }
 
 // hintColumns lists the candidate columns and which hint table owns each

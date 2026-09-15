@@ -43,24 +43,16 @@ func (c *Client) CreateRelation(ctx context.Context, issueID, relatedID, typ str
 // team label cannot reuse a workspace label's name.
 func (c *Client) Labels(ctx context.Context) ([]Label, error) {
 	out := []Label{}
-	after := ""
-	for {
-		vars := map[string]any{}
-		if after != "" {
-			vars["after"] = after
-		}
-		var page struct {
-			IssueLabels LabelConn `json:"issueLabels"`
-		}
-		if err := c.gql(ctx, queryLabels, vars, &page); err != nil {
-			return nil, err
-		}
-		out = append(out, page.IssueLabels.Nodes...)
-		if !page.IssueLabels.PageInfo.HasNextPage || page.IssueLabels.PageInfo.EndCursor == "" {
-			return out, nil
-		}
-		after = page.IssueLabels.PageInfo.EndCursor
+	err := cursor(ctx, c, queryLabels, map[string]any{}, func(p *struct {
+		IssueLabels LabelConn `json:"issueLabels"`
+	}) (PageInfo, error) {
+		out = append(out, p.IssueLabels.Nodes...)
+		return p.IssueLabels.PageInfo, nil
+	})
+	if err != nil {
+		return nil, err
 	}
+	return out, nil
 }
 
 // CreateLabel creates a team-scoped label.

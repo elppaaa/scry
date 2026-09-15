@@ -195,20 +195,10 @@ func (s *server) serveAttachment(w http.ResponseWriter, r *http.Request, key, id
 			if ct == "" {
 				ct = "application/octet-stream"
 			}
-			if artifact {
-				setArtifactGuards(w, r)
-			} else {
-				w.Header().Set("Content-Type", ct)
-				w.Header().Set("Cache-Control", "private, max-age=300")
-				setAttachmentGuards(w, ct)
-			}
+			applyContentPolicy(w, r, artifact, ct)
 			// The origin's own validator and range advertisement, so the
 			// browser's next request can seek and revalidate.
-			for _, h := range []string{"Accept-Ranges", "ETag"} {
-				if v := upstream.Get(h); v != "" {
-					w.Header().Set(h, v)
-				}
-			}
+			copyUpstreamHeaders(w, upstream, "Accept-Ranges", "ETag")
 			if meta.Size > 0 {
 				w.Header().Set("Content-Length", strconv.FormatInt(meta.Size, 10))
 			}
@@ -216,20 +206,8 @@ func (s *server) serveAttachment(w http.ResponseWriter, r *http.Request, key, id
 				log.Printf("server: attachment stream: %v", err)
 			}
 			return
-		case errors.Is(err, errAttachmentAuth):
-			fail(w, http.StatusConflict, "credential_rejected")
-			return
-		case errors.Is(err, errAttachmentMissing):
-			fail(w, http.StatusNotFound, "not_found")
-			return
 		default:
-			var denied *originDeniedError
-			if errors.As(err, &denied) {
-				writeOriginDenied(w, denied)
-				return
-			}
-			log.Printf("server: attachment cache fill: %v", err)
-			fail(w, http.StatusBadGateway, "attachment_unavailable")
+			failAttachmentFetch(w, err, "cache fill")
 			return
 		}
 	}
@@ -238,25 +216,24 @@ func (s *server) serveAttachment(w http.ResponseWriter, r *http.Request, key, id
 	// stream from the origin and pass the browser's Range through so seeking
 	// in a video works here too (GDK-1617).
 	res, err := fetchOnce(pass)
-	switch {
-	case errors.Is(err, errAttachmentAuth):
-		fail(w, http.StatusConflict, "credential_rejected")
-		return
-	case errors.Is(err, errAttachmentMissing):
-		fail(w, http.StatusNotFound, "not_found")
-		return
-	case err != nil:
-		var denied *originDeniedError
-		if errors.As(err, &denied) {
-			writeOriginDenied(w, denied)
-			return
-		}
-		log.Printf("server: attachment proxy: %v", err)
-		fail(w, http.StatusBadGateway, "attachment_unavailable")
+	if err != nil {
+		failAttachmentFetch(w, err, "proxy")
 		return
 	}
 	defer res.Body.Close()
 
+	streamOriginResponse(w, r, res, artifact)
+}
+
+// streamOriginResponse answers a pass-through origin response byte for byte:
+// a 304 keeps its empty body and its validator (the artifact-vs-cache-control
+// pair is deliberately NOT applyContentPolicy — a 304 must not grow
+// Content-Type or the attachment guards), anything else takes the content
+// policy, the origin's own length/range/validator headers, and the origin's
+// status when it is not a plain 200. The no-cache and oversize-range paths
+// stream different header sets, so they keep their own calls and only share
+// the byte-writing shape.
+func streamOriginResponse(w http.ResponseWriter, r *http.Request, res *http.Response, artifact bool) {
 	if res.StatusCode == http.StatusNotModified {
 		// 304 carries no body, and RFC 9110 says not to send
 		// Content-Length or Content-Type with one.
@@ -272,24 +249,62 @@ func (s *server) serveAttachment(w http.ResponseWriter, r *http.Request, key, id
 		return
 	}
 	ct := contentTypeOf(res)
-	if artifact {
-		setArtifactGuards(w, r)
-	} else {
-		w.Header().Set("Content-Type", ct)
-		w.Header().Set("Cache-Control", "private, max-age=300")
-		setAttachmentGuards(w, ct)
-	}
-	for _, h := range []string{"Content-Length", "Content-Range", "Accept-Ranges", "ETag"} {
-		if v := res.Header.Get(h); v != "" {
-			w.Header().Set(h, v)
-		}
-	}
+	applyContentPolicy(w, r, artifact, ct)
+	copyUpstreamHeaders(w, res.Header, "Content-Length", "Content-Range", "Accept-Ranges", "ETag")
 	if res.StatusCode != http.StatusOK {
 		w.WriteHeader(res.StatusCode)
 	}
 	if _, err := io.Copy(w, res.Body); err != nil {
 		log.Printf("server: attachment stream: %v", err)
 	}
+}
+
+// copyUpstreamHeaders forwards the named headers from an origin response
+// when the origin sent them. Both streaming paths spelled this loop inline
+// with only the name list differing.
+func copyUpstreamHeaders(w http.ResponseWriter, src http.Header, names ...string) {
+	for _, name := range names {
+		if v := src.Get(name); v != "" {
+			w.Header().Set(name, v)
+		}
+	}
+}
+
+// failAttachmentFetch is the one verdict for an origin fetch that came back
+// without bytes, shared by the cache-fill and the streaming pass-through:
+// credential_rejected, not_found, an origin-denied status passed through
+// untouched, otherwise 502. what names the calling path in the 502 log line
+// ("cache fill" / "proxy") so the two copies this replaced could not drift
+// apart verdict by verdict (GDK-1921).
+func failAttachmentFetch(w http.ResponseWriter, err error, what string) {
+	switch {
+	case errors.Is(err, errAttachmentAuth):
+		fail(w, http.StatusConflict, "credential_rejected")
+	case errors.Is(err, errAttachmentMissing):
+		fail(w, http.StatusNotFound, "not_found")
+	default:
+		var denied *originDeniedError
+		if errors.As(err, &denied) {
+			writeOriginDenied(w, denied)
+			return
+		}
+		log.Printf("server: attachment %s: %v", what, err)
+		fail(w, http.StatusBadGateway, "attachment_unavailable")
+	}
+}
+
+// applyContentPolicy sets the artifact/plain response headers for bytes that
+// are about to stream: the artifact route's opaque-document guards, or the
+// content type with short private caching and the inline-safety guards
+// (GDK-1921 — both streaming exits used to spell this pair by hand).
+func applyContentPolicy(w http.ResponseWriter, r *http.Request, artifact bool, contentType string) {
+	if artifact {
+		setArtifactGuards(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Cache-Control", "private, max-age=300")
+	setAttachmentGuards(w, contentType)
 }
 
 // rangeHeaders is the subset of a client's request the upstream may act on.

@@ -168,6 +168,47 @@ func TestContentPreserved(t *testing.T) {
 	}
 }
 
+// TestCommentThreadParentSurvivesTheScrub pins GDK-1911: commentColumns is
+// the scrubber's copy list, and parent_id was missing from it — a
+// regenerated fixture's comments all came out parentless while the source
+// knew the thread. NULL stays reserved for "parent unknown"; a parent the
+// source states must arrive.
+func TestCommentThreadParentSurvivesTheScrub(t *testing.T) {
+	src := seedSource(t, seedOpts{withPages: true})
+	sdb, err := openSQLite(src, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	threaded := []struct{ id, parent string }{
+		{"jira:c-1", "jira:c-0"},
+		{"confluence:c-1", "confluence:c-0"},
+	}
+	for _, up := range threaded {
+		if _, err := sdb.Exec(`UPDATE comments SET parent_id = ? WHERE id = ?`, up.parent, up.id); err != nil {
+			t.Fatalf("seed %s: %v", up.id, err)
+		}
+	}
+	sdb.Close()
+
+	out := filepath.Join(t.TempDir(), "snap.db")
+	now := time.Date(2026, 8, 5, 12, 0, 0, 0, time.UTC)
+	if _, err := Build(Options{From: src, Out: out, Seed: 1, Now: now}); err != nil {
+		t.Fatal(err)
+	}
+	db := openRO(t, out)
+	defer db.Close()
+	for _, want := range threaded {
+		var parent sql.NullString
+		if err := db.QueryRow(`SELECT parent_id FROM comments WHERE id = ?`, want.id).Scan(&parent); err != nil {
+			t.Fatalf("read %s: %v", want.id, err)
+		}
+		if !parent.Valid || parent.String != want.parent {
+			t.Errorf("%s parent_id = %q (valid=%v), want %q — the scrubber dropped the thread again",
+				want.id, parent.String, parent.Valid, want.parent)
+		}
+	}
+}
+
 // TestDocumentsPreserved asserts wiki pages, spaces, item_refs, page items,
 // page comments, and page FTS survive the snapshot pipeline (silent data loss
 // otherwise: DOCS empty on a shared mirror).

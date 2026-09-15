@@ -430,6 +430,30 @@ type terminalIssueReq struct {
 	IssueKey string `json:"issue_key"`
 }
 
+// terminalSessionFor is the prologue both terminal binding routes share:
+// read the small JSON body, decode it into req, and resolve the path id to a
+// session this credential owns. A body that will not read or parse answers
+// 400 invalid_body; an id that is missing or another credential's answers
+// 404 — the same neighbor-route rules each handler spelled inline. false
+// means the response is already written.
+func (s *server) terminalSessionFor(w http.ResponseWriter, r *http.Request, req any) (*term.Session, bool) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 4<<10))
+	if err != nil {
+		fail(w, http.StatusBadRequest, "invalid_body")
+		return nil, false
+	}
+	if err := json.Unmarshal(body, req); err != nil {
+		fail(w, http.StatusBadRequest, "invalid_body")
+		return nil, false
+	}
+	sess, err := s.terminalManager().Get(r.PathValue("id"))
+	if err != nil || !terminalOwns(sess.TokenID(), terminalTokenID(r)) {
+		handleNotFound(w, r)
+		return nil, false
+	}
+	return sess, true
+}
+
 // handleTerminalIssue binds a session to the issue a claim in its shell
 // took (GDK-1158). The pane's own `gadak claim` POSTs here over loopback
 // after the origin write lands; this side is pure plumbing — the key is
@@ -439,20 +463,9 @@ type terminalIssueReq struct {
 // sub-mux gate has already spoken by the time this runs, and a session
 // another credential opened answers 404, not a 403 that names it.
 func (s *server) handleTerminalIssue(w http.ResponseWriter, r *http.Request) {
-	tokenID := terminalTokenID(r)
-	body, err := io.ReadAll(io.LimitReader(r.Body, 4<<10))
-	if err != nil {
-		fail(w, http.StatusBadRequest, "invalid_body")
-		return
-	}
 	var req terminalIssueReq
-	if err := json.Unmarshal(body, &req); err != nil {
-		fail(w, http.StatusBadRequest, "invalid_body")
-		return
-	}
-	sess, err := s.terminalManager().Get(r.PathValue("id"))
-	if err != nil || !terminalOwns(sess.TokenID(), tokenID) {
-		handleNotFound(w, r)
+	sess, ok := s.terminalSessionFor(w, r, &req)
+	if !ok {
 		return
 	}
 	sess.SetIssueKey(req.IssueKey)
@@ -469,20 +482,9 @@ type terminalNameReq struct {
 // ownership answers 404, the reply is the updated Info row. The name never
 // touches issue_key — the card-to-shell join reads the key, not the label.
 func (s *server) handleTerminalName(w http.ResponseWriter, r *http.Request) {
-	tokenID := terminalTokenID(r)
-	body, err := io.ReadAll(io.LimitReader(r.Body, 4<<10))
-	if err != nil {
-		fail(w, http.StatusBadRequest, "invalid_body")
-		return
-	}
 	var req terminalNameReq
-	if err := json.Unmarshal(body, &req); err != nil {
-		fail(w, http.StatusBadRequest, "invalid_body")
-		return
-	}
-	sess, err := s.terminalManager().Get(r.PathValue("id"))
-	if err != nil || !terminalOwns(sess.TokenID(), tokenID) {
-		handleNotFound(w, r)
+	sess, ok := s.terminalSessionFor(w, r, &req)
+	if !ok {
 		return
 	}
 	sess.SetName(req.Name)

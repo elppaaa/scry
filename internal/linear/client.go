@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"maps"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -144,27 +145,47 @@ func (c *Client) Viewer(ctx context.Context) (User, error) {
 	return page.Viewer, nil
 }
 
-// Teams lists every team the credential can see.
-func (c *Client) Teams(ctx context.Context) ([]Team, error) {
-	out := []Team{}
+// cursor walks one cursor-paged Linear query to exhaustion. base carries the
+// call's fixed variables ("after" is added per page, never into base, which
+// stays reusable); each page decodes into a fresh envelope of the caller's
+// shape, which page consumes and reports the connection's cursor state — an
+// error from page ends the walk right there, as the per-call loops it
+// replaced did. Five call sites shared this loop before it had a name.
+func cursor[T any](ctx context.Context, c *Client, query string, base map[string]any, page func(*T) (PageInfo, error)) error {
 	after := ""
 	for {
-		vars := map[string]any{}
+		vars := maps.Clone(base)
 		if after != "" {
 			vars["after"] = after
 		}
-		var page struct {
-			Teams TeamConnection `json:"teams"`
+		var p T
+		if err := c.gql(ctx, query, vars, &p); err != nil {
+			return err
 		}
-		if err := c.gql(ctx, queryTeams, vars, &page); err != nil {
-			return nil, err
+		info, err := page(&p)
+		if err != nil {
+			return err
 		}
-		out = append(out, page.Teams.Nodes...)
-		if !page.Teams.PageInfo.HasNextPage || page.Teams.PageInfo.EndCursor == "" {
-			return out, nil
+		if !info.HasNextPage || info.EndCursor == "" {
+			return nil
 		}
-		after = page.Teams.PageInfo.EndCursor
+		after = info.EndCursor
 	}
+}
+
+// Teams lists every team the credential can see.
+func (c *Client) Teams(ctx context.Context) ([]Team, error) {
+	out := []Team{}
+	err := cursor(ctx, c, queryTeams, map[string]any{}, func(p *struct {
+		Teams TeamConnection `json:"teams"`
+	}) (PageInfo, error) {
+		out = append(out, p.Teams.Nodes...)
+		return p.Teams.PageInfo, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // TeamCycles lists one team's cycles — the sprint listing of the Linear
@@ -174,26 +195,18 @@ func (c *Client) Teams(ctx context.Context) ([]Team, error) {
 // pass produces.
 func (c *Client) TeamCycles(ctx context.Context, teamID string) ([]Cycle, error) {
 	out := []Cycle{}
-	after := ""
-	for {
-		vars := map[string]any{"team": teamID}
-		if after != "" {
-			vars["after"] = after
-		}
-		var page struct {
-			Team struct {
-				Cycles CycleConn `json:"cycles"`
-			} `json:"team"`
-		}
-		if err := c.gql(ctx, queryTeamCycles, vars, &page); err != nil {
-			return nil, err
-		}
-		out = append(out, page.Team.Cycles.Nodes...)
-		if !page.Team.Cycles.PageInfo.HasNextPage || page.Team.Cycles.PageInfo.EndCursor == "" {
-			return out, nil
-		}
-		after = page.Team.Cycles.PageInfo.EndCursor
+	err := cursor(ctx, c, queryTeamCycles, map[string]any{"team": teamID}, func(p *struct {
+		Team struct {
+			Cycles CycleConn `json:"cycles"`
+		} `json:"team"`
+	}) (PageInfo, error) {
+		out = append(out, p.Team.Cycles.Nodes...)
+		return p.Team.Cycles.PageInfo, nil
+	})
+	if err != nil {
+		return nil, err
 	}
+	return out, nil
 }
 
 // WorkflowStates returns a team's status catalog. This is the id → type map
@@ -201,28 +214,20 @@ func (c *Client) TeamCycles(ctx context.Context, teamID string) ([]Cycle, error)
 // text, types are the stable axis.
 func (c *Client) WorkflowStates(ctx context.Context, teamID string) ([]WorkflowState, error) {
 	out := []WorkflowState{}
-	after := ""
-	for {
-		vars := map[string]any{
-			"filter": map[string]any{
-				"team": map[string]any{"id": map[string]any{"eq": teamID}},
-			},
-		}
-		if after != "" {
-			vars["after"] = after
-		}
-		var page struct {
-			WorkflowStates WorkflowStateConnection `json:"workflowStates"`
-		}
-		if err := c.gql(ctx, queryWorkflowStates, vars, &page); err != nil {
-			return nil, err
-		}
-		out = append(out, page.WorkflowStates.Nodes...)
-		if !page.WorkflowStates.PageInfo.HasNextPage || page.WorkflowStates.PageInfo.EndCursor == "" {
-			return out, nil
-		}
-		after = page.WorkflowStates.PageInfo.EndCursor
+	err := cursor(ctx, c, queryWorkflowStates, map[string]any{
+		"filter": map[string]any{
+			"team": map[string]any{"id": map[string]any{"eq": teamID}},
+		},
+	}, func(p *struct {
+		WorkflowStates WorkflowStateConnection `json:"workflowStates"`
+	}) (PageInfo, error) {
+		out = append(out, p.WorkflowStates.Nodes...)
+		return p.WorkflowStates.PageInfo, nil
+	})
+	if err != nil {
+		return nil, err
 	}
+	return out, nil
 }
 
 // Issues pages issues oldest-updated-first and calls fn once per page, which
@@ -246,32 +251,20 @@ func (c *Client) Issues(ctx context.Context, opts IssueOpts, fn func([]Issue) er
 		size = maxPageSize
 	}
 
-	after := ""
-	for {
-		vars := map[string]any{
-			"first":           size,
-			"filter":          filter,
-			"includeArchived": opts.IncludeArchived,
-		}
-		if after != "" {
-			vars["after"] = after
-		}
-		var page struct {
-			Issues IssueConnection `json:"issues"`
-		}
-		if err := c.gql(ctx, queryIssues, vars, &page); err != nil {
-			return err
-		}
-		if len(page.Issues.Nodes) > 0 {
-			if err := fn(page.Issues.Nodes); err != nil {
-				return err
+	return cursor(ctx, c, queryIssues, map[string]any{
+		"first":           size,
+		"filter":          filter,
+		"includeArchived": opts.IncludeArchived,
+	}, func(p *struct {
+		Issues IssueConnection `json:"issues"`
+	}) (PageInfo, error) {
+		if len(p.Issues.Nodes) > 0 {
+			if err := fn(p.Issues.Nodes); err != nil {
+				return PageInfo{}, err
 			}
 		}
-		if !page.Issues.PageInfo.HasNextPage || page.Issues.PageInfo.EndCursor == "" {
-			return nil
-		}
-		after = page.Issues.PageInfo.EndCursor
-	}
+		return p.Issues.PageInfo, nil
+	})
 }
 
 // graphRequest is the GraphQL over HTTP envelope.

@@ -499,6 +499,37 @@ func mapStatusCategory(raw string) (string, bool) {
 	return statuscat.KnownCategory(s)
 }
 
+// compileEmailField compiles the email-valued person pair (assignee,
+// reporter): an AND-ed include value — whose second occurrence is refused —
+// a NOT value, and the shared default skip sentence. name is the field for
+// marks, refusal text, and the skip message; inc/exc are the include and
+// exclude destinations.
+func (c *compiler) compileEmailField(cl *clause, name string, inc, exc *[]string) {
+	switch cl.op {
+	case opEq, opIn:
+		if c.seenIncludeAND[name] {
+			c.refuseSecondInclude(name, inc)
+			return
+		}
+		vs := c.plainValues(cl)
+		if vs == nil {
+			return
+		}
+		c.seenIncludeAND[name] = true
+		*inc = mergeUnique(*inc, vs)
+		c.mark(name)
+	case opNotIn, opNeq:
+		vs := c.plainValues(cl)
+		if vs == nil {
+			return
+		}
+		*exc = mergeUnique(*exc, vs)
+		c.mark(name)
+	default:
+		c.skip(cl.render() + " (only =, !=, IN, NOT IN)")
+	}
+}
+
 func (c *compiler) compileAssignee(cl *clause) {
 	switch cl.op {
 	case opIsEmpty:
@@ -506,54 +537,15 @@ func (c *compiler) compileAssignee(cl *clause) {
 		c.mark("assignee")
 	case opIsNotEmpty:
 		c.skip(cl.render() + " (assignee is not EMPTY is not a gadak filter)")
-	case opEq, opIn:
-		if c.seenIncludeAND["assignee"] {
-			c.refuseSecondInclude("assignee", &c.f.AssigneeEmail)
-			return
-		}
-		vs := c.plainValues(cl)
-		if vs == nil {
-			return
-		}
-		c.seenIncludeAND["assignee"] = true
-		c.f.AssigneeEmail = mergeUnique(c.f.AssigneeEmail, vs)
-		c.mark("assignee")
-	case opNotIn, opNeq:
-		vs := c.plainValues(cl)
-		if vs == nil {
-			return
-		}
-		c.f.AssigneeEmailNot = mergeUnique(c.f.AssigneeEmailNot, vs)
-		c.mark("assignee")
+	case opEq, opIn, opNotIn, opNeq:
+		c.compileEmailField(cl, "assignee", &c.f.AssigneeEmail, &c.f.AssigneeEmailNot)
 	default:
 		c.skip(cl.render() + " (only =, !=, IN, NOT IN, IS EMPTY)")
 	}
 }
 
 func (c *compiler) compileReporter(cl *clause) {
-	switch cl.op {
-	case opEq, opIn:
-		if c.seenIncludeAND["reporter"] {
-			c.refuseSecondInclude("reporter", &c.f.ReporterEmail)
-			return
-		}
-		vs := c.plainValues(cl)
-		if vs == nil {
-			return
-		}
-		c.seenIncludeAND["reporter"] = true
-		c.f.ReporterEmail = mergeUnique(c.f.ReporterEmail, vs)
-		c.mark("reporter")
-	case opNotIn, opNeq:
-		vs := c.plainValues(cl)
-		if vs == nil {
-			return
-		}
-		c.f.ReporterEmailNot = mergeUnique(c.f.ReporterEmailNot, vs)
-		c.mark("reporter")
-	default:
-		c.skip(cl.render() + " (only =, !=, IN, NOT IN)")
-	}
+	c.compileEmailField(cl, "reporter", &c.f.ReporterEmail, &c.f.ReporterEmailNot)
 }
 
 func (c *compiler) compileText(cl *clause) {

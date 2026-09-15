@@ -1572,43 +1572,42 @@ func (r Report) Table() string {
 		}
 		rows = append(rows, row)
 	}
-	metricRow("sessions",
-		func(i int) string { return strconv.Itoa(buckets[i].Sessions) },
-		func(i int) string { return changeInt(buckets[i-1].Sessions, buckets[i].Sessions) })
+	// The three metric shapes the nine rows come in. metricRow is the row
+	// writer; these bind a shape to it so a new day-valued or counted row is
+	// one line, not the cell/change pair every row used to spell inline —
+	// four days rows and two counted rows shared those pairs by hand.
+	metricRowInt := func(name string, get func(Bucket) int) {
+		metricRow(name,
+			func(i int) string { return strconv.Itoa(get(buckets[i])) },
+			func(i int) string { return changeInt(get(buckets[i-1]), get(buckets[i])) })
+	}
+	metricRowCount := func(name string, get func(Bucket) *int) {
+		metricRow(name,
+			func(i int) string {
+				if p := get(buckets[i]); p != nil {
+					return strconv.Itoa(*p)
+				}
+				return "—"
+			},
+			func(i int) string { return changeCount(get(buckets[i-1]), get(buckets[i])) })
+	}
+	metricRowDays := func(name string, get func(*Bucket) *float64) {
+		metricRow(name,
+			func(i int) string { return daysCell(get(&buckets[i])) },
+			pct(get))
+	}
+
+	metricRowInt("sessions", func(b Bucket) int { return b.Sessions })
 	metricRow("resume (median)",
 		func(i int) string { return resumeCell(buckets[i]) },
 		pct(func(b *Bucket) *float64 { return b.Resume }))
-	metricRow("wip age p85",
-		func(i int) string { return daysCell(buckets[i].WipP85) },
-		pct(func(b *Bucket) *float64 { return b.WipP85 }))
-	metricRow("wip age max",
-		func(i int) string { return daysCell(buckets[i].WipMax) },
-		pct(func(b *Bucket) *float64 { return b.WipMax }))
-	metricRow("in progress",
-		func(i int) string {
-			if buckets[i].InProg == nil {
-				return "—"
-			}
-			return strconv.Itoa(*buckets[i].InProg)
-		},
-		func(i int) string { return changeCount(buckets[i-1].InProg, buckets[i].InProg) })
-	metricRow("closed",
-		func(i int) string {
-			if buckets[i].Closed == nil {
-				return "—"
-			}
-			return strconv.Itoa(*buckets[i].Closed)
-		},
-		func(i int) string { return changeCount(buckets[i-1].Closed, buckets[i].Closed) })
-	metricRow("cycle p50",
-		func(i int) string { return daysCell(buckets[i].CycleP50) },
-		pct(func(b *Bucket) *float64 { return b.CycleP50 }))
-	metricRow("cycle p85",
-		func(i int) string { return daysCell(buckets[i].CycleP85) },
-		pct(func(b *Bucket) *float64 { return b.CycleP85 }))
-	metricRow("mismatch",
-		func(i int) string { return strconv.Itoa(buckets[i].Mismatch) },
-		func(i int) string { return changeInt(buckets[i-1].Mismatch, buckets[i].Mismatch) })
+	metricRowDays("wip age p85", func(b *Bucket) *float64 { return b.WipP85 })
+	metricRowDays("wip age max", func(b *Bucket) *float64 { return b.WipMax })
+	metricRowCount("in progress", func(b Bucket) *int { return b.InProg })
+	metricRowCount("closed", func(b Bucket) *int { return b.Closed })
+	metricRowDays("cycle p50", func(b *Bucket) *float64 { return b.CycleP50 })
+	metricRowDays("cycle p85", func(b *Bucket) *float64 { return b.CycleP85 })
+	metricRowInt("mismatch", func(b Bucket) int { return b.Mismatch })
 
 	widths := make([]int, len(rows[0]))
 	for _, row := range rows {

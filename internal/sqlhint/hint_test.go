@@ -222,3 +222,21 @@ func TestParseNoSuchColumn(t *testing.T) {
 		t.Fatal("non-column error must not parse")
 	}
 }
+
+// TestParseAmbiguousColumn pins the twin of parseNoSuchColumn: the same
+// unquote-and-strip-qualifier rule, read off SQLite's "ambiguous column
+// name" sentence instead. The qualified forms matter because SQLite names
+// the alias in the message (`issues.key`) while the json_each hint compares
+// the bare column.
+func TestParseAmbiguousColumn(t *testing.T) {
+	name, ok := parseAmbiguousColumn("SQL logic error: ambiguous column name: key (1)")
+	if !ok || name != "key" {
+		t.Fatalf("got %q ok=%v", name, ok)
+	}
+	if name, ok := parseAmbiguousColumn(`ambiguous column name: "issues".key`); !ok || name != "key" {
+		t.Fatalf("qualified name: got %q ok=%v, want key", name, ok)
+	}
+	if _, ok := parseAmbiguousColumn("syntax error"); ok {
+		t.Fatal("non-column error must not parse")
+	}
+}
