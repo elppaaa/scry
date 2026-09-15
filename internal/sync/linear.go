@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"strconv"
 	"time"
@@ -547,7 +548,26 @@ func sortedKeys(m map[string]int) []string {
 func SyncLinearIssue(ctx context.Context, db *store.DB, c *linear.Client, key string) error {
 	iss, err := c.Issue(ctx, key)
 	if err != nil {
-		return err
+		// Tombstone on Linear's not-found, same contract as the Jira path in
+		// SyncIssue (one.go): a row whose origin says "gone" must not survive
+		// in the cache forever (GDK-1889). The sentinel returned is the sync
+		// package's own ErrNotFound so write.go's 404 mapping is unchanged.
+		// Only linear.ErrNotFound reaches here — a transport or GraphQL error
+		// is returned as-is below and leaves the row in place, because an
+		// unreachable endpoint is not a deletion.
+		//
+		// The tombstone is keyed on exactly this key argument: every caller
+		// (RefreshIssue) passes the identifier the mirror row carries, and
+		// DeleteItems matches it against the same column Issue was queried
+		// with. Client.Issue would also accept a UUID, but no caller sends
+		// one here.
+		if !errors.Is(err, linear.ErrNotFound) {
+			return err
+		}
+		if _, delErr := db.DeleteItems(ctx, LinearSourceID, []string{key}); delErr != nil {
+			return delErr
+		}
+		return fmt.Errorf("%s: %w", key, ErrNotFound)
 	}
 	if err := c.CompleteComments(ctx, &iss); err != nil {
 		return err

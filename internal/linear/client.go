@@ -23,6 +23,7 @@ package linear
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"io"
@@ -67,6 +68,14 @@ func (authError) RejectedCredential() {}
 // rejected", and importing the Atlassian transport package for a Linear
 // client would couple this package to a host family it never talks to.
 var ErrAuth error = authError{}
+
+// ErrNotFound is Linear's "the query answered, but no such issue" — the
+// issue(id:) node came back null. Callers check it with
+// errors.Is(err, linear.ErrNotFound); sync.SyncLinearIssue tombstones the
+// mirror row on it (GDK-1889). A transport or GraphQL error deliberately
+// does not unwrap to this sentinel: an unreachable endpoint is not a
+// deletion.
+var ErrNotFound = errors.New("linear: issue not found")
 
 // Client talks to one Linear workspace over GraphQL.
 type Client struct {
@@ -451,7 +460,7 @@ func (c *Client) Issue(ctx context.Context, idOrIdentifier string) (Issue, error
 		return Issue{}, err
 	}
 	if res.Issue == nil {
-		return Issue{}, fmt.Errorf("linear: issue %q not found", idOrIdentifier)
+		return Issue{}, fmt.Errorf("linear: issue %q: %w", idOrIdentifier, ErrNotFound)
 	}
 	return *res.Issue, nil
 }

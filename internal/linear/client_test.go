@@ -240,6 +240,47 @@ func TestErrAuthSatisfiesRejectedCredential(t *testing.T) {
 	}
 }
 
+// TestIssueNullBecomesErrNotFound: Linear answers a missing issue with
+// data.issue = null (GDK-1889). That answer — and only that answer — must
+// unwrap to ErrNotFound, because sync.SyncLinearIssue tombstones the mirror
+// row on it; a transport or GraphQL error unwrapping to the same sentinel
+// would delete a row whose origin is merely unreachable.
+func TestIssueNullBecomesErrNotFound(t *testing.T) {
+	c := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"issue":null}}`))
+	}))
+	_, err := c.Issue(context.Background(), "MID-5")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+	if !strings.Contains(err.Error(), "MID-5") {
+		t.Errorf("err = %v, want the requested identifier named for last_error", err)
+	}
+}
+
+func TestIssueOtherErrorsAreNotErrNotFound(t *testing.T) {
+	c := testClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"errors":[{"message":"Something broke"}]}`))
+	}))
+	if _, err := c.Issue(context.Background(), "MID-5"); !errors.Is(err, ErrNotFound) {
+		// good: a GraphQL error is upstream's failure, not "issue is gone"
+	} else {
+		t.Fatal("graphql error must not unwrap to ErrNotFound — the row must survive")
+	}
+	// Transport failure: the endpoint is unreachable. Same reasoning — a dead
+	// endpoint must never read as "deleted upstream".
+	dead := New(testKey)
+	dead.Endpoint = "http://127.0.0.1:0/graphql" // port 0: nothing listens
+	dead.Retries, dead.Backoff = 2, 0
+	if _, err := dead.Issue(context.Background(), "MID-5"); err == nil {
+		t.Fatal("transport failure: expected an error")
+	} else if errors.Is(err, ErrNotFound) {
+		t.Fatal("transport failure must not unwrap to ErrNotFound")
+	}
+}
+
 // The credential-leak assertion. Article 8 (same as jira): the key travels
 // only in the Authorization header; no error string may echo it. Every error
 // path this package can produce is checked.

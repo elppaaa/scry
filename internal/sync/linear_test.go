@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -658,6 +659,84 @@ func TestSyncLinearIssuePaginatesComments(t *testing.T) {
 	want := linear.CommentsPageSize + extra
 	if len(detail.Comments) != want {
 		t.Fatalf("comments = %d, want %d after SyncLinearIssue", len(detail.Comments), want)
+	}
+}
+
+// TestSyncLinearIssueTombstonesNotFound (GDK-1889): when Linear answers
+// data.issue = null, the mirror row must be deleted and the error must be the
+// sync sentinel (write.go maps it to 404). A transport failure must leave the
+// row in place and return an error that is NOT ErrNotFound — a dead endpoint
+// is not a deletion. Same contract as the Jira SyncIssue tombstone.
+func TestSyncLinearIssueTombstonesNotFound(t *testing.T) {
+	issueID := "00000000-0000-4000-8000-99900000011"
+	iss := linearNode("FIX-24", "b", "unstarted", "Todo", 0, "No priority", map[string]any{
+		"id": issueID,
+	})
+	oneBody, err := json.Marshal(map[string]any{"data": map[string]any{"issue": iss}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// mode flips what the stub answers: "ok" seeds/serves the issue, "null"
+	// is Linear's not-found, "500" is a transport failure.
+	mode := "ok"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch mode {
+		case "null":
+			_, _ = w.Write([]byte(`{"data":{"issue":null}}`))
+		case "500":
+			http.Error(w, "boom", http.StatusInternalServerError)
+		default:
+			_, _ = w.Write(oneBody)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	db := newMirror(t)
+	if err := db.UpsertSource(context.Background(), store.Source{ID: LinearSourceID, Kind: "linear"}); err != nil {
+		t.Fatal(err)
+	}
+	c := testLinearClient(t, srv)
+	if err := SyncLinearIssue(context.Background(), db.DB, c, "FIX-24"); err != nil {
+		t.Fatal(err)
+	}
+	countKey := func() int {
+		t.Helper()
+		var n int
+		if err := db.DB.QueryRow(`SELECT COUNT(*) FROM issues WHERE key = ?`, "FIX-24").Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if n := countKey(); n != 1 {
+		t.Fatalf("seed: issues rows for FIX-24 = %d, want 1", n)
+	}
+
+	// Origin answers "not found": row tombstoned, sentinel returned.
+	mode = "null"
+	err = SyncLinearIssue(context.Background(), db.DB, c, "FIX-24")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want the sync ErrNotFound sentinel (write.go maps it to 404)", err)
+	}
+	if n := countKey(); n != 0 {
+		t.Fatalf("after not-found: issues rows for FIX-24 = %d, want 0 (tombstoned)", n)
+	}
+
+	// Transport failure: the row survives and the error is not the sentinel.
+	// Re-seed first so the assertion measures survival, not an already-empty table.
+	mode = "ok"
+	if err := SyncLinearIssue(context.Background(), db.DB, c, "FIX-24"); err != nil {
+		t.Fatal(err)
+	}
+	mode = "500"
+	err = SyncLinearIssue(context.Background(), db.DB, c, "FIX-24")
+	if err == nil {
+		t.Fatal("transport failure: expected an error")
+	}
+	if errors.Is(err, ErrNotFound) {
+		t.Fatal("transport failure must not unwrap to ErrNotFound — the row must survive a dead endpoint")
+	}
+	if n := countKey(); n != 1 {
+		t.Fatalf("after transport failure: issues rows for FIX-24 = %d, want 1 (row kept)", n)
 	}
 }
 
