@@ -68,9 +68,14 @@ saying they are done on the desktop — no more finding out by searching
 removed at the origin stayed in the local cache for as long as its space did,
 because only a space leaving scope was ever pruned. A full wiki sync now
 compares each space's complete page listing with what the cache holds, and
-the hourly reconcile does the same by page id without reading bodies; a page
-missing from the listing is confirmed against the origin before it goes, and a
-row refreshed in the meantime is left alone ([GDK-1884]; #104, thanks @wafe).
+the hourly reconcile does the same by page id, reading a body only where the
+listing and the cache disagree; a page missing from the listing is confirmed
+against the origin before it goes, and a row refreshed in the meantime is left
+alone ([GDK-1884]; #104, thanks @wafe). A page moved between two synced spaces
+now follows to its new space on the next full sync or reconcile, where before
+it stayed filed under the old one ([GDK-1886]). Linear gets what the Jira and
+wiki paths already had: an issue deleted at the origin leaves the cache the
+next time gadak re-reads it, instead of surviving there ([GDK-1889]).
 
 ## v0.22.1 — 2026-09-14
 
@@ -1682,3 +1687,5 @@ priority sorting keyed on `priority_rank`.
 [GDK-1879]: https://gadak.dev/backlog/#/?ks=GDK-1879
 [GDK-1882]: https://gadak.dev/backlog/#/?ks=GDK-1882
 [GDK-1884]: https://gadak.dev/backlog/#/?ks=GDK-1884
+[GDK-1886]: https://gadak.dev/backlog/#/?ks=GDK-1886
+[GDK-1889]: https://gadak.dev/backlog/#/?ks=GDK-1889
