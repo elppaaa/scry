@@ -2008,6 +2008,73 @@ func TestConfluenceReconcileDeletesPageMovedOutsideScope(t *testing.T) {
 	}
 }
 
+// TestConfluenceMovedPageBetweenScopedSpacesFollows closes GDK-1886: a page
+// moved between two in-scope spaces without a version bump must follow the
+// move in the cache. The two late pages push every space watermark past
+// 1002's stamp, so the incremental CQL floor excludes the moved page — the
+// reconcile scan's complete listing is the only pass that still sees it, and
+// before GDK-1886 that scan recorded the hit without ever consulting the
+// fetch gate.
+func TestConfluenceMovedPageBetweenScopedSpacesFollows(t *testing.T) {
+	run := func(t *testing.T, second Options) []string {
+		f := newConfFixture(t)
+		client := f.start()
+		db := newMirror(t)
+		ctx := context.Background()
+		cfg := confCfg([]string{"AAA", "BBB"})
+		// Watermark setters: newer than 1002 in both spaces, so the chunk
+		// floor of any later incremental pass lists only them.
+		f.mu.Lock()
+		f.pages["1003"] = &confPage{ID: "1003", Space: "AAA", Title: "Late AAA page", Version: 1,
+			When: "2026-08-20T09:00:00.000Z", BodyADF: confADF("late aaa")}
+		f.pages["2002"] = &confPage{ID: "2002", Space: "BBB", Title: "Late BBB page", Version: 1,
+			When: "2026-08-21T09:00:00.000Z", BodyADF: confADF("late bbb")}
+		f.mu.Unlock()
+		if _, err := RunConfluence(ctx, cfg, db.DB, Options{Full: true, ConfluenceClient: client}); err != nil {
+			t.Fatal(err)
+		}
+		// The move: same version, same lastModified — only the space changes.
+		f.mu.Lock()
+		f.pages["1002"].Space = "BBB"
+		f.mu.Unlock()
+		var logs []string
+		second.ConfluenceClient = client
+		second.Log = func(line string) { logs = append(logs, line) }
+		res, err := RunConfluence(ctx, cfg, db.DB, second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pages, err := db.PageLites(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		space := "(absent)"
+		for _, p := range pages {
+			if p.Key == "1002" {
+				space = p.SpaceKey
+			}
+		}
+		if space != "BBB" {
+			t.Errorf("moved page 1002 filed under %q, want BBB (bodies=%d skips=%d deleted=%d)\n%s",
+				space, res.PageBodies, res.PageSkips, res.Deleted, strings.Join(logs, "\n"))
+		}
+		if res.Deleted != 0 {
+			t.Errorf("Deleted = %d, want 0 (the page moved inside scope; the confirm GET must keep it)", res.Deleted)
+		}
+		return logs
+	}
+	t.Run("Full", func(t *testing.T) { run(t, Options{Full: true}) })
+	t.Run("Reconcile", func(t *testing.T) {
+		logs := run(t, Options{Reconcile: true})
+		// The debugging layer: the scan must name its own reason, so the next
+		// "why did the reconcile read a body" report is answered by the log.
+		want := "confluence: reconcile scan refetch reasons space=1"
+		if !containsString(logs, want) {
+			t.Errorf("log lines have no %q:\n%s", want, strings.Join(logs, "\n"))
+		}
+	})
+}
+
 func TestConfluenceReconcileKeepsPageOmittedBySearchPagination(t *testing.T) {
 	f := newConfFixture(t)
 	client := f.start()

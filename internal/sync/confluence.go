@@ -482,8 +482,10 @@ func runConfluencePass(ctx context.Context, c *confluence.Client, cfg *config.Co
 			}
 		}
 	}
-	// A scheduled reconcile reads page IDs, not bodies. Full/backfill spaces
-	// already paid for a complete listing above and need no second request.
+	// A scheduled reconcile reads page IDs, not bodies — the fetch gate decides
+	// any exception (a page moved between scoped spaces, or changed since the
+	// incremental pass). Full/backfill spaces already paid for a complete
+	// listing above and need no second request.
 	if opts.Reconcile && !res.Full {
 		var scan []string
 		for _, key := range spaces {
@@ -493,14 +495,41 @@ func runConfluencePass(ctx context.Context, c *confluence.Client, cfg *config.Co
 		}
 		for _, chunk := range chunkConfluenceSpaces(scan, nil) {
 			seen := map[string]map[string]bool{}
+			// One gate covering every space in the chunk, so the scan's hits
+			// go through the same single owner of "does this hit need a body?"
+			// as the incremental pass (GDK-1886). The scan used to record the
+			// hit and move on; a page moved between two scoped spaces without
+			// a version bump then kept its old space_key forever — the
+			// incremental CQL floor never lists it, and the prune below kept
+			// the row because the confirm GET reported a kept space. With the
+			// gate asked, the union's spaceOf answers "filed under another
+			// space" (reason "space") and the fetch rewrites space_key through
+			// the normal upsert path. Rejected alternative: writing space_key
+			// inside deleteAbsentConfluencePages — a write hidden in a prune
+			// path. Documented gap, out of scope here: an incremental
+			// (CQL lastModified) pass cannot list an unbumped moved page at
+			// all — a Full or Reconcile pass is what catches it.
+			gate := &pageFetchGate{have: map[string]store.PageStamp{}, spaceOf: map[string]string{}, fetched: map[string]struct{}{}}
+			gates := map[string]*pageFetchGate{}
 			for _, key := range chunk.keys {
 				seen[key] = map[string]bool{}
+				gates[key] = gate
 				before, err := db.PageStamps(ctx, ConfluenceSourceID, key)
 				if err != nil {
 					return err
 				}
 				beforeListings[key] = before
+				for id, st := range before {
+					gate.have[id] = st
+					gate.spaceOf[id] = key
+				}
 			}
+			cp := newChunkPass(gates)
+			// listedSpace remembers the space each hit was listed under, so a
+			// page whose body GET came back gone can be pulled out of seen the
+			// way syncBackfill does — a mid-scan deletion must not hide behind
+			// the listing that predates it.
+			listedSpace := map[string]string{}
 			cql := fmt.Sprintf(`%s AND type=page order by lastmodified asc`, cqlSpaceSet(chunk.keys))
 			if err := c.SearchPages(ctx, cql, func(hits []confluence.Page) error {
 				for _, hit := range hits {
@@ -515,10 +544,23 @@ func runConfluencePass(ctx context.Context, c *confluence.Client, cfg *config.Co
 						return fmt.Errorf("confluence: page listing in space %s has no id", key)
 					}
 					seen[key][hit.ID] = true
+					listedSpace[hit.ID] = key
 				}
-				return nil
+				return processHits(cp)(hits)
 			}); err != nil {
 				return record(ctx, cfg, db, ConfluenceSourceID, err)
+			}
+			for id := range cp.gone {
+				if key := listedSpace[id]; key != "" {
+					delete(seen[key], id)
+				}
+			}
+			if len(cp.reasons) > 0 {
+				// The scan's own tally, same shape as syncChunk's: space= is a
+				// move between scoped spaces, new= a page no scanned space had
+				// ever held, version/stamp= a change the incremental pass had
+				// not yet seen.
+				opts.logf("confluence: reconcile scan refetch reasons %s", formatReasons(cp.reasons))
 			}
 			for key, ids := range seen {
 				fullyListed[key] = ids
@@ -897,6 +939,14 @@ type pageFetchGate struct {
 	// have is the mirror's version stamp per source page id, loaded once per
 	// space. Absent means unknown, which always means fetch.
 	have map[string]store.PageStamp
+	// spaceOf, when set, maps page id → the space the mirror files it under,
+	// across every space this gate covers. A gate built for one space leaves
+	// it nil: its have map is already that space's stamps, so a page held
+	// under another space is simply absent and needsBody answers "new". The
+	// reconcile scan builds one gate per chunk covering all its spaces; there
+	// absence cannot be told from a move, so the space the row is filed under
+	// has to ride along (GDK-1886).
+	spaceOf map[string]string
 	// haveComments is the mirror's stamp per source comment id. The
 	// comments-only pass consults it so a comment hit inside cqlTime's overlap
 	// window — already mirrored at exactly this stamp — does not re-read its
@@ -939,11 +989,13 @@ func (g *pageFetchGate) commentCurrent(hit confluence.Page) bool {
 
 // needsBody reports whether hit's body must be pulled, and — when the gate had
 // a say — why. It says no only when the mirror holds that page at exactly the
-// hit's version number *and* the hit's lastModified: a number alone can be
-// reused after a restore, and a stamp alone is minute-coarse in CQL. Anything
-// missing, zero or different is fetched — the mirror is a disposable cache, so
-// the safe answer is always "fetch". The reason is a log tally: a page that is
-// re-read on every unchanged tick names its own cause in the sync output.
+// hit's version number *and* the hit's lastModified, in the space the hit
+// claims (a gate covering several spaces also knows which one it files the id
+// under): a number alone can be reused after a restore, a stamp alone is
+// minute-coarse in CQL, and a space move bumps neither. Anything missing, zero
+// or different is fetched — the mirror is a disposable cache, so the safe
+// answer is always "fetch". The reason is a log tally: a page that is re-read
+// on every unchanged tick names its own cause in the sync output.
 func (g *pageFetchGate) needsBody(hit confluence.Page) (bool, string) {
 	if g == nil {
 		return true, "" // backfill: every body, not a gate decision
@@ -960,6 +1012,19 @@ func (g *pageFetchGate) needsBody(hit confluence.Page) (bool, string) {
 	st, ok := g.have[hit.ID]
 	if !ok {
 		return true, "new"
+	}
+	if hit.Space.Key != "" {
+		if held := g.spaceOf[hit.ID]; held != "" && held != hit.Space.Key {
+			// GDK-1886: the mirror files this id under a different space —
+			// the page moved between scoped spaces without a version bump, so
+			// every stamp below still matches. Only a body fetch rewrites
+			// pages.space_key, through the normal upsert (which compares it);
+			// writing it from the prune path instead was rejected — see the
+			// reconcile scan. Note the incremental pass alone cannot catch
+			// this: its CQL lastModified floor never lists an unbumped moved
+			// page. A Full or Reconcile pass is what does.
+			return true, "space"
+		}
 	}
 	if st.Version != hit.Version.Number {
 		return true, "version"
