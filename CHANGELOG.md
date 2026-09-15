@@ -72,8 +72,8 @@ the hourly reconcile does the same by page id, reading a body only where the
 listing and the cache disagree; a page missing from the listing is confirmed
 against the origin before it goes, and a row refreshed in the meantime is left
 alone ([GDK-1884]; #104, thanks @wafe). A page moved between two synced spaces
-now follows to its new space on the next full sync or reconcile, where before
-it stayed filed under the old one ([GDK-1886]). Linear gets what the Jira and
+now follows to its new space on the hourly reconcile, not only on a full
+sync — before, the reconcile left it filed under the old one ([GDK-1886]). Linear gets what the Jira and
 wiki paths already had: an issue deleted at the origin leaves the cache the
 next time gadak re-reads it, instead of surviving there ([GDK-1889]).
 
