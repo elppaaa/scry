@@ -207,7 +207,7 @@ gadak sql "select epic_key, count(*) from issues_full where resolved_at is null
 - `gadak skill install` — Claude Code by default; `codex`, `agents`, `cursor`,
   `gemini`, `opencode`, `grok` install the same file elsewhere. It copies one
   `SKILL.md`; **no process is started** — the agent runs short-lived `gadak`
-  commands (`cmd/gadak/skill.go:3-6`).
+  commands (`cmd/gadak/skill.go:165`).
 - **Two MCP registration commands, and they are not interchangeable**
   (GDK-1633, 2026-09-08):
   - `gadak mcp install claude` execs **Claude Code's** `claude mcp add gadak --
@@ -235,7 +235,7 @@ gadak sql "select epic_key, count(*) from issues_full where resolved_at is null
 - Writes (`create`, `edit`, `comment`, `transition`, `claim`, `link`, and the
   wiki `page` verbs) go through the origin before the mirror refreshes.
 - **Attribution — say exactly this much and no more** (`internal/origin/trailer.go`,
-  `internal/origin/transport.go:33`): on the **built-in tracker** the agent is
+  `internal/origin/transport.go:50`): on the **built-in tracker** the agent is
   recorded as the write's author. On **Jira Cloud and Linear** the identity
   travels inside the body as one trailing line — `— via gadak · Claude Code
   (claude:…)` — on **three shapes only**: a comment, a transition's comment when
@@ -311,7 +311,7 @@ first question (review round 2026-09-08). Confluence Server has no client
   `~/.gadak/profiles/<name>/config.json`) — **the same path on every OS**
   (`%USERPROFILE%\.gadak` on Windows); there is **no OS keychain** on the
   desktop (the phone app is the only Keychain user). It is written atomically
-  with mode `0600` (`internal/atomicfile`, `internal/config/config.go:844`) in a
+  with mode `0600` (`internal/atomicfile`, `internal/config/config.go:871`) in a
   `0700` directory, and sent only as the `Authorization` header to the reader's
   own site — the transport rejects any other host
   (`internal/atlhttp/transport.go:173`). Gates: `docs/PROMISES.md` promise 2
