@@ -33,7 +33,15 @@ DEMO_NOW="2026-09-10T00:00:00Z"
 build_to() {
 	local dest="$1"
 	rm -f "$dest.new"
-	go run ./cmd/gadak snapshot "$dest.new" --from "$SOURCE" \
+	# GADAK_DEV_MIGRATE=1: snapshot copies $SOURCE into a scratch home of its
+	# own, and a dev build refuses to migrate a mirror forward (GDK-1687 —
+	# "the mirror is at schema N, this build writes N+1") so a user's
+	# installed release is never locked out of their workspace. That copy is
+	# not a workspace, and the refusal otherwise makes this script — the gate
+	# every schema-migration commit must run — impossible on the commit that
+	# adds the migration (first hit on schemaV52, GDK-1888).
+	# tools/backlog-snapshot.sh sets the same flag for the same reason.
+	GADAK_DEV_MIGRATE=1 go run ./cmd/gadak snapshot "$dest.new" --from "$SOURCE" \
 		--spread 90d --seed 1 --derive-sprints --now "$DEMO_NOW"
 	python3 scripts/scrub-demo-db.py "$dest.new" "$dest"
 	rm -f "$dest.new"
