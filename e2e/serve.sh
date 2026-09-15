@@ -263,6 +263,17 @@ ON CONFLICT(key, kind) DO UPDATE SET
 
 UPDATE sync_state SET version = version + 1;
 
+SQL
+
+# api_usage lives in local.db, not the mirror (GDK-1906): the counters are our
+# own and the origin cannot regenerate them, so they must survive the `rm
+# gadak.db` the docs teach. local.db already carries the table by here — the
+# `$BIN status` above opened the mirror, and that is what creates and migrates
+# local.db (store.EnsureLocal). Seeding the mirror's frozen leftover instead
+# would leave the settings panel reading an empty local table, which is exactly
+# how this seed failed once.
+echo "[e2e] seeding local.db api_usage…"
+sqlite3 "$HOME_DIR/local.db" <<'SQL'
 -- One day of call volume so the settings panel's "Jira calls" row has something
 -- to show. The row hides itself at zero, so without this the spec would pass
 -- against a panel that lost the row entirely.
