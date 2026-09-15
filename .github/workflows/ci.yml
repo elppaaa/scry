@@ -89,6 +89,13 @@ jobs:
           bash tools/e2e-fixture-age-check.sh
           bash tools/backlog-scrub-check-test.sh
 
+      # GDK-1912: the run/skip filter the race/e2e/mobile/desktop tiers
+      # consult is pure shell with its own fixture suite (fake git, offline,
+      # deterministic). This step is its wiring — a filter whose test never
+      # runs is the illusion of a gate. Seconds, no toolchain.
+      - name: CI input-filter self-test
+        run: bash tools/ci-filter-test.sh
+
       - name: Frontend typecheck
         run: npm run typecheck
 
@@ -140,7 +147,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # GDK-1912: the census measured 31 of 127 commits in one cycle
+      # touching only CHANGELOG/CLAUDE.md/docs — each re-billing this tier
+      # (~1,150 s of race compute). Same shape as the staticcheck job's
+      # gofilter and the same fail-open contract, one generalization:
+      # tools/ci-filter.sh owns the input table so every filtered job reads
+      # the same one (subject `go`: **/*.go, module files, internal/
+      # testdata + embeds, tools/, .github/workflows/). The step's log line
+      # names the verdict and the first path that caused it.
+      - name: Did this change touch the race inputs?
+        id: cifilter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          SHA: ${{ github.sha }}
+        run: bash tools/ci-filter.sh go
+
       - name: Set up Go
+        if: steps.cifilter.outputs.run == 'true'
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -161,9 +186,16 @@ jobs:
       # on run 33018964815). This is a redistribution, not a relaxation —
       # same -count=2, same -race, same two packages, same total test set,
       # three runners instead of one. tools/race-partition.sh owns the
-      # split; --check runs in every shard so a test that escaped the
-      # partition fails the job that would otherwise have skipped it
-      # silently.
+      # split; --check still fails the workflow on a test that escaped the
+      # partition.
+      #
+      # GDK-1915: --check now runs in shard 1 only (was: every shard,
+      # 35/26/35 s measured). The check interrogates the deal as a whole
+      # against the same tree every shard checks out — the script is
+      # deterministic, so a deal broken enough to fail shard 1's check
+      # cannot pass shard 2's copy of it; running it three times measured
+      # the same verdict three times. Each shard still RUNS its own regex
+      # (the step below), which is what actually executes the tests.
       #
       # The one thing sharding does narrow, said plainly: a leaked
       # goroutine now shares a process with ~110 later tests instead of
@@ -173,13 +205,15 @@ jobs:
       # leftover on the second run, and every test still runs twice in
       # its shard.
       - name: Race partition check
+        if: matrix.shard == 1 && steps.cifilter.outputs.run == 'true'
         run: bash tools/race-partition.sh --check 3
 
       - name: Workspace tests under race (GDK-270)
-        if: matrix.shard == 1
+        if: matrix.shard == 1 && steps.cifilter.outputs.run == 'true'
         run: go test ./internal/workspace/ -count=2 -race
 
       - name: Server race shard ${{ matrix.shard }}/3
+        if: steps.cifilter.outputs.run == 'true'
         run: go test ./internal/server/ -count=2 -race -run "$(bash tools/race-partition.sh ${{ matrix.shard }} 3)"
 
   mobile:
@@ -192,20 +226,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # GDK-1912: subject `mobile` — mobile/, the two web/src slices it
+      # imports, the root lockfile (Playwright), the brand mark, the
+      # pairing vectors, and the Go module gate-serve.sh builds for
+      # `gadak demo`. Fail-open like the gofilter; the log line names the
+      # verdict.
+      - name: Did this change touch the mobile inputs?
+        id: cifilter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          SHA: ${{ github.sha }}
+        run: bash tools/ci-filter.sh mobile
+
       # The phone icons are generated from docs/media/logo.png, the same
       # source the desktop resizes at build time. Nothing else notices when
       # the mark changes and this set is not regenerated. Pure shell — it
       # runs before the installs so a drifted icon fails fast.
       - name: Brand icons match the brand source
+        if: steps.cifilter.outputs.run == 'true'
         run: bash tools/check-brand-icons.sh
 
       - name: Set up Go
+        if: steps.cifilter.outputs.run == 'true'
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
 
       - name: Set up Node
+        if: steps.cifilter.outputs.run == 'true'
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -218,7 +269,9 @@ jobs:
       # app under test. Two lockfiles, two ci runs — Playwright already
       # lives at the repo root (mobile/package.json is scripts-only).
       - run: npm ci
+        if: steps.cifilter.outputs.run == 'true'
       - run: npm ci
+        if: steps.cifilter.outputs.run == 'true'
         working-directory: mobile
 
       # The offer decoder is half of a contract whose other half is Go
@@ -226,20 +279,43 @@ jobs:
       # offer-vectors.json, so this job is what makes a one-sided change
       # red — without it the Go side alone would stay green.
       - run: npm test
+        if: steps.cifilter.outputs.run == 'true'
         working-directory: mobile
 
       - run: npm run check
+        if: steps.cifilter.outputs.run == 'true'
         working-directory: mobile
 
       # GDK-868 layer 1: DESIGN.md §4.1 / §4.2. Cheap, no browser.
       - run: npm run lint:ios
+        if: steps.cifilter.outputs.run == 'true'
         working-directory: mobile
 
+      # GDK-1915: the Chromium download (23 s measured in this job, and
+      # 26/31/26 s in the e2e shards) is bytes keyed by the playwright
+      # version alone. Version first, then the cache; `playwright install`
+      # below verifies the cached revision and skips the download on a hit,
+      # and downloads as before on a miss — a cold or evicted cache must
+      # never fail a run.
+      - name: Playwright version
+        id: pwver
+        if: steps.cifilter.outputs.run == 'true'
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright'].version")" >> "$GITHUB_OUTPUT"
+
+      - name: Playwright browser cache
+        if: steps.cifilter.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ steps.pwver.outputs.version }}
+
       - name: Install Playwright Chromium
+        if: steps.cifilter.outputs.run == 'true'
         run: npx playwright install --with-deps chromium
 
       # GDK-868 layer 2: 402×874 walk on :5182 / demo :7899. Not e2e :7877.
       - run: npm run viewport-gate
+        if: steps.cifilter.outputs.run == 'true'
         working-directory: mobile
 
   scan:
@@ -400,19 +476,54 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # GDK-1912: subject `e2e` — the whole web surface plus the Go module,
+      # because e2e/serve.sh (the webServer playwright waits on) builds the
+      # gadak binary before serving the committed fixtures. Fail-open like
+      # the gofilter; the log line names the verdict.
+      - name: Did this change touch the e2e inputs?
+        id: cifilter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          SHA: ${{ github.sha }}
+        run: bash tools/ci-filter.sh e2e
+
       - name: Set up Go
+        if: steps.cifilter.outputs.run == 'true'
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
 
       - name: Set up Node
+        if: steps.cifilter.outputs.run == 'true'
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
 
       - run: npm ci
+        if: steps.cifilter.outputs.run == 'true'
+
+      # GDK-1915: the browser download half of the step below (26/31/26 s
+      # measured across the three shards, ≈106 s per run with the mobile
+      # job's 23 s) is bytes keyed by the playwright version alone. The apt
+      # half is NOT cached here — it stays inside the bounded-retry step,
+      # which is the machinery that owns it. On a cache hit `playwright
+      # install` verifies the revision and skips the download; on a miss it
+      # downloads exactly as before (fail-open).
+      - name: Playwright version
+        id: pwver
+        if: steps.cifilter.outputs.run == 'true'
+        run: echo "version=$(node -p "require('./package-lock.json').packages['node_modules/playwright'].version")" >> "$GITHUB_OUTPUT"
+
+      - name: Playwright browser cache
+        if: steps.cifilter.outputs.run == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ steps.pwver.outputs.version }}
 
       # --with-deps is two unlike jobs: apt (root, dpkg lock, not safely
       # killable) and a browser download (no lock, retryable). Wrapping the
@@ -437,6 +548,7 @@ jobs:
       # added for (2026-08-18: a 29-minute silent mirror looked like a
       # test verdict).
       - name: Install Playwright Chromium
+        if: steps.cifilter.outputs.run == 'true'
         # 27, re-derived 2026-08-19: 120s lock wait + two bounded 420s
         # apt attempts (with an orphan-reap + lock wait between, ≤130s —
         # 10s over the plain wait it replaced) + three 250s
@@ -562,9 +674,11 @@ jobs:
       # count (balanced only if every file costs the same), while the
       # partitioner deals files by measured seconds.
       - name: E2E partition check
+        if: steps.cifilter.outputs.run == 'true'
         run: bash tools/e2e-partition.sh --check 3
 
       - name: Run browser E2E
+        if: steps.cifilter.outputs.run == 'true'
         run: npx playwright test --config e2e/playwright.config.ts $(bash tools/e2e-partition.sh ${{ matrix.shard }} 3)
 
   # Nested module (desktop/go.mod). package main imports wails v3, which does
@@ -579,7 +693,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # GDK-1912: subject `desktop` — desktop/ plus the root module and web
+      # build every pack script compiles. Fail-open like the gofilter.
+      - name: Did this change touch the desktop inputs?
+        id: cifilter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          SHA: ${{ github.sha }}
+        run: bash tools/ci-filter.sh desktop
+
       - name: Set up Go
+        if: steps.cifilter.outputs.run == 'true'
         uses: actions/setup-go@v5
         with:
           go-version-file: desktop/go.mod
@@ -587,6 +713,7 @@ jobs:
           cache: true
 
       - name: Desktop Go build, test, vet
+        if: steps.cifilter.outputs.run == 'true'
         run: cd desktop && go build ./... && go test ./... -count=1 && go vet ./...
 
       # GDK-1407: the committed rsrc_windows_<arch>.syso pair must match
@@ -596,6 +723,7 @@ jobs:
       # cheapest desktop runner. --check regenerates both .syso and cmp's
       # them against the committed pair (rsrc output is deterministic).
       - name: Committed syso pair matches the manifest
+        if: steps.cifilter.outputs.run == 'true'
         run: bash tools/windows-manifest.sh --check
 
       # GDK-167: anything the OS reads from Info.plist is invisible to a
@@ -605,15 +733,18 @@ jobs:
       # that writes it. (The runbook's install/lsregister half needs a real
       # user session; this covers the plist-in-artifact class in CI.)
       - name: Set up Node
+        if: steps.cifilter.outputs.run == 'true'
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
 
       - name: Build the app bundle
+        if: steps.cifilter.outputs.run == 'true'
         run: npm ci && npm run build && desktop/build-app.sh
 
       - name: The shipped bundle claims gadak://
+        if: steps.cifilter.outputs.run == 'true'
         run: |
           plist=desktop/build/Gadak.app/Contents/Info.plist
           test -f "$plist" || { echo "no Info.plist in the built bundle" >&2; exit 1; }
@@ -642,7 +773,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # GDK-1912: subject `desktop` — the Linux pack compiles the root
+      # module, the desktop module and the web build, so the table is the
+      # union. Fail-open like the gofilter.
+      - name: Did this change touch the desktop inputs?
+        id: cifilter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          SHA: ${{ github.sha }}
+        run: bash tools/ci-filter.sh desktop
+
       - name: Set up Go
+        if: steps.cifilter.outputs.run == 'true'
         uses: actions/setup-go@v5
         with:
           go-version-file: desktop/go.mod
@@ -657,9 +801,11 @@ jobs:
       # tidy. The command lives in tools/check-desktop-tidy.sh so local and
       # CI cannot drift.
       - name: Desktop go.mod/go.sum match tidy
+        if: steps.cifilter.outputs.run == 'true'
         run: bash tools/check-desktop-tidy.sh
 
       - name: Set up Node
+        if: steps.cifilter.outputs.run == 'true'
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -680,12 +826,14 @@ jobs:
       # cached lists resolve always have their .debs on disk.
       - name: Stamp the runner's apt environment
         id: aptstamp
+        if: steps.cifilter.outputs.run == 'true'
         run: |
           set -eu
           . /etc/os-release
           echo "image=$(dpkg --print-architecture)-${VERSION_CODENAME}-${VERSION_ID}" >> "$GITHUB_OUTPUT"
 
       - name: apt archives cache
+        if: steps.cifilter.outputs.run == 'true'
         uses: actions/cache@v4
         with:
           path: |
@@ -701,6 +849,7 @@ jobs:
       # existed: seeding only copies files in, and the update-failure
       # fallback in the GTK step engages only when cached lists exist.
       - name: Seed apt archives from the cache
+        if: steps.cifilter.outputs.run == 'true'
         run: |
           set -eu
           n=0
@@ -719,6 +868,7 @@ jobs:
       # (gtk3) stack is the legacy tag and is deliberately not installed.
       - name: GTK4 / WebKitGTK 6.0 development packages
         id: gtk
+        if: steps.cifilter.outputs.run == 'true'
         timeout-minutes: 12
         run: |
           set -eu
@@ -850,7 +1000,7 @@ jobs:
       # the lists are the freshest successful update. lock and partial/ are
       # runtime state, not cacheable content, and are left out.
       - name: Collect apt state for the cache
-        if: steps.gtk.outcome == 'success'
+        if: steps.cifilter.outputs.run == 'true' && steps.gtk.outcome == 'success'
         run: |
           set -eu
           mkdir -p "$HOME/.cache/gadak-apt-archives" "$HOME/.cache/gadak-apt-lists"
@@ -876,6 +1026,7 @@ jobs:
       # long before any need() runs. This step must stay before the install
       # of appimagetool below.
       - name: Argument and missing-tool exit codes
+        if: steps.cifilter.outputs.run == 'true'
         run: |
           set +e
           desktop/build-linux.sh --nope >/dev/null 2>&1
@@ -896,6 +1047,7 @@ jobs:
       # binary is itself an AppImage so APPIMAGE_EXTRACT_AND_RUN=1 avoids
       # the fuse device that GitHub-hosted Ubuntu 24.04 does not give us.
       - name: Install appimagetool
+        if: steps.cifilter.outputs.run == 'true'
         run: |
           set -eu
           arch="$(uname -m)"
@@ -923,14 +1075,17 @@ jobs:
           echo "installed appimagetool 1.9.1 (${file})"
 
       - name: Build the web UI
+        if: steps.cifilter.outputs.run == 'true'
         run: npm ci && npm run build
 
       - name: Pack the Linux app
+        if: steps.cifilter.outputs.run == 'true'
         env:
           APPIMAGE_EXTRACT_AND_RUN: "1"
         run: desktop/build-linux.sh --appimage
 
       - name: The packed tree carries the binary and the launcher
+        if: steps.cifilter.outputs.run == 'true'
         run: |
           set -eu
           appdir="$(find desktop/build -maxdepth 1 -type d -name '*.AppDir' -print -quit)"
@@ -945,6 +1100,7 @@ jobs:
       # tree. --appimage-extract is the runtime a user runs, dumping the
       # payload without FUSE (APPIMAGE_EXTRACT_AND_RUN).
       - name: The AppImage claims gadak://
+        if: steps.cifilter.outputs.run == 'true'
         env:
           APPIMAGE_EXTRACT_AND_RUN: "1"
         run: |
@@ -980,7 +1136,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # GDK-1912: subject `desktop` — this job builds the root module
+      # (cmd/gadak), the desktop module and the web build. Fail-open like
+      # the gofilter.
+      - name: Did this change touch the desktop inputs?
+        id: cifilter
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          SHA: ${{ github.sha }}
+        run: bash tools/ci-filter.sh desktop
+
       - name: Set up Go
+        if: steps.cifilter.outputs.run == 'true'
         uses: actions/setup-go@v5
         with:
           go-version-file: desktop/go.mod
@@ -994,6 +1163,7 @@ jobs:
           cache: true
 
       - name: Set up Node
+        if: steps.cifilter.outputs.run == 'true'
         uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
@@ -1004,19 +1174,23 @@ jobs:
       # on every run, 2–6.5 minutes) hid inside "Build the web UI" for weeks
       # (GDK-1036).
       - name: Install web dependencies
+        if: steps.cifilter.outputs.run == 'true'
         run: npm ci
 
       - name: Build the web UI
+        if: steps.cifilter.outputs.run == 'true'
         run: npm run build
 
       # --msix packs the same directory a second time as the Store package
       # (GDK-1380) — one compile, two outputs; the Windows job is CI's
       # critical path (GDK-1036) and a second build would double it.
       - name: Pack the Windows app
+        if: steps.cifilter.outputs.run == 'true'
         shell: pwsh
         run: ./desktop/build-windows.ps1 --msix
 
       - name: The packed tree carries both binaries
+        if: steps.cifilter.outputs.run == 'true'
         shell: pwsh
         run: |
           $bundle = Get-ChildItem -Path desktop/build -Directory -Filter 'Gadak-*' | Select-Object -First 1
@@ -1040,6 +1214,7 @@ jobs:
           exit 0
 
       - name: Protocol handler tests
+        if: steps.cifilter.outputs.run == 'true'
         working-directory: desktop
         run: go test ./... -run 'Protocol' -count=1
 
@@ -1053,6 +1228,7 @@ jobs:
       # HKCU assertion above must keep measuring the pack script alone. The
       # GUI is not launched.
       - name: The msix installs under its declared identity
+        if: steps.cifilter.outputs.run == 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -1104,6 +1280,7 @@ jobs:
       # The file Partner Center takes. The install check above signed a copy
       # in RUNNER_TEMP, so this is the untouched unsigned package.
       - name: Upload Store package artifact
+        if: steps.cifilter.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: gadak-desktop-msix-x64
@@ -1116,6 +1293,7 @@ jobs:
       # when the assertion passed. A child process also runs the script the way
       # a person would.
       - name: Bad arguments exit 64
+        if: steps.cifilter.outputs.run == 'true'
         shell: pwsh
         run: |
           $p = Start-Process -FilePath pwsh -NoNewWindow -Wait -PassThru `
@@ -1127,6 +1305,7 @@ jobs:
       # install-cli copies on Windows because a symlink needs elevation. Only
       # a Windows runner can show that the copy actually lands and runs.
       - name: install-cli copies a working gadak.exe
+        if: steps.cifilter.outputs.run == 'true'
         shell: pwsh
         run: |
           $bundle = Get-ChildItem -Path desktop/build -Directory -Filter 'Gadak-*' | Select-Object -First 1
