@@ -479,6 +479,21 @@ export const detail = {
     ko: '{name} 재생',
     ja: '{name} を再生',
   },
+  'detail.artifact': {
+    en: 'Artifact',
+    ko: '아티팩트',
+    ja: 'アーティファクト',
+  },
+  'detail.artifactExpand': {
+    en: 'Expand {name}',
+    ko: '{name} 펼치기',
+    ja: '{name} を広げる',
+  },
+  'detail.artifactDownload': {
+    en: 'Download',
+    ko: '내려받기',
+    ja: 'ダウンロード',
+  },
   /*
    * Phone attachment affordances (GDK-1503). The packaged app has no opener
    * plugin and no outbound host but the paired endpoint, so a video's bytes
