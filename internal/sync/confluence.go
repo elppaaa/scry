@@ -116,6 +116,10 @@ type pageFetch struct {
 
 // runConfluencePass is the Confluence-specific body inside the shared runSource
 // skeleton. Usage flush is registered by runSource on the client from setup.
+// The pass's working halves — the pool worker, the serial committer, the
+// backfill and chunk walkers, the reconcile scan — are methods on
+// confluencePass (GDK-1920), built below once the scope is known; this body
+// owns pass-wide setup and the spine that orders the halves.
 func runConfluencePass(ctx context.Context, c *confluence.Client, cfg *config.Config, db *store.DB, opts Options, state store.SyncState, res *Result) error {
 	// The fetch pool (GDK-1673): the per-item GETs — body, comments, version
 	// stamps — fan out over a bounded worker set while the store writes stay
@@ -147,33 +151,6 @@ func runConfluencePass(ctx context.Context, c *confluence.Client, cfg *config.Co
 	// child/attachment stands for the origin, so it is learned once and the
 	// rest of the pass skips the request (see attachmentSupport).
 	atts := &attachmentSupport{}
-	// fetchOne is one pool worker's whole item: the serial per-hit fetch set —
-	// body, comments, then the version-stamp read (GDK-1673 moved that read
-	// from commitBatch-time into the worker; its write stays behind the
-	// upsert) — plus this fetch window's AIMD note. A 429 was already waited
-	// out inside the transport (Retry-After); the meter delta is how the
-	// worker sees it happened at all.
-	fetchOne := func(ctx context.Context, hit confluence.Page) (pageFetch, error) {
-		before := c.Usage().Throttled
-		var pf pageFetch
-		rec, spaceName, when, err := fetchPageRecord(ctx, c, cfg, hit, atts)
-		if err == nil {
-			pf.versions, err = fetchPageVersions(ctx, c, db, poolLogf, rec.Item.ID, rec.Item.ExternalID, rec.Page.Version)
-		}
-		if errors.Is(err, confluence.ErrNotFound) {
-			// Deleted or view-restricted between listing and fetch — not a
-			// failure: emit logs the skip.
-			pf.gone, pf.goneErr = true, err
-			err = nil
-		}
-		pf.rec, pf.spaceName, pf.when = rec, spaceName, when
-		if c.Usage().Throttled > before {
-			thr.NoteThrottle()
-		} else {
-			thr.NoteClean()
-		}
-		return pf, err
-	}
 
 	// Upgrade path for GDK-344: built-in wiki mirrors written before the
 	// page id namespace existed hold `confluence:N` rows whose keys the pass
@@ -207,265 +184,23 @@ func runConfluencePass(ctx context.Context, c *confluence.Client, cfg *config.Co
 		return err
 	}
 
-	var maxUTC, maxRaw string
-	// A page can be declared absent only after its space's unfiltered listing
-	// completed. Keep those listings until every fetch/search in the pass has
-	// succeeded; a partial run must not turn absence into a tombstone.
-	fullyListed := map[string]map[string]bool{}
-	beforeListings := map[string]map[string]store.PageStamp{}
-	// The first-sync heartbeat (GDK-1677), same contract as the issue pass.
-	heartbeat := &progressHeartbeat{db: db, sourceID: ConfluenceSourceID}
-	// batchSpaces: path ② (config listed spaces) collects names from page hits;
-	// also a harmless refresh when path ① already wrote spaces from Spaces().
-	// Watermarks are committed per chunk after that chunk finishes — never
-	// from a mid-chunk page batch (a later chunk's failure must not inherit
-	// this chunk's floor, and this chunk's floors must not move until its
-	// fetch completed).
-	commitBatch := func(batch []pageFetch, batchSpaces []store.SpaceRow) error {
-		if len(batch) == 0 {
-			return nil
-		}
-		if len(batchSpaces) > 0 {
-			if err := db.UpsertSpaces(ctx, ConfluenceSourceID, batchSpaces); err != nil {
-				return err
-			}
-		}
-		recs := make([]store.PageRecord, len(batch))
-		for i, pf := range batch {
-			recs[i] = pf.rec
-		}
-		changed, err := db.UpsertPages(ctx, recs)
-		if err != nil {
-			return err
-		}
-		// Version stamps write after the items rows exist (page_versions→items
-		// FK) — the same spot the serial pass collected them. The pooled worker
-		// already did the read; this is only the write, in batch order.
-		for _, pf := range batch {
-			if len(pf.versions) == 0 {
-				continue
-			}
-			if err := writePageVersions(ctx, db, opts.logf, pf.rec.Item.ID, pf.rec.Item.ExternalID, pf.versions); err != nil {
-				return err
-			}
-		}
-		res.Fetched += len(batch)
-		res.Changed += changed
-		if res.Full {
-			// GDK-1677: same heartbeat as the issue pass. No denominator —
-			// Confluence exposes no page count per space, and inventing one
-			// (an extra CQL count per space) is a request this pass must not
-			// spend. total stays NULL; readers omit the "/ total" fragment.
-			heartbeat.touch(ctx, opts, res.Fetched, -1)
-		}
-		if opts.Progress != nil {
-			opts.Progress(res.Fetched, res.Changed)
-		}
-		opts.logf("  confluence: %s pages", formatCount(res.Fetched))
-		return nil
-	}
-
-	processHits := func(cp *chunkPass) func([]confluence.Page) error {
-		return func(hits []confluence.Page) error {
-			batch := make([]pageFetch, 0, pageBatchSize)
-			spaceByKey := map[string]store.SpaceRow{}
-			// The gate pass stays serial: it reads the mirror and decides, per
-			// hit, whether a fetch is warranted at all. Only the network half
-			// fans out.
-			kept := make([]confluence.Page, 0, len(hits))
-			for _, hit := range hits {
-				sk := hit.Space.Key
-				gate, ok := cp.gates[sk]
-				if !ok && sk == "" && len(cp.gates) == 1 {
-					// A server that omits space on hits (single-space query is
-					// unambiguous): route to the one member.
-					for k, g := range cp.gates {
-						sk, gate, ok = k, g, true
-					}
-				}
-				if !ok {
-					// A hit outside the queried set (page moved mid-listing, or a
-					// server ignoring the space filter): never mirror it into a
-					// space this pass does not own.
-					opts.logf("confluence: skip %s (space %q outside this pass)", hit.ID, sk)
-					continue
-				}
-				need, why := gate.needsBody(hit)
-				if !need {
-					// The mirror already holds this page at this exact version and
-					// stamp: the hit is inside cqlTime's floor window, not a change.
-					// Its stamp still counts toward the watermark — we have just
-					// verified the mirror is current through it — and the page stays
-					// OUT of the gate's fetched set so the comments-only pass can
-					// still reach it if only a comment moved.
-					//
-					// The no-fetch verdicts that carry a reason are the
-					// unchecked ones (GDK-1888): a children.attachment or
-					// children.comment expansion that came back truncated at the
-					// search limit, so the scan could not compare it — the two
-					// names join with a + when both were truncated. They ride
-					// the same reasons tally as the fetch reasons so the gap is
-					// visible in the log.
-					if why != "" {
-						cp.reasons[why]++
-					}
-					res.PageSkips++
-					noteStamp(hit.Version.When, &cp.maxUTC, &cp.maxRaw)
-					noteStamp(hit.Version.When, &maxUTC, &maxRaw)
-					continue
-				}
-				if why != "" {
-					if _, isContainer := cp.containers[hit.ID]; isContainer {
-						why = "comment-container"
-					}
-					cp.reasons[why]++
-				}
-				gate.markFetched(hit.ID)
-				res.PageBodies++
-				cp.bodies[sk]++
-				kept = append(kept, hit)
-			}
-			// The pooled half: workers run fetchOne (body + comments + version
-			// read) concurrently, bounded by thr; emit lands back here in
-			// listing order on this goroutine, so the batch, the spaces map,
-			// the tallies and every commit still see one writer.
-			emit := func(i int, pf pageFetch) error {
-				if pf.gone {
-					// Deleted or view-restricted between the listing and the fetch.
-					// A full listing excludes this ID from seen; candidate verification
-					// below decides whether its old mirror row can be deleted now.
-					cp.gone[kept[i].ID] = true
-					opts.logf("confluence: skip %s (gone: %v)", kept[i].ID, pf.goneErr)
-					return nil
-				}
-				if sk := pf.rec.Page.SpaceKey; sk != "" {
-					spaceByKey[sk] = store.SpaceRow{Key: sk, Name: pf.spaceName}
-				}
-				noteStamp(pf.when, &cp.maxUTC, &cp.maxRaw)
-				noteStamp(pf.when, &maxUTC, &maxRaw)
-				batch = append(batch, pf)
-				if len(batch) >= pageBatchSize {
-					if err := commitBatch(batch, spaceRowsFromMap(spaceByKey)); err != nil {
-						return err
-					}
-					batch = batch[:0]
-					spaceByKey = map[string]store.SpaceRow{}
-				}
-				return nil
-			}
-			if err := fetchOrdered(ctx, thr, kept, fetchOne, emit); err != nil {
-				return err
-			}
-			// The trailing sub-batch commit, exactly where the serial pass
-			// had it: emit only flushes at pageBatchSize.
-			return commitBatch(batch, spaceRowsFromMap(spaceByKey))
-		}
-	}
-
-	// syncBackfill fully re-reads one space: the mirror's repair path (new or
-	// restored spaces, and every space on --full). The nil gate re-reads every
-	// body regardless of what the local rows claim; comments arrive with each
-	// body, so there is no comments-only pass.
-	syncBackfill := func(key string) error {
-		cp := newChunkPass(map[string]*pageFetchGate{key: nil})
-		if verifiedSpaces[key] {
-			before, err := db.PageStamps(ctx, ConfluenceSourceID, key)
-			if err != nil {
-				return err
-			}
-			beforeListings[key] = before
-		}
-		cql := fmt.Sprintf(`space=%s AND type=page order by lastmodified asc`, cqlSpace(key))
-		before := res.PageBodies
-		seen := map[string]bool{}
-		if err := c.SearchPages(ctx, cql, func(hits []confluence.Page) error {
-			for _, hit := range hits {
-				if hit.ID == "" || (hit.Space.Key != "" && hit.Space.Key != key) {
-					return fmt.Errorf("confluence: invalid page listing for space %s (page %q, space %q)", key, hit.ID, hit.Space.Key)
-				}
-				seen[hit.ID] = true
-			}
-			return processHits(cp)(hits)
-		}); err != nil {
-			return record(ctx, cfg, db, ConfluenceSourceID, err)
-		}
-		for id := range cp.gone {
-			delete(seen, id)
-		}
-		if verifiedSpaces[key] {
-			fullyListed[key] = seen
-		}
-		opts.logf("confluence: space %s floor=full-backfill fetched=%d", key, res.PageBodies-before)
-		if cp.maxRaw == "" {
-			return nil
-		}
-		if err := db.SetSpaceWatermark(ctx, ConfluenceSourceID, key, cp.maxRaw); err != nil {
-			return err
-		}
-		wms[key] = cp.maxRaw
-		// Compatibility: sync_state.watermark stays the max across spaces so
-		// status/doctor/freshness keep working. It is not an incremental floor.
-		return db.RecordSync(ctx, ConfluenceSourceID, store.SyncResult{Watermark: cp.maxRaw})
-	}
-
-	// syncChunk runs one incremental chunk: one type=page CQL, one type=comment
-	// CQL, floored at the chunk's oldest member watermark. Gates keep re-hits
-	// inside the widened window from costing body reads.
-	syncChunk := func(chunk spaceChunk) error {
-		gates := make(map[string]*pageFetchGate, len(chunk.keys))
-		for _, key := range chunk.keys {
-			gate, err := newPageFetchGate(ctx, db, key, false)
-			if err != nil {
-				return err
-			}
-			gates[key] = gate
-		}
-		cp := newChunkPass(gates)
-		bodiesBefore, skipsBefore := res.PageBodies, res.PageSkips
-		cql := fmt.Sprintf(`%s AND type=page AND lastModified >= "%s" order by lastmodified asc`,
-			cqlSpaceSet(chunk.keys), cqlTime(chunk.floorRaw))
-		if err := c.SearchPages(ctx, cql, processHits(cp)); err != nil {
-			return record(ctx, cfg, db, ConfluenceSourceID, err)
-		}
-		// comments-only pass: one type=comment CQL per chunk. Pages already
-		// fetched above are skipped via the gates.
-		if err := commentsOnlyPass(ctx, c, opts, chunk, cp, &maxUTC, &maxRaw, processHits(cp)); err != nil {
-			return record(ctx, cfg, db, ConfluenceSourceID, err)
-		}
-		opts.logf("confluence: %d spaces floor=%s fetched=%d unchanged=%d", len(chunk.keys), chunk.floorRaw,
-			res.PageBodies-bodiesBefore, res.PageSkips-skipsBefore)
-		for _, key := range sortedKeys(cp.bodies) {
-			opts.logf("confluence: space %s fetched=%d", key, cp.bodies[key])
-		}
-		if len(cp.reasons) > 0 {
-			// Why the gate said fetch — the debug surface for "an unchanged tick
-			// keeps re-reading the same N bodies" (GDK-1074 waste ①).
-			opts.logf("confluence: refetch reasons %s", formatReasons(cp.reasons))
-		}
-		if cp.maxRaw == "" {
-			// Nothing observed anywhere in the chunk: floors stay put. The next
-			// tick re-runs the same cheap zero-hit queries.
-			return nil
-		}
-		// Every member advances to the chunk max, the quiet ones included: the
-		// query enumerated all changes in these spaces since the chunk floor
-		// (≤ every member's own floor), so each member is verified current
-		// through the newest stamp observed. A quiet member that kept its old
-		// floor would drag this chunk's window wider on every future tick.
-		for _, key := range chunk.keys {
-			if err := db.SetSpaceWatermark(ctx, ConfluenceSourceID, key, cp.maxRaw); err != nil {
-				return err
-			}
-			wms[key] = cp.maxRaw
-		}
-		// Compatibility: sync_state.watermark stays the max across spaces so
-		// status/doctor/freshness keep working. It is not an incremental floor.
-		return db.RecordSync(ctx, ConfluenceSourceID, store.SyncResult{Watermark: cp.maxRaw})
+	// The pass's shared state — the running maxima, the listing guards, the
+	// heartbeat — lives on confluencePass so every extracted half reads the
+	// same fields it used to capture (GDK-1920).
+	p := &confluencePass{
+		ctx: ctx, c: c, cfg: cfg, db: db, opts: opts, res: res,
+		thr: thr, atts: atts, poolLogf: poolLogf,
+		heartbeat:      &progressHeartbeat{db: db, sourceID: ConfluenceSourceID},
+		wms:            wms,
+		spaces:         spaces,
+		verifiedSpaces: verifiedSpaces,
+		fullyListed:    map[string]map[string]bool{},
+		beforeListings: map[string]map[string]store.PageStamp{},
 	}
 
 	if res.Full {
 		for _, key := range spaces {
-			if err := syncBackfill(key); err != nil {
+			if err := p.syncBackfill(key); err != nil {
 				return err
 			}
 		}
@@ -483,12 +218,12 @@ func runConfluencePass(ctx context.Context, c *confluence.Client, cfg *config.Co
 			}
 		}
 		for _, chunk := range chunkConfluenceSpaces(incremental, wms) {
-			if err := syncChunk(chunk); err != nil {
+			if err := p.syncChunk(chunk); err != nil {
 				return err
 			}
 		}
 		for _, key := range backfills {
-			if err := syncBackfill(key); err != nil {
+			if err := p.syncBackfill(key); err != nil {
 				return err
 			}
 		}
@@ -498,127 +233,12 @@ func runConfluencePass(ctx context.Context, c *confluence.Client, cfg *config.Co
 	// incremental pass). Full/backfill spaces already paid for a complete
 	// listing above and need no second request.
 	if opts.Reconcile && !res.Full {
-		var scan []string
-		for _, key := range spaces {
-			if verifiedSpaces[key] && fullyListed[key] == nil {
-				scan = append(scan, key)
-			}
-		}
-		for _, chunk := range chunkConfluenceSpaces(scan, nil) {
-			seen := map[string]map[string]bool{}
-			// One gate covering every space in the chunk, so the scan's hits
-			// go through the same single owner of "does this hit need a body?"
-			// as the incremental pass (GDK-1886). The scan used to record the
-			// hit and move on; a page moved between two scoped spaces without
-			// a version bump then kept its old space_key forever — the
-			// incremental CQL floor never lists it, and the prune below kept
-			// the row because the confirm GET reported a kept space. With the
-			// gate asked, the union's spaceOf answers "filed under another
-			// space" (reason "space") and the fetch rewrites space_key through
-			// the normal upsert path. Rejected alternative: writing space_key
-			// inside deleteAbsentConfluencePages — a write hidden in a prune
-			// path. Documented gap, out of scope here: an incremental
-			// (CQL lastModified) pass cannot list an unbumped moved page at
-			// all — a Full or Reconcile pass is what catches it.
-			gate := &pageFetchGate{have: map[string]store.PageStamp{}, spaceOf: map[string]string{}, fetched: map[string]struct{}{},
-				attachments: map[string]map[string]bool{}, comments: map[string]map[string]bool{}, commentsUnknown: map[string]bool{}}
-			gates := map[string]*pageFetchGate{}
-			for _, key := range chunk.keys {
-				seen[key] = map[string]bool{}
-				gates[key] = gate
-				before, err := db.PageStamps(ctx, ConfluenceSourceID, key)
-				if err != nil {
-					return err
-				}
-				beforeListings[key] = before
-				for id, st := range before {
-					gate.have[id] = st
-					gate.spaceOf[id] = key
-				}
-				// GDK-1888: the scan's attachment comparison base — the
-				// mirror's per-page attachment id set, one space at a time
-				// into the shared gate.
-				held, err := db.PageAttachmentIDs(ctx, ConfluenceSourceID, key)
-				if err != nil {
-					return err
-				}
-				for id, set := range held {
-					gate.attachments[id] = set
-				}
-				// GDK-1888 comment half: the same base for top-level comment
-				// ids, plus the pages whose comment rows predate parent_id
-				// (NULL — unknown). needsBody heals those with one
-				// comments-backfill fetch instead of comparing a set it
-				// cannot trust.
-				tops, unknownParents, err := db.PageTopCommentIDs(ctx, ConfluenceSourceID, key)
-				if err != nil {
-					return err
-				}
-				for id, set := range tops {
-					gate.comments[id] = set
-				}
-				for id := range unknownParents {
-					gate.commentsUnknown[id] = true
-				}
-			}
-			cp := newChunkPass(gates)
-			// listedSpace remembers the space each hit was listed under, so a
-			// page whose body GET came back gone can be pulled out of seen the
-			// way syncBackfill does — a mid-scan deletion must not hide behind
-			// the listing that predates it.
-			listedSpace := map[string]string{}
-			cql := fmt.Sprintf(`%s AND type=page order by lastmodified asc`, cqlSpaceSet(chunk.keys))
-			// The scan expands children.attachment and children.comment so
-			// needsBody can compare the listed ids against the mirror
-			// (GDK-1888): an attachment or comment added or removed bumps no
-			// page version, so without this every stamp matches and the cache
-			// keeps a deleted attachment or comment indefinitely. The
-			// expansions ride the scan only — the incremental and full passes
-			// keep the default payload.
-			if err := c.SearchPagesExpand(ctx, cql, "version,space,children.attachment,children.comment", func(hits []confluence.Page) error {
-				for _, hit := range hits {
-					key := hit.Space.Key
-					if key == "" && len(chunk.keys) == 1 {
-						key = chunk.keys[0]
-					}
-					if seen[key] == nil {
-						return fmt.Errorf("confluence: page %s has space %q outside reconcile scope", hit.ID, key)
-					}
-					if hit.ID == "" {
-						return fmt.Errorf("confluence: page listing in space %s has no id", key)
-					}
-					seen[key][hit.ID] = true
-					listedSpace[hit.ID] = key
-				}
-				return processHits(cp)(hits)
-			}); err != nil {
-				return record(ctx, cfg, db, ConfluenceSourceID, err)
-			}
-			for id := range cp.gone {
-				if key := listedSpace[id]; key != "" {
-					delete(seen[key], id)
-				}
-			}
-			if len(cp.reasons) > 0 {
-				// The scan's own tally, same shape as syncChunk's: space= is a
-				// move between scoped spaces, new= a page no scanned space had
-				// ever held, version/stamp= a change the incremental pass had
-				// not yet seen, attachments=/comments= an id set the mirror
-				// holds differently — an add or delete that bumped no version
-				// (GDK-1888) — comments-backfill= comment rows whose parent_id
-				// predates schemaV52, healed by the fetch itself — and
-				// attachments-unchecked=/comments-unchecked= (alone or joined
-				// with a +) a listing truncated at the search limit, where no
-				// comparison was possible.
-				opts.logf("confluence: reconcile scan refetch reasons %s", formatReasons(cp.reasons))
-			}
-			for key, ids := range seen {
-				fullyListed[key] = ids
-			}
+		if err := p.reconcileScan(); err != nil {
+			return err
 		}
 	}
-	if len(fullyListed) > 0 {
-		deleted, err := deleteAbsentConfluencePages(ctx, c, db, spaces, fullyListed, beforeListings, opts.logf)
+	if len(p.fullyListed) > 0 {
+		deleted, err := deleteAbsentConfluencePages(ctx, c, db, spaces, p.fullyListed, p.beforeListings, opts.logf)
 		if err != nil {
 			return record(ctx, cfg, db, ConfluenceSourceID, err)
 		}
@@ -658,9 +278,480 @@ func runConfluencePass(ctx context.Context, c *confluence.Client, cfg *config.Co
 		opts.logf("%s", line)
 	}
 
-	res.Watermark = maxRaw
-	if err := db.RecordSync(ctx, ConfluenceSourceID, store.SyncResult{Watermark: maxRaw, FullSync: res.Full}); err != nil {
+	res.Watermark = p.maxRaw
+	if err := db.RecordSync(ctx, ConfluenceSourceID, store.SyncResult{Watermark: p.maxRaw, FullSync: res.Full}); err != nil {
 		return err
+	}
+	return nil
+}
+
+// confluencePass is one wiki pass's shared state (GDK-1920): everything the
+// extracted halves — the pool worker (fetchOne), the serial committer
+// (commitBatch, emit), the backfill and chunk walkers (syncBackfill,
+// syncChunk) and the reconcile scan (reconcileScan) — used to reach into
+// runConfluencePass through closure captures now has one owner. The maps are
+// the pass's timeline, not convenience handles: maxUTC/maxRaw only move
+// forward, and fullyListed/beforeListings guard the absence-delete until
+// every fetch and search in the pass has succeeded.
+type confluencePass struct {
+	ctx  context.Context
+	c    *confluence.Client
+	cfg  *config.Config
+	db   *store.DB
+	opts Options
+	res  *Result
+
+	// thr is the pass-wide AIMD controller: one Throttle across backfills
+	// and chunks, so width earned in one chunk holds in the next.
+	thr *Throttle
+	// atts is the pass's attachment-listing memory: a 501 from
+	// child/attachment stands for the origin, so it is learned once and the
+	// rest of the pass skips the request (see attachmentSupport).
+	atts *attachmentSupport
+	// heartbeat is the first-sync progress row handle (GDK-1677), same
+	// contract as the issue pass.
+	heartbeat *progressHeartbeat
+	// poolLogf serializes worker-side logging through opts.logf (test Log
+	// sinks are plain appends; workers log from their own goroutines).
+	poolLogf func(string, ...any)
+
+	// maxUTC/maxRaw are the newest lastModified observed anywhere in the
+	// pass; wms is the per-space incremental floor map, rewritten as chunks
+	// and backfills commit their floors.
+	maxUTC, maxRaw string
+	wms            map[string]string
+	spaces         []string
+	// verifiedSpaces marks the keys this pass verified against the origin
+	// (path ①'s listing, path ②'s resolved GETs, the memory.space join).
+	verifiedSpaces map[string]bool
+	// A page can be declared absent only after its space's unfiltered listing
+	// completed. fullyListed keeps those listings until every fetch/search in
+	// the pass has succeeded; a partial run must not turn absence into a
+	// tombstone. beforeListings is each space's stamps before its listing —
+	// what deleteAbsentConfluencePages compares the survivors against.
+	fullyListed    map[string]map[string]bool
+	beforeListings map[string]map[string]store.PageStamp
+}
+
+// fetchOne is one pool worker's whole item: the serial per-hit fetch set —
+// body, comments, then the version-stamp read (GDK-1673 moved that read
+// from commitBatch-time into the worker; its write stays behind the
+// upsert) — plus this fetch window's AIMD note. A 429 was already waited
+// out inside the transport (Retry-After); the meter delta is how the
+// worker sees it happened at all.
+func (p *confluencePass) fetchOne(ctx context.Context, hit confluence.Page) (pageFetch, error) {
+	before := p.c.Usage().Throttled
+	var pf pageFetch
+	rec, spaceName, when, err := fetchPageRecord(ctx, p.c, p.cfg, hit, p.atts)
+	if err == nil {
+		pf.versions, err = fetchPageVersions(ctx, p.c, p.db, p.poolLogf, rec.Item.ID, rec.Item.ExternalID, rec.Page.Version)
+	}
+	if errors.Is(err, confluence.ErrNotFound) {
+		// Deleted or view-restricted between listing and fetch — not a
+		// failure: emit logs the skip.
+		pf.gone, pf.goneErr = true, err
+		err = nil
+	}
+	pf.rec, pf.spaceName, pf.when = rec, spaceName, when
+	if p.c.Usage().Throttled > before {
+		p.thr.NoteThrottle()
+	} else {
+		p.thr.NoteClean()
+	}
+	return pf, err
+}
+
+// commitBatch lands one pageBatchSize (or trailing) batch in one store
+// transaction window: spaces first, then the items upsert, then version
+// stamps. batchSpaces: path ② (config listed spaces) collects names from
+// page hits; also a harmless refresh when path ① already wrote spaces from
+// Spaces(). Watermarks are committed per chunk after that chunk finishes —
+// never from a mid-chunk page batch (a later chunk's failure must not
+// inherit this chunk's floor, and this chunk's floors must not move until
+// its fetch completed).
+func (p *confluencePass) commitBatch(batch []pageFetch, batchSpaces []store.SpaceRow) error {
+	if len(batch) == 0 {
+		return nil
+	}
+	if len(batchSpaces) > 0 {
+		if err := p.db.UpsertSpaces(p.ctx, ConfluenceSourceID, batchSpaces); err != nil {
+			return err
+		}
+	}
+	recs := make([]store.PageRecord, len(batch))
+	for i, pf := range batch {
+		recs[i] = pf.rec
+	}
+	changed, err := p.db.UpsertPages(p.ctx, recs)
+	if err != nil {
+		return err
+	}
+	// Version stamps write after the items rows exist (page_versions→items
+	// FK) — the same spot the serial pass collected them. The pooled worker
+	// already did the read; this is only the write, in batch order.
+	for _, pf := range batch {
+		if len(pf.versions) == 0 {
+			continue
+		}
+		if err := writePageVersions(p.ctx, p.db, p.opts.logf, pf.rec.Item.ID, pf.rec.Item.ExternalID, pf.versions); err != nil {
+			return err
+		}
+	}
+	p.res.Fetched += len(batch)
+	p.res.Changed += changed
+	if p.res.Full {
+		// GDK-1677: same heartbeat as the issue pass. No denominator —
+		// Confluence exposes no page count per space, and inventing one
+		// (an extra CQL count per space) is a request this pass must not
+		// spend. total stays NULL; readers omit the "/ total" fragment.
+		p.heartbeat.touch(p.ctx, p.opts, p.res.Fetched, -1)
+	}
+	if p.opts.Progress != nil {
+		p.opts.Progress(p.res.Fetched, p.res.Changed)
+	}
+	p.opts.logf("  confluence: %s pages", formatCount(p.res.Fetched))
+	return nil
+}
+
+// hitBatch is the serial half of one processHits call: the state the emit
+// callback accumulates between hits until the next flush. A struct so emit
+// is a method (GDK-1920) instead of a closure over four locals.
+type hitBatch struct {
+	cp      *chunkPass
+	kept    []confluence.Page
+	fetches []pageFetch
+	// spaces collects spaceKey → row for the batch's commitBatch call.
+	spaces map[string]store.SpaceRow
+}
+
+// emit is fetchOrdered's committer callback: one fetched page, in listing
+// order, on the caller's goroutine. A gone page is logged and marked for
+// the absence bookkeeping; a live one joins the batch, flushing at
+// pageBatchSize.
+func (p *confluencePass) emit(b *hitBatch, i int, pf pageFetch) error {
+	if pf.gone {
+		// Deleted or view-restricted between the listing and the fetch.
+		// A full listing excludes this ID from seen; candidate verification
+		// below decides whether its old mirror row can be deleted now.
+		b.cp.gone[b.kept[i].ID] = true
+		p.opts.logf("confluence: skip %s (gone: %v)", b.kept[i].ID, pf.goneErr)
+		return nil
+	}
+	if sk := pf.rec.Page.SpaceKey; sk != "" {
+		b.spaces[sk] = store.SpaceRow{Key: sk, Name: pf.spaceName}
+	}
+	noteStamp(pf.when, &b.cp.maxUTC, &b.cp.maxRaw)
+	noteStamp(pf.when, &p.maxUTC, &p.maxRaw)
+	b.fetches = append(b.fetches, pf)
+	if len(b.fetches) >= pageBatchSize {
+		if err := p.commitBatch(b.fetches, spaceRowsFromMap(b.spaces)); err != nil {
+			return err
+		}
+		b.fetches = b.fetches[:0]
+		b.spaces = map[string]store.SpaceRow{}
+	}
+	return nil
+}
+
+// processHits is the gate-side entry both listing paths share. The gate
+// pass stays serial: it reads the mirror and decides, per hit, whether a
+// fetch is warranted at all. Only the network half fans out.
+func (p *confluencePass) processHits(cp *chunkPass) func([]confluence.Page) error {
+	return func(hits []confluence.Page) error {
+		b := &hitBatch{cp: cp, kept: make([]confluence.Page, 0, len(hits)),
+			fetches: make([]pageFetch, 0, pageBatchSize), spaces: map[string]store.SpaceRow{}}
+		for _, hit := range hits {
+			sk := hit.Space.Key
+			gate, ok := cp.gates[sk]
+			if !ok && sk == "" && len(cp.gates) == 1 {
+				// A server that omits space on hits (single-space query is
+				// unambiguous): route to the one member.
+				for k, g := range cp.gates {
+					sk, gate, ok = k, g, true
+				}
+			}
+			if !ok {
+				// A hit outside the queried set (page moved mid-listing, or a
+				// server ignoring the space filter): never mirror it into a
+				// space this pass does not own.
+				p.opts.logf("confluence: skip %s (space %q outside this pass)", hit.ID, sk)
+				continue
+			}
+			need, why := gate.needsBody(hit)
+			if !need {
+				// The mirror already holds this page at this exact version and
+				// stamp: the hit is inside cqlTime's floor window, not a change.
+				// Its stamp still counts toward the watermark — we have just
+				// verified the mirror is current through it — and the page stays
+				// OUT of the gate's fetched set so the comments-only pass can
+				// still reach it if only a comment moved.
+				//
+				// The no-fetch verdicts that carry a reason are the
+				// unchecked ones (GDK-1888): a children.attachment or
+				// children.comment expansion that came back truncated at the
+				// search limit, so the scan could not compare it — the two
+				// names join with a + when both were truncated. They ride
+				// the same reasons tally as the fetch reasons so the gap is
+				// visible in the log.
+				if why != "" {
+					cp.reasons[why]++
+				}
+				p.res.PageSkips++
+				noteStamp(hit.Version.When, &cp.maxUTC, &cp.maxRaw)
+				noteStamp(hit.Version.When, &p.maxUTC, &p.maxRaw)
+				continue
+			}
+			if why != "" {
+				if _, isContainer := cp.containers[hit.ID]; isContainer {
+					why = "comment-container"
+				}
+				cp.reasons[why]++
+			}
+			gate.markFetched(hit.ID)
+			p.res.PageBodies++
+			cp.bodies[sk]++
+			b.kept = append(b.kept, hit)
+		}
+		// The pooled half: workers run fetchOne (body + comments + version
+		// read) concurrently, bounded by thr; emit lands back here in
+		// listing order on this goroutine, so the batch, the spaces map,
+		// the tallies and every commit still see one writer.
+		if err := fetchOrdered(p.ctx, p.thr, b.kept, p.fetchOne, func(i int, pf pageFetch) error {
+			return p.emit(b, i, pf)
+		}); err != nil {
+			return err
+		}
+		// The trailing sub-batch commit, exactly where the serial pass
+		// had it: emit only flushes at pageBatchSize.
+		return p.commitBatch(b.fetches, spaceRowsFromMap(b.spaces))
+	}
+}
+
+// syncBackfill fully re-reads one space: the mirror's repair path (new or
+// restored spaces, and every space on --full). The nil gate re-reads every
+// body regardless of what the local rows claim; comments arrive with each
+// body, so there is no comments-only pass.
+func (p *confluencePass) syncBackfill(key string) error {
+	cp := newChunkPass(map[string]*pageFetchGate{key: nil})
+	if p.verifiedSpaces[key] {
+		before, err := p.db.PageStamps(p.ctx, ConfluenceSourceID, key)
+		if err != nil {
+			return err
+		}
+		p.beforeListings[key] = before
+	}
+	cql := fmt.Sprintf(`space=%s AND type=page order by lastmodified asc`, cqlSpace(key))
+	before := p.res.PageBodies
+	seen := map[string]bool{}
+	if err := p.c.SearchPages(p.ctx, cql, func(hits []confluence.Page) error {
+		for _, hit := range hits {
+			if hit.ID == "" || (hit.Space.Key != "" && hit.Space.Key != key) {
+				return fmt.Errorf("confluence: invalid page listing for space %s (page %q, space %q)", key, hit.ID, hit.Space.Key)
+			}
+			seen[hit.ID] = true
+		}
+		return p.processHits(cp)(hits)
+	}); err != nil {
+		return record(p.ctx, p.cfg, p.db, ConfluenceSourceID, err)
+	}
+	for id := range cp.gone {
+		delete(seen, id)
+	}
+	if p.verifiedSpaces[key] {
+		p.fullyListed[key] = seen
+	}
+	p.opts.logf("confluence: space %s floor=full-backfill fetched=%d", key, p.res.PageBodies-before)
+	if cp.maxRaw == "" {
+		return nil
+	}
+	if err := p.db.SetSpaceWatermark(p.ctx, ConfluenceSourceID, key, cp.maxRaw); err != nil {
+		return err
+	}
+	p.wms[key] = cp.maxRaw
+	// Compatibility: sync_state.watermark stays the max across spaces so
+	// status/doctor/freshness keep working. It is not an incremental floor.
+	return p.db.RecordSync(p.ctx, ConfluenceSourceID, store.SyncResult{Watermark: cp.maxRaw})
+}
+
+// syncChunk runs one incremental chunk: one type=page CQL, one type=comment
+// CQL, floored at the chunk's oldest member watermark. Gates keep re-hits
+// inside the widened window from costing body reads.
+func (p *confluencePass) syncChunk(chunk spaceChunk) error {
+	gates := make(map[string]*pageFetchGate, len(chunk.keys))
+	for _, key := range chunk.keys {
+		gate, err := newPageFetchGate(p.ctx, p.db, key, false)
+		if err != nil {
+			return err
+		}
+		gates[key] = gate
+	}
+	cp := newChunkPass(gates)
+	bodiesBefore, skipsBefore := p.res.PageBodies, p.res.PageSkips
+	cql := fmt.Sprintf(`%s AND type=page AND lastModified >= "%s" order by lastmodified asc`,
+		cqlSpaceSet(chunk.keys), cqlTime(chunk.floorRaw))
+	if err := p.c.SearchPages(p.ctx, cql, p.processHits(cp)); err != nil {
+		return record(p.ctx, p.cfg, p.db, ConfluenceSourceID, err)
+	}
+	// comments-only pass: one type=comment CQL per chunk. Pages already
+	// fetched above are skipped via the gates.
+	if err := commentsOnlyPass(p.ctx, p.c, p.opts, chunk, cp, &p.maxUTC, &p.maxRaw, p.processHits(cp)); err != nil {
+		return record(p.ctx, p.cfg, p.db, ConfluenceSourceID, err)
+	}
+	p.opts.logf("confluence: %d spaces floor=%s fetched=%d unchanged=%d", len(chunk.keys), chunk.floorRaw,
+		p.res.PageBodies-bodiesBefore, p.res.PageSkips-skipsBefore)
+	for _, key := range sortedKeys(cp.bodies) {
+		p.opts.logf("confluence: space %s fetched=%d", key, cp.bodies[key])
+	}
+	if len(cp.reasons) > 0 {
+		// Why the gate said fetch — the debug surface for "an unchanged tick
+		// keeps re-reading the same N bodies" (GDK-1074 waste ①).
+		p.opts.logf("confluence: refetch reasons %s", formatReasons(cp.reasons))
+	}
+	if cp.maxRaw == "" {
+		// Nothing observed anywhere in the chunk: floors stay put. The next
+		// tick re-runs the same cheap zero-hit queries.
+		return nil
+	}
+	// Every member advances to the chunk max, the quiet ones included: the
+	// query enumerated all changes in these spaces since the chunk floor
+	// (≤ every member's own floor), so each member is verified current
+	// through the newest stamp observed. A quiet member that kept its old
+	// floor would drag this chunk's window wider on every future tick.
+	for _, key := range chunk.keys {
+		if err := p.db.SetSpaceWatermark(p.ctx, ConfluenceSourceID, key, cp.maxRaw); err != nil {
+			return err
+		}
+		p.wms[key] = cp.maxRaw
+	}
+	// Compatibility: sync_state.watermark stays the max across spaces so
+	// status/doctor/freshness keep working. It is not an incremental floor.
+	return p.db.RecordSync(p.ctx, ConfluenceSourceID, store.SyncResult{Watermark: cp.maxRaw})
+}
+
+// reconcileScan is the scheduled reconcile's listing comparison (GDK-1886,
+// GDK-1888): the full page listing of every verified-but-unlisted space,
+// compared against the mirror through the same gate the incremental pass
+// uses, with the children.* expansions that let needsBody compare
+// attachment and comment id sets. It reads IDs, not bodies — the fetch gate
+// decides any exception.
+func (p *confluencePass) reconcileScan() error {
+	var scan []string
+	for _, key := range p.spaces {
+		if p.verifiedSpaces[key] && p.fullyListed[key] == nil {
+			scan = append(scan, key)
+		}
+	}
+	for _, chunk := range chunkConfluenceSpaces(scan, nil) {
+		seen := map[string]map[string]bool{}
+		// One gate covering every space in the chunk, so the scan's hits
+		// go through the same single owner of "does this hit need a body?"
+		// as the incremental pass (GDK-1886). The scan used to record the
+		// hit and move on; a page moved between two scoped spaces without
+		// a version bump then kept its old space_key forever — the
+		// incremental CQL floor never lists it, and the prune below kept
+		// the row because the confirm GET reported a kept space. With the
+		// gate asked, the union's spaceOf answers "filed under another
+		// space" (reason "space") and the fetch rewrites space_key through
+		// the normal upsert path. Rejected alternative: writing space_key
+		// inside deleteAbsentConfluencePages — a write hidden in a prune
+		// path. Documented gap, out of scope here: an incremental
+		// (CQL lastModified) pass cannot list an unbumped moved page at
+		// all — a Full or Reconcile pass is what catches it.
+		gate := &pageFetchGate{have: map[string]store.PageStamp{}, spaceOf: map[string]string{}, fetched: map[string]struct{}{},
+			attachments: map[string]map[string]bool{}, comments: map[string]map[string]bool{}, commentsUnknown: map[string]bool{}}
+		gates := map[string]*pageFetchGate{}
+		for _, key := range chunk.keys {
+			seen[key] = map[string]bool{}
+			gates[key] = gate
+			before, err := p.db.PageStamps(p.ctx, ConfluenceSourceID, key)
+			if err != nil {
+				return err
+			}
+			p.beforeListings[key] = before
+			for id, st := range before {
+				gate.have[id] = st
+				gate.spaceOf[id] = key
+			}
+			// GDK-1888: the scan's attachment comparison base — the
+			// mirror's per-page attachment id set, one space at a time
+			// into the shared gate.
+			held, err := p.db.PageAttachmentIDs(p.ctx, ConfluenceSourceID, key)
+			if err != nil {
+				return err
+			}
+			for id, set := range held {
+				gate.attachments[id] = set
+			}
+			// GDK-1888 comment half: the same base for top-level comment
+			// ids, plus the pages whose comment rows predate parent_id
+			// (NULL — unknown). needsBody heals those with one
+			// comments-backfill fetch instead of comparing a set it
+			// cannot trust.
+			tops, unknownParents, err := p.db.PageTopCommentIDs(p.ctx, ConfluenceSourceID, key)
+			if err != nil {
+				return err
+			}
+			for id, set := range tops {
+				gate.comments[id] = set
+			}
+			for id := range unknownParents {
+				gate.commentsUnknown[id] = true
+			}
+		}
+		cp := newChunkPass(gates)
+		// listedSpace remembers the space each hit was listed under, so a
+		// page whose body GET came back gone can be pulled out of seen the
+		// way syncBackfill does — a mid-scan deletion must not hide behind
+		// the listing that predates it.
+		listedSpace := map[string]string{}
+		cql := fmt.Sprintf(`%s AND type=page order by lastmodified asc`, cqlSpaceSet(chunk.keys))
+		// The scan expands children.attachment and children.comment so
+		// needsBody can compare the listed ids against the mirror
+		// (GDK-1888): an attachment or comment added or removed bumps no
+		// page version, so without this every stamp matches and the cache
+		// keeps a deleted attachment or comment indefinitely. The
+		// expansions ride the scan only — the incremental and full passes
+		// keep the default payload.
+		if err := p.c.SearchPagesExpand(p.ctx, cql, "version,space,children.attachment,children.comment", func(hits []confluence.Page) error {
+			for _, hit := range hits {
+				key := hit.Space.Key
+				if key == "" && len(chunk.keys) == 1 {
+					key = chunk.keys[0]
+				}
+				if seen[key] == nil {
+					return fmt.Errorf("confluence: page %s has space %q outside reconcile scope", hit.ID, key)
+				}
+				if hit.ID == "" {
+					return fmt.Errorf("confluence: page listing in space %s has no id", key)
+				}
+				seen[key][hit.ID] = true
+				listedSpace[hit.ID] = key
+			}
+			return p.processHits(cp)(hits)
+		}); err != nil {
+			return record(p.ctx, p.cfg, p.db, ConfluenceSourceID, err)
+		}
+		for id := range cp.gone {
+			if key := listedSpace[id]; key != "" {
+				delete(seen[key], id)
+			}
+		}
+		if len(cp.reasons) > 0 {
+			// The scan's own tally, same shape as syncChunk's: space= is a
+			// move between scoped spaces, new= a page no scanned space had
+			// ever held, version/stamp= a change the incremental pass had
+			// not yet seen, attachments=/comments= an id set the mirror
+			// holds differently — an add or delete that bumped no version
+			// (GDK-1888) — comments-backfill= comment rows whose parent_id
+			// predates schemaV52, healed by the fetch itself — and
+			// attachments-unchecked=/comments-unchecked= (alone or joined
+			// with a +) a listing truncated at the search limit, where no
+			// comparison was possible.
+			p.opts.logf("confluence: reconcile scan refetch reasons %s", formatReasons(cp.reasons))
+		}
+		for key, ids := range seen {
+			p.fullyListed[key] = ids
+		}
 	}
 	return nil
 }
@@ -1181,6 +1272,40 @@ func (g *pageFetchGate) commentCurrent(hit confluence.Page) bool {
 // comment container 404s on fetch (restricted child content, the ErrNotFound
 // branch in fetchPageRecord) while the listing still shows ids re-fetches on
 // every reconcile — that page is the comments= line in the tally.
+// childSetVerdict is compareChildSet's reading of one children.* expansion
+// against the mirror (GDK-1888). The attachments half and the comments half
+// of needsBody ask the same question with different literals, so one enum —
+// the confirmVerdict pattern — owns the answers instead of two hand-copied
+// branch pairs drifting apart.
+type childSetVerdict int
+
+const (
+	childSetSame      childSetVerdict = iota // listed ids match the mirror exactly: no fetch
+	childSetDiffers                          // a difference in either direction: fetch
+	childSetUnchecked                        // listing truncated at the search limit: no comparison was possible
+)
+
+// compareChildSet folds needsBody's two duplicate halves into the one rule
+// they always shared: build the listed-id map from a children.* expansion,
+// compare it with the stored set via sameIDSet, and refuse the truncated
+// shape — Size >= Limit proves neither set direction (GDK-1888). Only the
+// reason literals differ between the attachments and comments call sites.
+func compareChildSet(listing confluence.ChildList, stored map[string]bool) childSetVerdict {
+	if listing.Size >= listing.Limit {
+		return childSetUnchecked
+	}
+	listed := make(map[string]bool, len(listing.Results))
+	for _, r := range listing.Results {
+		if r.ID != "" {
+			listed[r.ID] = true
+		}
+	}
+	if sameIDSet(listed, stored) {
+		return childSetSame
+	}
+	return childSetDiffers
+}
+
 func (g *pageFetchGate) needsBody(hit confluence.Page) (bool, string) {
 	if g == nil {
 		return true, "" // backfill: every body, not a gate decision
@@ -1232,19 +1357,11 @@ func (g *pageFetchGate) needsBody(hit confluence.Page) (bool, string) {
 	// verdict joined with a +.
 	var unchecked []string
 	if g.attachments != nil && hit.Children.Attachment != nil {
-		ca := hit.Children.Attachment
-		if ca.Size >= ca.Limit {
+		switch compareChildSet(*hit.Children.Attachment, g.attachments[hit.ID]) {
+		case childSetDiffers:
+			return true, "attachments"
+		case childSetUnchecked:
 			unchecked = append(unchecked, "attachments-unchecked")
-		} else {
-			listed := make(map[string]bool, len(ca.Results))
-			for _, r := range ca.Results {
-				if r.ID != "" {
-					listed[r.ID] = true
-				}
-			}
-			if !sameIDSet(listed, g.attachments[hit.ID]) {
-				return true, "attachments"
-			}
 		}
 	}
 	// The comment half, top-level ids only (the shape the expansion carries):
@@ -1258,19 +1375,11 @@ func (g *pageFetchGate) needsBody(hit confluence.Page) (bool, string) {
 		if g.commentsUnknown[hit.ID] {
 			return true, "comments-backfill"
 		}
-		cc := hit.Children.Comment
-		if cc.Size >= cc.Limit {
+		switch compareChildSet(*hit.Children.Comment, g.comments[hit.ID]) {
+		case childSetDiffers:
+			return true, "comments"
+		case childSetUnchecked:
 			unchecked = append(unchecked, "comments-unchecked")
-		} else {
-			listed := make(map[string]bool, len(cc.Results))
-			for _, r := range cc.Results {
-				if r.ID != "" {
-					listed[r.ID] = true
-				}
-			}
-			if !sameIDSet(listed, g.comments[hit.ID]) {
-				return true, "comments"
-			}
 		}
 	}
 	if len(unchecked) > 0 {
@@ -1280,9 +1389,9 @@ func (g *pageFetchGate) needsBody(hit confluence.Page) (bool, string) {
 }
 
 // sameIDSet reports whether two id sets hold exactly the same members — the
-// set compare behind the reconcile scan's attachments check (GDK-1888). A
-// nil set reads as the empty set, so a page the mirror holds with no
-// attachments compares equal to an empty origin listing.
+// set compare behind compareChildSet's attachments and comments checks
+// (GDK-1888). A nil set reads as the empty set, so a page the mirror holds
+// with none of that child kind compares equal to an empty origin listing.
 func sameIDSet(a, b map[string]bool) bool {
 	if len(a) != len(b) {
 		return false

@@ -1089,9 +1089,19 @@ CREATE INDEX issues_blocked ON issues_raw(blocked_since);
 // direction only: NULL must never read as top-level, or a pre-v52 reply row
 // masquerades as a top-level comment forever. There is no migration-time
 // backfill for the same reason as v51's hold: no origin-side parent is
-// knowable from the mirror alone. The reconcile scan heals it — a page whose
-// rows are NULL is flagged unknown by PageTopCommentIDs and re-fetched once
-// (needsBody's comments-backfill), and the re-fetch writes real values.
+// knowable from the mirror alone.
+//
+// What actually heals NULL rows, scoped precisely (GDK-1910): the
+// comments-backfill fetch fires only where a gate holds the comment base
+// (PageTopCommentIDs flags the page unknown) and the search hit carries a
+// children.comment expansion — the reconcile scan's shape, so only on
+// origins that answer the children expansion. Confluence Cloud answers.
+// issuetap's search hits emit no children key, so on the built-in wiki the
+// backfill can never fire; those rows heal only via `gadak sync --full`,
+// where the nil gate re-reads every body and the unchanged-compare reads
+// parent_id (NULL is not the empty string) so the re-fetch commits. And the
+// reconcile scan itself runs only under Watch — Options.Reconcile is set by
+// the watch reconcile ticker alone (default 3600s), by no CLI verb.
 const schemaV52 = `
 ALTER TABLE comments ADD COLUMN parent_id TEXT;
 `
