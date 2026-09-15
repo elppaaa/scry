@@ -9,6 +9,103 @@ A cycle's section carries four things: the base SHA the census measured, the
 fourteen axes with a verdict each (an axis nobody ran says so and why), the
 baseline numbers against the previous cycle, and where the findings went.
 
+## v0.23 cycle — base `4ff2195f`, census 2026-09-15, closed at `4c0d5e35`
+
+The third v0.22 pass closed at `b6352471` and **87 commits** landed after it,
+carrying three Unreleased themes — the phone rebuild, the Confluence cache
+cleanup, and the agent page that renders on the issue. This cycle is the
+runbook's full fourteen-axis run over that tree, the first since the census
+tooling moved to `tools/audit/` (GDK-1707). Parent issue: GDK-1904.
+
+Every axis got a verdict. Twelve ran as read-only delegated rounds off the
+census pages; two (8 and 10) and the tone half of 11 stayed with the lead,
+because the judgment in them is narrative and does not delegate.
+
+| # | axis | verdict |
+|---|---|---|
+| 1 | Go philosophy | **ran** — `runConfluencePass` was the tree's worst function at cyclomatic 97 / cognitive 243, +36 this cycle (GDK-1920, landed); two duplications this cycle introduced (GDK-1921, landed); four structural trends that are each small and point the same way — server fan-out 24, settings helpers bypassed, eight files over 1,500 lines and 30 commits (GDK-1922, **open for the user**). Measured zeros: panics in product code 0, single-implementation interfaces 0 |
+| 2 | Svelte philosophy | **ran** — the phone's `Detail.svelte` at 2,319 lines / 52 `$state`, +919 lines this cycle with no seam (GDK-1925: a size ratchet landed first, the extraction is landed the same day — 1,793 lines / 38 `$state`, the ratchet lowered in the same commit, six captures byte-identical); two blind spots in the rune gates — App.svelte's 500 ms poll and the effect-mirror leaking into the store (GDK-1926, landed); the relative-time ladder existed twice, web and phone, and had already diverged past seven days (GDK-1927, landed) |
+| 3 | App shells | **ran** — the wails pin was five betas behind and the beta.18 Calloc-leak fix was not in the shipped binary (GDK-1916, landed via PR #106); the secure-storage plugin's 1.x pin against a 2.x toolchain re-confirmed as the intended disposition (GDK-1917) |
+| 4 | Simplify | **ran** — four test-fixture families (~260 lines, GDK-1918) and ten product duplications (~230 lines, GDK-1919), both landed; dead code 0 |
+| 5 | Test pyramid | **ran** — two clock waits in the browser tier, 6 s in mirror-instant and 10.5 s in terminal-fold, replaced by conditions (GDK-1924, landed) |
+| 6 | UX consistency | **ran** — all three vocabulary gates read only `web/`, so the phone was structurally invisible to them (GDK-1928, landed) |
+| 7 | Agent surface | **ran** — artifacts, the cycle's third theme, were on none of the three agent surfaces (SKILL, MCP, CLI) (GDK-1905, landed) |
+| 8 | Changelog | **measured by the lead, compression deferred to the tag** — Unreleased is 3 themes / 5 paragraphs / 1,140 words / 20 keys; the phone theme alone is 730 words over 12 keys, 1.5× the whole of 0.22.0 after its cut, and paragraph 3 (353 words, 7 keys) has the one-key-per-sentence shape back. The lead compresses at tag time by the one test that survived last cycle: does someone opening gadak notice this |
+| 9 | CI cost | **ran** — 27.6 runner-hours per cycle went to docs-only pushes re-running every tier (GDK-1912, a per-subject input filter, landed via PR #107); race shards were split by count so the wall clock was luck, 387/344/421 s (GDK-1913, measured deal); the e2e weight table was a cycle stale (GDK-1914, one command regenerates it from a run id); the partition check ran three times and Playwright downloaded four (GDK-1915). First live desktop-only push after the filter still ran every tier — the table's `suffix:.go` and `dir:examples/` rows reach files those tiers never build (GDK-1931, opened) |
+| 10 | Leverage residue | **ran, by the lead** — surface matrix (20 Unreleased keys × 5 surfaces) read per theme against the open backlog; ranked list recorded on GDK-1904. Two of the four landed inside this cycle as findings (GDK-1905, GDK-1910); GDK-1827 (a phone sprint screen) and GDK-1901 (phone artifact rendering needs its own origin) are the user's call |
+| 11 | i18n completeness | **ran** — 27 phone-only keys in the shared namespace that the dead-key gate could not see, the 2026-08-26 incident class (GDK-1923, landed: the gate now reads `mobile/src` too, with a reasoned allowlist). Tone half by the lead: 11 new ko/ja pairs read, one fixed in place (`detail.artifactExpand` ja used 広げる where the catalog says 開く) |
+| 12 | Fact ledger | **ran** — seven ledger `path:line` citations pointed at unrelated code (GDK-1907), the ledger said 11 promises where the file has 8 and its minor version had stopped at 0.21 (GDK-1908), and the site's benchmark figures and Datasette link were outside every check (GDK-1909) — all landed, with a new doc-check (60) that resolves every cited line. That check found 32 more in SUPPORT_MATRIX the day it landed (GDK-1929, landed: 114 citations rewritten to claim-carrying lines) |
+| 13 | Invariants | **ran** — `api_usage`, our own outbound counters, lived only in the disposable mirror: not regenerable from the origin, not exportable (GDK-1906, landed: copied to `local.db` by `schemaV53`, with two gates for the class — a CREATE-side scope test and a SQL-name qualification test) |
+| 14 | Schema | **ran** — the healing `schemaV52`'s comment promised did not fire on the built-in wiki (GDK-1910, landed); the snapshot pipeline dropped the `parent_id` column the same cycle had added (GDK-1911, landed) |
+
+**Defects: none opened.** Every finding was a quality gap, not behaviour
+wrong today; the cycle's Highest bugs (GDK-1844, GDK-1095, GDK-1192) predate
+it and are listed under readiness below.
+
+**Findings**: GDK-1905 through GDK-1929, sub-issues of GDK-1904 — 25 opened,
+24 landed in this cycle. Open at close: GDK-1922 (structural
+trends, a user decision). Two follow-ups came out of the fix
+rounds: GDK-1930 (drop the mirror-side `api_usage` table once the copy has
+settled) and GDK-1931 (the CI filter's over-broad rows).
+
+`audit-rejected` ledger: still empty.
+
+### Measures
+
+| measure | base (`4ff2195f`) | close (`4c0d5e35`) | command |
+|---|---|---|---|
+| Go lines, non-test · test | 109,495 · 149,980 | 109,737 · 150,242 | `tools/audit/complexity.sh` |
+| Svelte · TS lines | 37,487 · 130,028 | 37,838 (+351: the extracted sheets each carry the scoped CSS they use) · 130,791 | same |
+| mean non-test cyclomatic | 6.37 over 2,814 functions | 6.35 over 2,868 | same (`gocyclo -over 0`, non-test rows) |
+| functions at cyclomatic ≥ 60 · ≥ 69 | 5 · 4 (worst `runConfluencePass` 97) | 4 · 3 (worst `cmdInit` 74) | same |
+| `internal/server` fan-out · import cycles | 24 · 0 | 24 · 0 | same |
+| CI wall / billable seconds (main run) | 580 / 3,763 | 481 / 4,059 | `tools/audit/ci-ledger.sh` — wall fell with the measured race deal (GDK-1913); billable rose because this close run is a desktop-only push that the filter did not skip (GDK-1931) |
+| catalog keys · byte-equal without allowlist | 1,467 · 0 | 1,468 · 0 | `tools/audit/i18n-census.sh` |
+| fact values · unguarded with copies | 30 · 19 | 30 · 16 | `tools/audit/fact-ledger.sh` |
+| CHANGELOG Unreleased (en): paragraphs · words · keys | 5 · 1,140 · 20 | 5 · 1,142 · 20 | the axis-8 measurement; compression is a tag-time step |
+| phone `Detail.svelte` lines · `$state` | 2,319 · 52 | 1,793 · 38 | `mobile/src/lib/screen-size.test.ts` ceilings |
+
+### What this cycle taught
+
+- **A citation check can pass on the wrong line.** Check 60 resolves every
+  `path:line` and fails on a missing file, a line past EOF, a blank line or a
+  comment. It cannot tell that `attachment.go:379` is real code about
+  something else — and 32 of SUPPORT_MATRIX's anchors were exactly that the
+  day the check landed. The structural half of "is this citation true" is a
+  gate; the other half is review, and the log should say which half a gate
+  covers.
+- **Classification right, home wrong is its own class.** The scope table in
+  `origin_scope.go` had `api_usage` under `scopeLocal` for a year while the
+  table sat in the mirror. A table that names the rule is not a gate; the
+  gate is the test that reads the table and the schema together. Two gates
+  now do (CREATE side and SQL side), and the copy-migration pattern from
+  GDK-105 is a list rather than one special case.
+- **A filter's table is only as narrow as its evidence.** The CI filter
+  landed with `suffix:.go` for every tier because "Go reaches the whole
+  tree" — true of the root module, false of `desktop/`'s own. The first
+  push that could have skipped did not. Every row in an input table should
+  cite the build step that reads it, and a row that cites none is a guess.
+- **Delegates do not commit, and a lead who forgets that reads empty
+  diffs.** Three rounds in a row the branch diff was empty because the work
+  was sitting uncommitted in the worktree. The commit is the lead's, so the
+  first thing to read after a round is `git status` in the worktree, not
+  `git diff main..branch`.
+- **Per-round effort is a real dial.** Rounds ran at `medium` for spec-tight
+  implementation and `high` for multi-file contracts and gate authoring;
+  none needed `max`. The quota that used to go to one `max` round covered
+  the whole census fan-out.
+
+### Release readiness at the end of this cycle
+
+Not asserted. Three Highest defects are open and none has a decision
+recorded — GDK-1844 (a glyph in the folding terminal cell disappears; a
+regression test exists and passes, the disposition is the user's),
+GDK-1095 (IME composition interrupted by a shortcut sends twice, upstream
+xterm), GDK-1192 (a desktop resize test times out intermittently in CI).
+The mobile launch, the top priority, is blocked on GDK-958 (a review demo
+path reachable from outside the tailnet), which is a product decision, not
+a finding.
+
 ## v0.22 cycle, third pass — base `4e57a273..b6352471`, 2026-09-12
 
 The second pass closed at `4e57a273` and **50 commits · 261 files ·
